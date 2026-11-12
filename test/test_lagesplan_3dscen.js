@@ -27,37 +27,58 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   await page.click('#btn3d');
   const r = await page.evaluate(async () => {
-    const w = ms => new Promise(r => setTimeout(r, ms)); await w(1000); const out = {};
-    const mkRow = (id, name, cur, main, bl, extra) => ({ id, group_id: 'g' + id, activity: name, object_name: name, area: 'A', start_date: cur[0], end_date: cur[1], baseline_start_date: main && main[0], baseline_end_date: main && main[1], baselines: bl ? { rev2: bl } : undefined, ...(extra || {}) });
-    l3pl.rows = [mkRow('1', 'Platta A1', ['2026-02-02', '2026-05-29'], ['2026-02-02', '2026-05-29'], ['2026-02-02', '2026-05-29']), mkRow('2', 'Stomme B2', ['2026-06-15', '2026-11-27'], ['2026-06-01', '2026-10-09'], ['2026-06-01', '2026-10-09']), mkRow('3', 'Förtjockarhuset G', ['2026-07-13', '2027-01-29'], ['2026-06-15', '2026-10-30'], null), mkRow('4', 'Kontor', ['2026-11-02', '2027-05-07'], ['2026-10-05', '2027-03-05'], ['2026-10-05', '2027-03-05'])];
-    const REG = [{ id: 'main', name: 'Kontraktstidplan' }, { id: 'rev2', name: 'Tidplan före omplanering Förtjockarhuset' }, { id: 'rev3', name: 'Reviderad kontraktstidplan' }];
-    // rev3 saknar datum på raderna → listas inte; rev2 och main finns
-    window.ghReadJSON = async (t, p) => /plan_baselines/.test(p) ? REG : [];
-    out.dates = JSON.stringify(l3scDatesOf(l3pl.rows[1], 'main')) === '["2026-06-01","2026-10-09"]' && JSON.stringify(l3scDatesOf(l3pl.rows[1], 'bl:rev2')) === '["2026-06-01","2026-10-09"]' && l3scDatesOf(l3pl.rows[2], 'bl:rev2') === null && JSON.stringify(l3scDatesOf(l3pl.rows[2], 'cur')) === '["2026-07-13","2027-01-29"]';
-    out.rowFor = l3scRowFor(l3pl.rows[2], 'bl:rev2') === null && l3scRowFor(l3pl.rows[1], 'bl:rev2').end_date === '2026-10-09'; l3sc.opts.missing = 'plan'; out.rowForPlan = l3scRowFor(l3pl.rows[2], 'bl:rev2') === l3pl.rows[2]; l3sc.opts.missing = 'hide';
-    // hooken: Tid-läge med strikta datum per scenario
-    l3sc.sel = ['main', 'cur', 'bl:rev2']; l3sc.reg = REG; l3scBuildList(); out.list = l3sc.list.some(x => x.id === 'main') && l3sc.list.some(x => x.id === 'bl:rev2') && !l3sc.list.some(x => x.id === 'bl:rev3') && l3sc.list.find(x => x.id === 'cur').n === 4;
-    const was = l3gm.mode; l3gm.mode = 'time'; const rowsB2 = [l3pl.rows[1]], rowsNew = [l3pl.rows[2]];
-    l3sc.render = 0; const ph0 = l3gmRange(rowsB2, '2026-11-12', {}); const gh = l3gmRange(rowsNew, '2026-11-12', {});   // A = kontrakt: Stomme B2 slutade 9 okt → klart; Förtjockarhuset G slutar 30 okt → klart
-    l3sc.render = 1; const ph1 = l3gmRange(rowsB2, '2026-11-12', {}); const gh1 = l3gmRange(rowsNew, '2026-11-12', {});   // B = nuvarande: B2 slutar 27 nov → pågår; Förtjockarhuset pågår
-    l3sc.render = 2; const ph2 = l3gmRange(rowsNew, '2026-11-12', {});   // C = före omplanering: Förtjockarhuset fanns inte → osynligt
-    out.hook = ph0.phase === 'klar' && gh.phase === 'klar' && ph1.phase === 'pagaende' && gh1.phase === 'pagaende' && ph2.off === true;
-    l3sc.tally = {}; l3sc.render = 0; l3gmRange(rowsB2, '2026-11-12', {}); l3gmRange([l3pl.rows[3]], '2026-11-12', {}); out.tally = l3sc.tally.klar === 1 && l3sc.tally.pagaende === 1; l3sc.tally = null;
-    l3sc.render = 'delta'; const dl = l3gmRange(rowsB2, '2026-11-12', {}), dn = l3gmRange(rowsNew, '2026-11-12', {}); l3sc.sel = ['bl:rev2', 'cur', '']; const dnew = l3gmRange(rowsNew, '2026-11-12', {}); l3sc.sel = ['main', 'cur', 'bl:rev2'];
-    out.delta = dl.phase === 'd_late' && dn.phase === 'd_late' && dnew.phase === 'd_new'; l3sc.render = null; l3gm.mode = was;
-    out.diff = (() => { const d = l3scDiffRows(); return d.length === 3 && d[0].d > 0 && d.some(x => x.name === 'Förtjockarhuset G' && x.d === 91); })();
-    // överlägget
-    const btn = document.getElementById('v3ScenBtn'); out.btn = !!btn && btn.closest('#v3Views'); l3sc.sel = ['', '', '']; l3sc.loaded = true; await l3scOpen(); await w(800);
-    const el = document.getElementById('v3Scen'); out.open = !!el && el.querySelectorAll('figure[data-k]').length >= 2; out.sel = [...el.querySelectorAll('select[data-sc^=sel]')].map(s => s.value).join(',');
-    out.kpi = !!el.querySelector('[data-pct="0"]') && /%/.test(el.querySelector('[data-pct="0"]').textContent) && !!el.querySelector('figure[data-k="delta"]') && el.querySelectorAll('#scTb tr').length >= 2;
-    const cv = l3scCompose(); out.report = !!cv && cv.width === 3300 && cv.height > 1500;
-    const pdf = l3scPdfBytes(l3scCompose()); out.pdf = String.fromCharCode(...pdf.slice(0, 8)) === '%PDF-1.4' && String.fromCharCode(...pdf.slice(-6)).includes('%%EOF') && pdf.length > 10000;
-    el.querySelector('#scDate').value = '2026-08-03'; el.querySelector('#scDate').dispatchEvent(new Event('change')); await w(500); out.date = l3sc.date === '2026-08-03' && el.querySelector('.sc-big').textContent === '2026-08-03';
-    el.querySelector('[data-sc-go="1"]').click(); await w(300); out.explore = !!document.getElementById('v3ScBadge') && l3sc.render === 1 && el.style.display === 'none'; document.getElementById('v3ScBadge').querySelectorAll('button')[0].click(); await w(500); out.back = el.style.display !== 'none';
-    l3scClose(); await w(200); out.closed = !document.getElementById('v3Scen') && l3sc.render === null && l3gm.mode === was && !document.getElementById('v3ScBadge');
+    const w = ms => new Promise(r => setTimeout(r, ms)); await w(1000); const out = {}; try {
+    const mkRow = (id, obj, name, cur, main, bl) => ({ id, object_id: obj, group_id: 'g' + id, activity: name, object_name: name, area: 'A', start_date: cur[0], end_date: cur[1], baseline_start_date: main && main[0], baseline_end_date: main && main[1], baselines: bl ? { rev2: bl } : undefined });
+    const ROWS = [mkRow('1', 'G1', 'Platta A1', ['2026-02-02', '2026-05-29'], ['2026-02-02', '2026-05-29'], ['2026-02-02', '2026-05-29']), mkRow('2', 'G2', 'Stomme B2', ['2026-06-15', '2026-11-27'], ['2026-06-01', '2026-10-09'], ['2026-06-01', '2026-10-09']), mkRow('3', 'G3', 'Förtjockarhuset G', ['2026-07-13', '2027-01-29'], ['2026-06-15', '2026-10-30'], null)]; l3pl.rows = ROWS;
+    const writes = []; let stored = [];
+    window.ghReadJSON = async (t, p) => /plan_items/.test(p) ? ROWS : /plan_baselines/.test(p) ? [{ id: 'main', name: 'Kontraktstidplan' }, { id: 'rev2', name: 'Rev 2' }] : /plan_scenarios/.test(p) ? stored : [];
+    window.ghWriteJSON = async (t, p, fn) => { const v = fn(stored); stored = v; writes.push(p); return v; };
+    const ctx = g => ({ mesh: { userData: { l3b: { ranges: [{ guid: g }] } } }, ri: 0 });
+    // 1) Nollställt: inget valt, inget kopplat mot tidplanen
+    await l3scLoad(true); out.empty = l3sc.mine.length === 0 && l3sc.sel.join('') === '' && l3sc.list === undefined;
+    await l3scOpen(); await w(600); const el0 = document.getElementById('v3Scen'); out.emptyUi = !!el0.querySelector('.sc-empty') && el0.querySelectorAll('figure').length === 0 && /Inga scenarier är valda/.test(el0.textContent); l3scClose(); await w(200);
+    // 2) Egna scenarier utan tidplan
+    const A = l3scNew('Reviderat kontrakt'), B = l3scNew('Nuvarande'); l3sc.mine = [A, B]; l3sc.sel = [A.id, B.id, '']; l3sc.cache = {};
+    A.acts.push({ id: 'a1', name: 'Stomme', start: '2026-06-01', end: '2026-10-09', g: ['G2'], pl: [] }); B.acts.push({ id: 'b1', name: 'Stomme', start: '2026-06-15', end: '2026-11-27', g: ['G2'], pl: [] }, { id: 'b2', name: 'Förtjockarhuset', start: '2026-07-13', end: '2027-01-29', g: ['G3'], pl: [], color: '#a855f7' }); A._v = 1; B._v = 1;
+    const was = l3gm.mode; l3gm.mode = 'time';
+    l3sc.render = 0; const a2 = l3gmRange([l3pl.rows[1]], '2026-11-12', ctx('G2')), a3 = l3gmRange([l3pl.rows[2]], '2026-11-12', ctx('G3'));   // A: G2 klart; G3 inte kopplat (trots rad i tidplanen)
+    l3sc.render = 1; const b2 = l3gmRange([], '2026-11-12', ctx('G2')), b3 = l3gmRange([], '2026-11-12', ctx('G3')), b1 = l3gmRange([], '2026-02-01', ctx('G2'));
+    out.hookOwn = a2.phase === 'klar' && b2.phase === 'pagaende' && b3.phase === 'pagaende' && Math.abs(b3.rgb[0] - 0xa8 / 255) < 0.01 && b1.phase === 'planerad' && b1.alpha > 0 && b1.alpha < 0.5;
+    out.unlinked = a3.phase === 'okopplad' && a3.alpha < 0.3; A.unlinked = 'hide'; const hide = (l3sc.render = 0, l3gmRange([l3pl.rows[2]], '2026-11-12', ctx('G3'))); A.unlinked = 'orig'; const orig = l3gmRange([], '2026-11-12', ctx('GX')); A.unlinked = 'ghost'; out.unlinkedOpts = hide.off === true && orig.orig === true;
+    l3sc.tally = {}; l3sc.render = 1; l3gmRange([], '2026-11-12', ctx('G2')); l3gmRange([], '2026-11-12', ctx('G3')); l3gmRange([], '2026-11-12', ctx('G9')); out.tally = l3sc.tally.pagaende === 2 && l3sc.tally.okopplad === 1; l3sc.tally = null;
+    l3sc.render = 'delta'; const d2 = l3gmRange([], '2026-11-12', ctx('G2')), d3 = l3gmRange([], '2026-11-12', ctx('G3')); out.delta = d2.phase === 'd_late' && d3.phase === 'd_new';
+    out.diff = (() => { const d = l3scDiffRows(); return d.length === 2 && d.some(x => x.name === 'Stomme' && x.d === 49) && d.some(x => x.name === 'Förtjockarhuset' && x.kind === 'ny'); })();
+    l3sc.render = null; l3gm.mode = was;
+    // 3) Kopplat mot tidplanen: bara när man väljer det
+    const C = l3scNew('Från kontraktet'); C.src = 'main'; l3sc.mine.push(C); C._v = 1; l3sc.sel = [C.id, '', '']; l3gm.mode = 'time'; l3sc.render = 0; const c1 = l3gmRange([l3pl.rows[1]], '2026-11-12', ctx('G2')); l3sc.render = null; l3gm.mode = was; out.linked = c1.phase === 'klar';
+    out.sources = l3scSources().map(x => x[0]).join(',') === ',cur,main,bl:rev2';
+    // 4) Placerade objekt
+    const pm = modCreate({ k: 'mesh', pts: [[0,0,0],[4,0,0],[4,4,0],[0,4,0],[0,0,3],[4,0,3],[4,4,3],[0,4,3]], faces: [[1,3,2],[1,4,3],[5,6,7],[5,7,8],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,4,8],[3,8,7],[4,1,5],[4,5,8]], closed: true }, [6512330, 150130, 100], { name: 'Bod' });
+    A.acts.push({ id: 'a2', name: 'Bod upp', start: '2026-03-01', end: '2026-12-01', g: [], pl: [pm.id] }); A._v++; l3sc.cache = {}; l3sc.sel = [A.id, B.id, '']; l3sc.date = '2026-08-01';
+    let mat = null; l3.placeMeshes.get(pm.id).traverse(m => { if (m.isMesh && !mat) mat = m.material; }); const c0 = mat.color.getHex(), o0 = mat.opacity, undo = l3scPlacePatch(A.id, '2026-08-01'), c1h = mat.color.getHex(); undo(); out.place = c1h !== c0 && mat.color.getHex() === c0 && mat.opacity === o0;
+    { const tl = {}, u2 = l3scPlacePatch(A.id, '2026-08-01', tl); u2(); out.placeTally = tl.pagaende === 1; B.acts.push({ id: 'b3', name: 'Bod upp', start: '2026-05-01', end: '2027-01-01', g: [], pl: [pm.id] }); B._v++; l3sc.cache = {}; l3sc.sel = [A.id, B.id, '']; const dl = {}, u3 = l3scPlacePatch('delta', '2026-08-01', dl); u3(); out.placeDelta = dl.d_late === 1 && l3scDiffRows().some(x => x.name === 'Bod upp'); B.acts.pop(); B._v++; l3sc.cache = {}; }
+    // 5) Överlägget och bygget
+    l3sc.mine = [A, B]; l3sc.sel = [A.id, B.id, '']; await l3scPersist(); await l3scOpen(); await w(900); const el = document.getElementById('v3Scen');
+    out.open = el.querySelectorAll('figure[data-k]').length >= 2 && !!el.querySelector('figure[data-k="delta"]') && /Reviderat kontrakt/.test(el.textContent) && /%/.test(el.querySelector('[data-pct="0"]').textContent);
+    const Ao = l3scById(A.id);
+    const cv = l3scCompose(); out.report = cv.width === 3300 && cv.height > 1500; const pdf = l3scPdfBytes(cv); out.pdf = String.fromCharCode(...pdf.slice(0, 8)) === '%PDF-1.4' && pdf.length > 8000;
+    out.bygg = !!el.querySelector('[data-sc-ed="0"]'); el.querySelector('[data-sc-ed="0"]').click(); await w(500); const ed = document.getElementById('v3ScEd'); out.edOpen = !!ed && el.style.display === 'none' && l3sc.render === 0 && ed.querySelectorAll('.act').length === 2;
+    ed.querySelector('[data-e="add"]').click(); await w(150); out.add = Ao.acts.length === 3 && Ao.acts[2].start === l3sc.date;
+    l3SelectIds([pm.id]); await w(700); out.selSync = !!document.querySelector('#v3ScEd [data-e="addsel"]:not([disabled])');
+    document.querySelector('#v3ScEd [data-e="addsel"]').click(); await w(150); const last = Ao.acts[Ao.acts.length - 1]; out.addsel = last.pl.includes(pm.id) && !Ao.acts.find(a => a.id === 'a2').pl.includes(pm.id);   // objektet flyttas till nya aktiviteten
+    document.querySelector('#v3ScEd .act:last-of-type [data-a="unlink"]').click(); await w(150); out.unlink = Ao.acts[Ao.acts.length - 1].pl.length === 0;
+    const nm = document.querySelector('#v3ScEd .act:last-of-type [data-a="name"]'); nm.value = 'Kran'; nm.dispatchEvent(new Event('change')); out.rename = Ao.acts[Ao.acts.length - 1].name === 'Kran';
+    document.querySelector('#v3ScEd .act:last-of-type [data-a="del"]').click(); await w(150); out.del = Ao.acts.length === 3;
+    document.querySelector('#v3ScEd [data-e="src"]').value = 'main'; document.querySelector('#v3ScEd [data-e="src"]').dispatchEvent(new Event('change')); await w(150); out.srcSet = Ao.src === 'main'; Ao.src = '';
+    document.getElementById('edDone').click(); await w(600); out.back = !document.getElementById('v3ScEd') && el.style.display !== 'none';
+    await w(900); out.saved = writes.length >= 1 && stored.some(x => x.id === A.id && x.acts.length === 3);
+    l3scClose(); await w(300); out.closed = !document.getElementById('v3Scen') && l3sc.render === null && l3gm.mode === was;
+    // 6) Ny session: allt sparat finns men inget är valt
+    l3sc.sel = ['', '', '']; await l3scLoad(true); out.reload = l3sc.mine.length === 2 && l3sc.mine.find(x => x.id === A.id).acts.length === 3 && l3sc.sel.join('') === '';
+    } catch (e) { out.ERR = e.message + ' @ ' + (e.stack || '').split('\n')[1]; }
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 700)); process.exit(1); }
-  const bad = Object.entries(r).filter(([k, v]) => v === false).map(x => x[0]); if (bad.length) { console.error('FAIL scenarier: ' + bad.join(',')); process.exit(1); }
-  await browser.close(); server.close(); console.log('OK: tidplansscenarier – baselines som scenarier, 4D-färger per plan, skillnadsvy, rapportbild/PDF, utforska och återställ');
+  const bad = Object.entries(r).filter(([k, v]) => v === false || k === 'ERR').map(x => x[0]); if (bad.length) { console.error('FAIL scenarier: ' + bad.join(',')); process.exit(1); }
+  await browser.close(); server.close(); console.log('OK: tidplansscenarier – nollställda, egna aktiviteter och kopplade objekt, valfri koppling mot tidplanen, skillnadsvy, bygge, rapportbild/PDF');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
