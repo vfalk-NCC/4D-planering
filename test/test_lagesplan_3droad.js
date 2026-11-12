@@ -27,6 +27,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer, null, { timeout: 15000 });
+  await page.evaluate(() => { L3R_DEF.bodies = false; });   // fyllnings-/schaktkropparna testas för sig (nedan)
   const r = await page.evaluate(async () => {
     // Punktmoln: sluttning 20 % längs x och 30 % tvärs (så att vägen får både schakt och fyllning).
     const c0 = [6512330, 150130, 100], P = [];
@@ -252,6 +253,25 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (xs.err || Math.abs(xs.fall[0] - 0.075) > 1e-9 || Math.abs(xs.fall[1] - 0.075) > 1e-9 || Math.abs(xs.fall[2] - 0.075) > 1e-9 || Math.abs(xs.fall[3] + 0.075) > 1e-9 || xs.fall[4] !== 0 || !xs.cut || xs.prof !== 4 || xs.inner !== xs.innerExp || xs.bottomW !== 0.6 || xs.ditchZ !== 0.4 || !xs.zeOk || !xs.layerPts || !xs.layerClosed || xs.lay !== 4 || !xs.poly6 || Math.abs(xs.terrW - xs.terrExp) > 0.01 || !xs.bottomWider || !xs.drawn || !xs.panelFig) fail('Svensk tvärsektion: ' + JSON.stringify(xs));
   if (Math.abs(xs.drop[0] + 0.075) > 0.002 || Math.abs(xs.drop[1] + 0.075) > 0.002) fail('Tvärfall i vägytan (3 m halv bredd × 2,5 % = 7,5 cm lägre vid kanten än i mitten): ' + JSON.stringify(xs.drop));
   console.log('OK: svensk tvärsektion – tvärfall, lager som sluttande solider, terrassyta, dike med innerslänt, ytterslänt, ritning och förklarande figur');
+
+  // Fyllning och schakt som slutna kroppar + vägens uppbyggnad (förval) + slänten hänger ihop mellan stationer
+  const bd = await page.evaluate(async () => {
+    const out = {}; l3roadOpen({ pts: window.__pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 5, bodies: true, layersOn: false }, res: null, geom: null, st: null, busy: '', err: '' });
+    const c = l3road.cur; for (let i = 0; i < 80 && !(c.res || c.err); i++) await new Promise(r => setTimeout(r, 150)); if (c.err) return { err: c.err };
+    const V = M => { let v = 0; M.faces.forEach(f => { const a = M.pts[f[0] - 1], b = M.pts[f[1] - 1], d = M.pts[f[2] - 1]; v += (a[0] * (b[1] * d[2] - b[2] * d[1]) - a[1] * (b[0] * d[2] - b[2] * d[0]) + a[2] * (b[0] * d[1] - b[1] * d[0])) / 6; }); return v; };
+    const F = l3rBodyMesh(c, 'fill'), C = l3rBodyMesh(c, 'cut'); out.f = !!F; out.c = !!C; if (F) { out.fv = Math.round(V(F)); out.fRes = Math.round(c.res.fill); } if (C) { out.cv = Math.round(V(C)); out.cRes = Math.round(c.res.cut); }
+    // alla stationer har fyrapunktsprofiler på båda sidor, även när slaget växlar mellan stationerna
+    out.prof4 = c.st.every(p => p.L.prof.length === 4 && p.R.prof.length === 4);
+    // förvalet: uppbyggnad + tvärfall
+    const sp = { ...L3R_DEF }; l3rApplyPreset(sp, 'grus'); out.preset = [sp.layersOn, sp.layers.length, sp.fall]; const sp2 = { ...L3R_DEF }; l3rApplyPreset(sp2, 'gata'); out.preset2 = [sp2.layers.length, sp2.fall];
+    l3roadClose(); l3roadOpen({ pts: window.__pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 5, bodies: true, layersOn: true, preset: 'bygg', layers: JSON.parse(JSON.stringify(L3R_PRESETS.bygg[1])) }, res: null, geom: null, st: null, busy: '', err: '' }); const c2 = l3road.cur; for (let i = 0; i < 80 && !(c2.res || c2.err); i++) await new Promise(r => setTimeout(r, 150));
+    out.dropdown = !!document.querySelector('#v3RoadPanel select[data-rlp2]') && document.querySelector('#v3RoadPanel select[data-rlp2]').options.length >= 6; out.dropSel = document.querySelector('#v3RoadPanel select[data-rlp2]').value;
+    const n0 = placements.length; l3roadMake(); const mk = placements.slice(n0); out.objs = mk.map(p => p.name.slice(0, 14)); out.bodyObjs = mk.filter(p => p.bodyObj).map(p => [p.bodyObj, p.m.closed, p.m.faces.length]); out.layerObjs = mk.filter(p => p.layerObj).length;
+    l3roadOpen({ pts: window.__pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 5 }, res: null, geom: null, st: null, busy: '', err: '' }); const c3 = l3road.cur; for (let i = 0; i < 80 && !(c3.res || c3.err); i++) await new Promise(r => setTimeout(r, 150));   // lämnar en väg öppen åt nästa test
+    return out; });
+  console.log('kroppar:', JSON.stringify(bd));
+  if (bd.err || !bd.f || !bd.c || Math.abs(bd.fv - bd.fRes) > 0.35 * Math.max(10, bd.fRes) || Math.abs(bd.cv - bd.cRes) > 0.35 * Math.max(10, bd.cRes) || !bd.prof4 || bd.preset[0] !== true || bd.preset[1] !== 3 || bd.preset[2] !== 4 || bd.preset2[0] !== 4 || bd.preset2[1] !== 2.5 || !bd.dropdown || bd.dropSel !== 'bygg' || bd.bodyObjs.length !== 2 || !bd.bodyObjs.every(b => b[1] && b[2] > 50) || bd.layerObjs !== 3) fail('Kroppar och uppbyggnad: ' + JSON.stringify(bd));
+  console.log('OK: fyllning och schakt som slutna kroppar, volymerna stämmer med mängderna, uppbyggnadsval med lager och tvärfall, slänten hänger ihop mellan stationer');
   // Menyerna i flikar: en flik i taget, kompakt sammanfattning alltid synlig.
   const tb = await page.evaluate(async () => {
     const vis = () => [...document.querySelectorAll('#v3RoadPanel [data-rtab]')].filter(e => !e.hidden).map(e => e.dataset.rtab), out = {};

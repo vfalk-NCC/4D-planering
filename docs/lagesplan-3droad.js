@@ -12,7 +12,7 @@
    Räknesättet: en höjdkarta (rutnät) per yta som i Volym mot yta (lagesplan-3dpcdiff.js). Volymen är summan av tvärsnittsareorna (marken mot vägen och slänterna) × stationsavståndet. */
 
 const l3road = { cur: null, seq: 0, timer: 0, kbd: null };
-const L3R_DEF = { width: 5, grade: 10, smooth: 20, step: 2, cutR: 1, fillR: 1.5, reach: 25, minR: 15, filletR: 30, mode: "anchor", anchor: -1, cap: true, crown: 0, speed: 20, fall: 2.5, fallMode: "crown", edgeK: 1.5, ditch: true, inK: 3, ditchBw: 0.5, ditchD: 0.3 };
+const L3R_DEF = { width: 5, grade: 10, smooth: 20, step: 2, cutR: 1, fillR: 1.5, reach: 25, minR: 15, filletR: 30, mode: "anchor", anchor: -1, cap: true, crown: 0, speed: 20, fall: 2.5, fallMode: "crown", edgeK: 1.5, ditch: true, inK: 3, ditchBw: 0.5, ditchD: 0.3, bodies: true };
 const l3rFmt = (v, d = 1) => (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString().replace(".", ",");
 const l3rOk = z => z === z && z !== null && Math.abs(z) < 1e9;
 const l3rM3 = v => Math.round(v).toLocaleString("sv-SE").replace(/[  ]/g, " ") + " m³";
@@ -53,11 +53,12 @@ function l3rObjSamples(z, pts) {
 /* Vägöverbyggnad (lager): spec.layersOn + spec.layers [{ name, t (m), color }] uppifrån och ner; summan är överbyggnadens tjocklek och terrassytan ligger så långt under vägens
    färdiga yta. Schakt och fyllning räknas då till terrassytan (spec.layersEarth !== false) och lagren har egna mängder, ytor och objekt. */
 const L3R_PRESETS = {
-  bygg: ["Byggväg (makadam)", [{ name: "Bärlager makadam 0–32", t: 0.15, color: "#cbd5e1" }, { name: "Förstärkningslager krossberg 0–90", t: 0.35, color: "#a8a29e" }, { name: "Skyddslager", t: 0.2, color: "#a16207" }]],
-  gata: ["Gata, huvudgata (typiskt kommunalt)", [{ name: "Slitlager asfalt", t: 0.04, color: "#1f2937" }, { name: "Bindlager asfalt", t: 0.05, color: "#374151" }, { name: "Bärlager obundet 0–32", t: 0.08, color: "#cbd5e1" }, { name: "Förstärkningslager krossat berg 0–90", t: 0.42, color: "#a8a29e" }]],
-  grus: ["Grusväg / skogsbilväg (typiskt)", [{ name: "Slitlager grus 0–16", t: 0.05, color: "#d6c9a8" }, { name: "Bärlager 0–32", t: 0.15, color: "#cbd5e1" }, { name: "Förstärkningslager 0–90", t: 0.3, color: "#a8a29e" }]],
-  allman: ["Allmän väg (asfalt)", [{ name: "Slitlager asfalt", t: 0.04, color: "#1f2937" }, { name: "Bindlager asfalt", t: 0.05, color: "#374151" }, { name: "Bärlager obundet", t: 0.08, color: "#cbd5e1" }, { name: "Förstärkningslager", t: 0.4, color: "#a8a29e" }, { name: "Skyddslager", t: 0.3, color: "#a16207" }]],
+  bygg: ["Byggväg (makadam)", [{ name: "Bärlager makadam 0–32", t: 0.15, color: "#cbd5e1" }, { name: "Förstärkningslager krossberg 0–90", t: 0.35, color: "#a8a29e" }, { name: "Skyddslager", t: 0.2, color: "#a16207" }], 4],
+  gata: ["Gata, huvudgata (typiskt kommunalt)", [{ name: "Slitlager asfalt", t: 0.04, color: "#1f2937" }, { name: "Bindlager asfalt", t: 0.05, color: "#374151" }, { name: "Bärlager obundet 0–32", t: 0.08, color: "#cbd5e1" }, { name: "Förstärkningslager krossat berg 0–90", t: 0.42, color: "#a8a29e" }], 2.5],
+  grus: ["Grusväg / skogsbilväg (typiskt)", [{ name: "Slitlager grus 0–16", t: 0.05, color: "#d6c9a8" }, { name: "Bärlager 0–32", t: 0.15, color: "#cbd5e1" }, { name: "Förstärkningslager 0–90", t: 0.3, color: "#a8a29e" }], 4],
+  allman: ["Allmän väg (asfalt)", [{ name: "Slitlager asfalt", t: 0.04, color: "#1f2937" }, { name: "Bindlager asfalt", t: 0.05, color: "#374151" }, { name: "Bärlager obundet", t: 0.08, color: "#cbd5e1" }, { name: "Förstärkningslager", t: 0.4, color: "#a8a29e" }, { name: "Skyddslager", t: 0.3, color: "#a16207" }], 2.5],
 };
+function l3rApplyPreset(spec, key) { const P = L3R_PRESETS[key]; if (!P) return; spec.layers = JSON.parse(JSON.stringify(P[1])); spec.layersOn = true; if (P[2] != null) spec.fall = P[2]; spec.preset = key; }
 const l3rLayerD = spec => spec.layersOn ? (spec.layers || []).reduce((a, l) => a + (Number(l.t) || 0), 0) : 0;
 /* Tvärsektionens form (Victor 2026-11-11: "tvärsektionerna ska se ut som en riktig vägsektion i Sverige"):
    – Vägytan har tvärfall (spec.fall %, 2,5 % på asfalt – 3–4 % på grus): takprofil (högst i mitten), ensidigt åt vänster/höger eller plant (spec.fallMode).
@@ -176,7 +177,7 @@ async function l3rCompute(cur, alive) {
     const kind = g0 > ze + 0.01 ? "cut" : "fill", kc = 1 / Math.max(0.2, spec.cutR), kf = 1 / Math.max(0.2, spec.fillR), dd = 0.25;
     const d1 = kind === "cut" ? dD * inK : 0, d2 = d1 + (kind === "cut" ? dBw : 0), zb = ze - (kind === "cut" ? dD : 0);
     const zs = d => kind === "fill" ? ze - d * kf : d <= d1 ? ze - (d1 > 0 ? d * dD / d1 : 0) : d <= d2 ? zb : zb + (d - d2) * kc;
-    const mk = (dh, hit) => { const prof = kind === "cut" ? [[0, ze], [Math.min(d1, dh), zs(Math.min(d1, dh))], [Math.min(d2, dh), zs(Math.min(d2, dh))], [dh, zs(dh)]] : [[0, ze], [dh, zs(dh)]]; return { ex, ey, ze, kind, d: dh, qx: ex + sg * p.nx * dh, qy: ey + sg * p.ny * dh, qz: zs(dh), hit, prof, d1, d2, zb }; };
+    const mk = (dh, hit) => { const prof = kind === "cut" ? [[0, ze], [Math.min(d1, dh), zs(Math.min(d1, dh))], [Math.min(d2, dh), zs(Math.min(d2, dh))], [dh, zs(dh)]] : [0, 1 / 3, 2 / 3, 1].map(f => [dh * f, f === 0 ? ze : zs(dh * f)]) /* alltid fyra punkter så att grannstationer med olika slag (schakt/fyllning) hänger ihop utan glapp */ ; return { ex, ey, ze, kind, d: dh, qx: ex + sg * p.nx * dh, qy: ey + sg * p.ny * dh, qz: zs(dh), hit, prof, d1, d2, zb }; };
     if (Math.abs(g0 - ze) <= 0.01) return { ...mk(0, true), kind: "fill" };
     let prevD = 0, prevDiff = g0 - ze, lastG = g0;   // diff = mark − släntyta (cut: >0 till dess släntytan nått marken)
     for (let d = dd; d <= reach; d += dd) {
@@ -231,7 +232,7 @@ function l3rBuild(c) {
   [["L", 1], ["R", -1]].forEach(([sd, sg]) => {   // slänterna: innerslänt, dikesbotten och ytterslänt (eller fyllningsslänt) som band längs profilens delar
     for (let i = 1; i < n; i++) {
       const a = st[i - 1][sd], b = st[i][sd]; if (a.kind === "none" || b.kind === "none" || (a.d < 0.01 && b.d < 0.01)) continue;
-      const T = a.kind === "cut" ? cut : fill, pa = a.prof, pb = b.prof, m = Math.min(pa.length, pb.length);
+      const T = (a.d >= 0.01 ? a.kind : b.kind) === "cut" ? cut : fill, pa = a.prof, pb = b.prof, m = Math.min(pa.length, pb.length);
       for (let k = 0; k + 1 < m; k++) {
         if (Math.abs(pa[k + 1][0] - pa[k][0]) < 1e-4 && Math.abs(pb[k + 1][0] - pb[k][0]) < 1e-4 && Math.abs(pa[k + 1][1] - pa[k][1]) < 1e-4) continue;
         const A0 = [a.ex + sg * st[i - 1].nx * pa[k][0] - org[0], a.ey + sg * st[i - 1].ny * pa[k][0] - org[1], pa[k][1] - org[2]], A1 = [a.ex + sg * st[i - 1].nx * pa[k + 1][0] - org[0], a.ey + sg * st[i - 1].ny * pa[k + 1][0] - org[1], pa[k + 1][1] - org[2]];
@@ -252,6 +253,9 @@ function l3rDraw() {
     const mat = new THREE.MeshLambertMaterial({ vertexColors: !!vc, color: vc ? 0xffffff : col, transparent: op < 1, opacity: op, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const mesh = new THREE.Mesh(geo, mat); mesh.position.set(c.geom.org[0] - O[0], c.geom.org[1] - O[1], c.geom.org[2] - O[2]); mesh.renderOrder = 8; mesh.userData.noHit = true; mesh.raycast = () => {}; grp.add(mesh); return mesh; };
   if (c.geom) { mk(c.geom.road, 0, true, 1); if (c.geom.cut) mk(c.geom.cut, 0x3b82f6, false, 0.85); if (c.geom.fill) mk(c.geom.fill, 0xef4444, false, 0.85); 
+    if (c.spec.bodies !== false && c.st && c.ctx) { c.geom._bodies = c.geom._bodies || {}; [["fill", 0xb59a70], ["cut", 0x6b8fb5]].forEach(([kd, colr]) => { if (!(kd in c.geom._bodies)) { try { c.geom._bodies[kd] = l3rBodyMesh(c, kd); } catch (e) { console.warn("Kropp", e); c.geom._bodies[kd] = null; } } const M = c.geom._bodies[kd]; if (!M) return;
+      const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(M.pts.flat(), 3)); geo.setIndex(M.faces.flatMap(f => [f[0] - 1, f[1] - 1, f[2] - 1])); geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: colr, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false })); mesh.position.set(c.geom.org[0] - O[0], c.geom.org[1] - O[1], c.geom.org[2] - O[2]); mesh.renderOrder = 6; mesh.userData.noHit = true; mesh.raycast = () => {}; grp.add(mesh); }); }
     // Överbyggnadens lager som riktiga solider (tvärfall, sluttande kanter) i lagrens egna färger
     if (c.spec.layersOn && (c.spec.layers || []).length && c.st) (c.spec.layers).forEach((l, i) => { const M = l3rLayerMesh(c, c.geom, i); if (!M) return;
       const geo = new THREE.BufferGeometry(), pos = []; M.pts.forEach(q => pos.push(q[0], q[1], q[2])); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(M.faces.flatMap(f => [f[0] - 1, f[1] - 1, f[2] - 1])); geo.computeVertexNormals();
@@ -314,7 +318,8 @@ function l3roadStart() {
   const pts = mp.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000));
   l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); if (typeof l3ClearMeasure === "function") l3ClearMeasure();
   const prev = l3road.last || {};
-  l3roadOpen({ pts, spec: { ...L3R_DEF, ...(prev.spec || {}), src: (prev.spec && prev.spec.src && prev.spec.src.length ? prev.spec.src : l3rDefaultSrc()), widen: [], vehicle: (prev.spec && prev.spec.vehicle) || "truck" }, res: null, geom: null, st: null, busy: "", err: "" });
+  const base = { ...L3R_DEF, ...(prev.spec || {}) }; if (base.layersOn === undefined) l3rApplyPreset(base, "bygg");   // vägen får en överbyggnad från början (byt under "Vägens uppbyggnad")
+  l3roadOpen({ pts, spec: { ...base, src: (prev.spec && prev.spec.src && prev.spec.src.length ? prev.spec.src : l3rDefaultSrc()), widen: [], vehicle: (prev.spec && prev.spec.vehicle) || "truck" }, res: null, geom: null, st: null, busy: "", err: "" });
 }
 function l3roadOpen(cur) {
   l3roadClose(true); l3road.cur = cur; l3road.seq++;
@@ -372,6 +377,37 @@ function l3rLayerMesh(c, G, idx) {
     if (nrm[0] * cen[0] + nrm[1] * cen[1] + nrm[2] * cen[2] < 0) { const q = f[1]; f[1] = f[2]; f[2] = q; } });
   return { k: "mesh", pts, faces, closed: true };
 }
+/* Fyllning och schakt som slutna kroppar (Victor 2026-11-12: "solider av lagren under/över terrassytan"): mellan markytan och konstruktionsytan (terrassyta + innerslänt + dike + ytterslänt) över hela tvärsnittet.
+   Fyllning (underbyggnad av fyllnadsmaterial) = från marken upp till konstruktionsytan där den ligger högre; schakt = från konstruktionsytan upp till marken där marken ligger högre. Tjockleken går mjukt mot noll i kanterna. */
+function l3rBodyMesh(c, kind) {
+  const st = c.st, spec = c.spec, gz = c.ctx && c.ctx.gz, org = c.geom.org, n = st.length, N = 56, r3 = v => Math.round(v * 1000) / 1000, kE = l3rK(spec); if (!gz || n < 2) return null;
+  const pts = [], faces = [], idx = new Map(), id = q => { const k = Math.round(q[0] * 1e4) + "," + Math.round(q[1] * 1e4) + "," + Math.round(q[2] * 1e4); let i = idx.get(k); if (!i) { pts.push([r3(q[0] - org[0]), r3(q[1] - org[1]), r3(q[2] - org[2])]); i = pts.length; idx.set(k, i); } return i; };
+  const T = [], B = []; let anyThick = false;
+  for (let i = 0; i < n; i++) {
+    const p = st[i], Tl = p.wl + p.dE * kE + (p.L.d || 0), Tr = p.wr + p.dE * kE + (p.R.d || 0), rowT = [], rowB = [];
+    for (let j = 0; j <= N; j++) {
+      const t = -Tr + (Tl + Tr) * j / N, x = p.x + p.nx * t, y = p.y + p.ny * t, sg = t >= 0 ? 1 : -1; let des = l3rDesignZ(p, spec, sg, sg > 0 ? p.L : p.R, Math.abs(t)), g = gz(x, y);
+      if (des === null) des = g === null || g === undefined ? p.z - p.dE : g; if (g === null || g === undefined) g = des;
+      const top = kind === "fill" ? des : Math.max(g, des), bot = kind === "fill" ? Math.min(g, des) : des; if (top - bot > 1e-3) anyThick = true;
+      rowT.push([x, y, top]); rowB.push([x, y, bot]);
+    }
+    T.push(rowT); B.push(rowB);
+  }
+  if (!anyThick) return null;
+  const add = (a, b, c2, want) => { const A = pts[a - 1], Bq = pts[b - 1], C = pts[c2 - 1]; if (!A || !Bq || !C || a === b || b === c2 || a === c2) return; const u = [Bq[0] - A[0], Bq[1] - A[1], Bq[2] - A[2]], v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]], nm = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    if (Math.hypot(nm[0], nm[1], nm[2]) < 1e-9) return; if (nm[0] * want[0] + nm[1] * want[1] + nm[2] * want[2] < 0) faces.push([a, c2, b]); else faces.push([a, b, c2]); };
+  const quad = (a, b, c2, d, want) => { add(a, b, c2, want); add(a, c2, d, want); };
+  for (let i = 0; i + 1 < n; i++) for (let j = 0; j < N; j++) {
+    const t00 = T[i][j], t10 = T[i + 1][j], t01 = T[i][j + 1], t11 = T[i + 1][j + 1], b00 = B[i][j], b10 = B[i + 1][j], b01 = B[i][j + 1], b11 = B[i + 1][j + 1];
+    if ([[t00, b00], [t10, b10], [t01, b01], [t11, b11]].every(([a, b]) => a[2] - b[2] < 1e-4)) continue;   // ingen tjocklek här
+    quad(id(t00), id(t10), id(t11), id(t01), [0, 0, 1]); quad(id(b00), id(b10), id(b11), id(b01), [0, 0, -1]);
+  }
+  for (let i = 0; i + 1 < n; i++) { const p = st[i]; for (const [j, sd] of [[0, -1], [N, 1]]) {   // sidoväggarna (tjocklek noll i kanten, men om den ändå finns stängs den)
+      const a = T[i][j], b = T[i + 1][j], a2 = B[i][j], b2 = B[i + 1][j]; if (a[2] - a2[2] < 1e-4 && b[2] - b2[2] < 1e-4) continue; quad(id(a), id(b), id(b2), id(a2), [sd * p.nx, sd * p.ny, 0]); } }
+  for (const [i, sg] of [[0, -1], [n - 1, 1]]) { const p = st[i]; for (let j = 0; j < N; j++) { const a = T[i][j], b = T[i][j + 1], a2 = B[i][j], b2 = B[i][j + 1]; if (a[2] - a2[2] < 1e-4 && b[2] - b2[2] < 1e-4) continue; quad(id(a), id(b), id(b2), id(a2), [sg * p.tx, sg * p.ty, 0]); } }
+  return faces.length ? { k: "mesh", pts, faces, closed: true } : null;
+}
+
 /* Väg, schaktslänt och fyllningsslänt blir ritade ytor (ett steg i Ångra). */
 function l3roadMake() {
   const c = l3road.cur; if (!c || !c.geom) return;
@@ -381,6 +417,7 @@ function l3roadMake() {
   const add = (S, name, color) => { if (!S) return; const p = modCreate(conv(S), [G.org[0], G.org[1], G.org[2]], { name, color, snapshot: false }); p.set = setId; ids.push(p.id); };
   if (c.spec.layersOn && (c.spec.layers || []).length) (c.spec.layers).forEach((l, i) => { const M = l3rLayerMesh(c, G, i); if (!M) return; const p = modCreate(M, [G.org[0], G.org[1], G.org[2]], { name: `Skikt ${l.name} ${l3rFmt(Number(l.t) || 0, 2)} m`, color: l.color || "#a8a29e", snapshot: false }); p.layerObj = true; ids.push(p.id); });
   if (l3Prefs().rdIfcMeters !== false && typeof ifcTextGeom === "function") { const M = l3rMetersMesh(c, G); if (M) { const p = modCreate(M, [G.org[0], G.org[1], G.org[2]], { name: `Metertal byggväg ${l3rFmt(c.res.len, 0)} m`, color: "#facc15", snapshot: false }); p.set = setId; p.text = true; ids.push(p.id); } }
+  if (c.spec.bodies !== false) [["fill", "Underbyggnad – fyllning (kropp)", "#b59a70", c.res.fill], ["cut", "Schakt – utgrävd volym (kropp)", "#6b8fb5", c.res.cut]].forEach(([kd, nm, colr, vl]) => { const M = l3rBodyMesh(c, kd); if (!M) return; const p = modCreate(M, [G.org[0], G.org[1], G.org[2]], { name: `${nm} ${l3rM3(vl)}`, color: colr, snapshot: false }); p.set = setId; p.bodyObj = kd; ids.push(p.id); });
   add(G.road, `Byggväg ${l3rFmt(c.res.len, 0)} m`, "#9ca3af"); add(G.cut, "Släntyta schakt", "#60a5fa"); add(G.fill, "Släntyta fyllning", "#f87171");
   c.saved = true; l3roadClose(); l3SelectIds(ids); l3Changed();
   l3Toast(`Byggväg skapad: ${l3rFmt(c.res.len, 0)} m, schakt ${l3rM3(c.res.cut)}, fyllning ${l3rM3(c.res.fill)}. Ctrl+Z ångrar.`);
@@ -424,6 +461,7 @@ function l3rXsFigure() {
   if (typeof document === "undefined" || document.getElementById("v3RoadXsCss")) return; const st = document.createElement("style"); st.id = "v3RoadXsCss";
   st.textContent = `#view3d .v3-rd-fig{width:100%;height:auto;display:block;margin:2px 0 6px;border:1px solid #e2e8f0;border-radius:10px}
 #view3d .v3-rd-gh{margin:8px 0 2px;font:700 11px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#334155}#view3d .v3-rd-gh em{font-style:normal;font-weight:500;letter-spacing:0;text-transform:none;color:#94a3b8;margin-left:6px}
+#view3d .v3-rd-up{display:flex;flex-direction:column;gap:4px;margin:4px 0}#view3d .v3-rd-up>b{font:700 11px system-ui;letter-spacing:.05em;text-transform:uppercase;color:#334155}#view3d .v3-rd-up select{padding:5px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:#fff}#view3d .v3-rd-upl{display:flex;flex-wrap:wrap;gap:3px 8px;font-size:11px;color:#475569}#view3d .v3-rd-upl i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
 #view3d .v3-rd-k{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.4px solid #2f7bff;color:#2f7bff;font:700 10px system-ui;flex:0 0 16px;margin-right:4px}`;
   document.head.appendChild(st);
 })();
@@ -457,6 +495,10 @@ function l3rPanel() {
     <div class="v3-rd-tab" data-rtab="vag" ${tab === "vag" ? "" : "hidden"}>
     <div class="v3-rd-src" title="Vilka ytor vägen ska följa. Flera kan kombineras – den högsta gäller.">${srcs.length ? srcs.map(s => `<label><input type="checkbox" data-rs="${esc(s.k)}" ${spec.src.includes(s.k) ? "checked" : ""}> ${esc(s.label)}</label>`).join("") : `<div class="v3-vp-t warn">Tänd ett punktmoln, en 3D-modell eller en DXF (Lager) som vägen ska följa.</div>`}</div>
     <div data-rres>${sum}</div>
+    <div class="v3-rd-up" title="Välj hur vägen är uppbyggd: lagerföljd och tvärfall. Lagren kan finjusteras under fliken Överbyggnad"><b>Vägens uppbyggnad</b>
+      <select data-rlp2><option value="none" ${!spec.layersOn ? "selected" : ""}>Ingen överbyggnad (bara vägytan)</option>${Object.entries(L3R_PRESETS).map(([k, v]) => `<option value="${k}" ${spec.layersOn && spec.preset === k ? "selected" : ""}>${esc(v[0])}</option>`).join("")}<option value="own" ${spec.layersOn && !spec.preset ? "selected" : ""}>Egen uppbyggnad … (fliken Överbyggnad)</option></select>
+      ${spec.layersOn && (spec.layers || []).length ? `<div class="v3-rd-upl">${(spec.layers || []).map(l => `<span><i style="background:${esc(l.color || "#a8a29e")}"></i>${esc(l.name)} ${l.t < 1 ? Math.round(l.t * 1000) + " mm" : l3rFmt(l.t, 2) + " m"}</span>`).join("")}</div>` : ""}</div>
+    <label class="v3-rd-n" style="margin:2px 0 6px" title="Fyllning (underbyggnad av fyllnadsmaterial under terrassytan) och schakt skapas som egna slutna kroppar tillsammans med lagren"><input type="checkbox" data-rk="bodies" ${spec.bodies !== false ? "checked" : ""} style="width:auto"><span>Fyllning och schakt som kroppar</span></label>
     ${l3rXsFigure()}
     <div class="v3-rd-gh">Tvärsektionen <em>bokstäverna hör ihop med figuren</em></div>
     <div class="v3-rd-g">
@@ -532,7 +574,8 @@ function l3rPanel() {
     qa("[data-rpn]").forEach(b => { b.onclick = () => { const [ax, sg] = [b.dataset.rpn[0], b.dataset.rpn[1] === "+" ? 1 : -1]; l3rNudge(ax, sg, false); }; });
     const g = q("button[data-rpg]"); if (g) g.onclick = () => { const z = c.ctx && c.ctx.gz && c.ctx.gz(c.pts[l3rPtSel(c)][0], c.pts[l3rPtSel(c)][1]); if (z !== null && z !== undefined) l3rSetPt(2, l3rtR3(z)); else l3Status("Marken saknar höjd vid punkten.", true); }; }
   { const lon = q("input[data-rlon]"); if (lon) lon.onchange = () => { spec.layersOn = lon.checked; if (lon.checked && !(spec.layers || []).length) spec.layers = JSON.parse(JSON.stringify(L3R_PRESETS.bygg[1])); c.saved = false; l3rPanel(); l3rSchedule(0); };
-    const pr = q("select[data-rlp]"); if (pr) pr.onchange = () => { if (!pr.value) return; spec.layers = JSON.parse(JSON.stringify(L3R_PRESETS[pr.value][1])); spec.layersOn = true; c.saved = false; l3rPanel(); l3rSchedule(0); };
+    const pr = q("select[data-rlp]"); if (pr) pr.onchange = () => { if (!pr.value) return; l3rApplyPreset(spec, pr.value); c.saved = false; l3rPanel(); l3rSchedule(0); };
+    const pr2 = q("select[data-rlp2]"); if (pr2) pr2.onchange = () => { if (pr2.value === "none") { spec.layersOn = false; spec.preset = "none"; } else if (pr2.value === "own") { l3SetPref("rdTab", "over"); } else l3rApplyPreset(spec, pr2.value); c.saved = false; l3rPanel(); l3rSchedule(0); };
     const en = q("input[data-rle]"); if (en) en.onchange = () => { spec.layersEarth = en.checked; c.saved = false; l3rSchedule(0); };
     const dt = q(".v3-rd-ly"); if (dt) dt.addEventListener("toggle", () => l3SetPref("rdLy", dt.open));
     qa("[data-rlc],[data-rln],[data-rlt]").forEach(i => { i.oninput = () => { const k = Object.keys(i.dataset)[0], idx = Number(i.dataset[k]), l = (spec.layers || [])[idx]; if (!l) return; if (k === "rlc") l.color = i.value; else if (k === "rln") l.name = i.value; else { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v) && v > 0) l.t = v; else return; } c.saved = false; l3rSchedule(350); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
