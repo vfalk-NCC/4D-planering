@@ -98,7 +98,7 @@ function l3swpIPoly(h, b, tw, tf) { const hb = b / 2, hw = tw / 2, hh = h / 2; r
 function l3swpPrism(poly, holes, z0, z1, pos, t, n, taper, sh) {
   const W = (q, k = 1) => [pos[0] + t[0] * q[0] * k + n[0] * q[1] * k, pos[1] + t[1] * q[0] * k + n[1] * q[1] * k];
   const loops = [poly, ...(holes || [])], pts = [], faces = [], ring = [];
-  loops.forEach((lp, li) => { const lo = [], hi = []; lp.forEach(q => { const wlo = W(q, taper ? taper : 1), whi = W(q, 1); pts.push([wlo[0] + (sh ? sh[0] : 0), wlo[1] + (sh ? sh[1] : 0), z0]); lo.push(pts.length); pts.push([whi[0], whi[1], z1]); hi.push(pts.length); }); ring.push({ lo, hi }); });
+  loops.forEach((lp, li) => { const lo = [], hi = []; lp.forEach(q => { const wlo = W(q, taper ? taper : 1), whi = W(q, 1); const S = typeof sh === "function" ? sh(q[0], q[1]) : sh; pts.push([wlo[0] + (S ? S[0] : 0), wlo[1] + (S ? S[1] : 0), z0]); lo.push(pts.length); pts.push([whi[0], whi[1], z1]); hi.push(pts.length); }); ring.push({ lo, hi }); });
   ring.forEach(({ lo, hi }) => { const m = lo.length; for (let i = 0; i < m; i++) { const j = (i + 1) % m; faces.push([lo[i], lo[j], hi[j]], [lo[i], hi[j], hi[i]]); } });
   const c2 = poly.map(q => new THREE.Vector2(q[0], q[1])), h2 = (holes || []).map(h => h.map(q => new THREE.Vector2(q[0], q[1])));
   let tri = []; try { tri = THREE.ShapeUtils.triangulateShape(c2, h2); } catch (e) { tri = []; }
@@ -175,11 +175,13 @@ function l3swpBuild(pts, s) {
         const A = frame(stations[k]), B = frame(stations[k + 1]), dx = B.pos[0] - A.pos[0], dy = B.pos[1] - A.pos[1], dist = Math.hypot(dx, dy); if (dist - 2 * R < 0.2) continue;
         const t = [dx / dist, dy / dist], nn = [-t[1] * sign, t[0] * sign], mt = [-t[0], -t[1]], mn = [-nn[0], -nn[1]], zA0 = zBot(A), zA1 = zTop(A), zB0 = zBot(B), zB1 = zTop(B);
         const weld = [[R - .004, -.045], [R + .03, -.045], [R + .03, .045], [R - .004, .045]], claw = cl.map(q => [R + .03 + q[0], q[1]]);
-        MC.add(l3swpPrism(weld, null, zA0, zA1, A.pos, t, nn)); MC.add(l3swpPrism(claw, null, zA0, zA1, A.pos, t, nn));
-        MC.add(l3swpPrism(weld, null, zB0, zB1, B.pos, mt, mn)); MC.add(l3swpPrism(claw, null, zB0, zB1, B.pos, mt, mn));
+        const sA = tilt(A), sB = tilt(B);   // lutande pålar: lås och spont följer med
+        MC.add(l3swpPrism(weld, null, zA0, zA1, A.pos, t, nn, 0, sA)); MC.add(l3swpPrism(claw, null, zA0, zA1, A.pos, t, nn, 0, sA));
+        MC.add(l3swpPrism(weld, null, zB0, zB1, B.pos, mt, mn, 0, sB)); MC.add(l3swpPrism(claw, null, zB0, zB1, B.pos, mt, mn, 0, sB));
         const a0 = R + .045, a1 = dist - R - .045, bw = Math.min(.016, tw + .006);
         const web = [[a0, -bw], [a0 + .03, -bw], [a0 + .03, -tw], [a1 - .03, -tw], [a1 - .03, -bw], [a1, -bw], [a1, bw], [a1 - .03, bw], [a1 - .03, tw], [a0 + .03, tw], [a0 + .03, bw], [a0, bw]];
-        MS.add(l3swpPrism(web, null, (zA0 + zB0) / 2 + .05, (zA1 + zB1) / 2 - .05, A.pos, t, nn)); ns++;
+        const shW = sA || sB ? (a => { const u = Math.max(0, Math.min(1, (a - a0) / (a1 - a0 || 1))), x = sA || [0, 0], y = sB || [0, 0]; return [x[0] + (y[0] - x[0]) * u, x[1] + (y[1] - x[1]) * u]; }) : null;
+        MS.add(l3swpPrism(web, null, (zA0 + zB0) / 2 + .05, (zA1 + zB1) / 2 - .05, A.pos, t, nn, 0, shW)); ns++;
       }
       const gc = MC.get(), gs = MS.get();
       if (gc.n) parts.push({ name: `Kopplingslås (påsvetsade på rören) – ${ns * 2} st`, mesh: { pts: gc.pts, faces: gc.faces }, vol: gc.vol, len: L, ifc: "IFCMEMBER", color: "#5f6b78", mass: gc.vol * L3SWP_STEEL });

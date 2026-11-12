@@ -35,6 +35,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     out.noGap = Math.abs(lag(a) - lag(b)) / lag(a) < 0.03 && lag(c) > lag(a) * 0.85;
     out.dbg = [a.err, Object.keys(a).join(), (a.pos||[]).length]; out.pos = (a.pos||[]).length === 9 && a.pos[0].length === 6 && a.pos[0][2] === 10;
     const P = l3swpParseXYZ('168973.693 7456741.27 430.5\nP2;168975,2;7456741,3;430,5\n1 168976 7456742 431\n\nfel rad'); out.parse = P.pts.length === 3 && P.pts[1][0] === 168975.2 && P.pts[1][2] === 430.5 && P.pts[2][0] === 168976 && P.bad.length === 1;
+    { const sp2 = { ...L3SW_DEF, kind: 'tube', coords: true }; l3swpInit(sp2, true); sp2.len = 10; const rr = l3swpBuild([[0, 0, 100, null, 5], [1, 0, 100, null, 5]], sp2);
+      const cen = (nm, hi) => { const pt = rr.parts.find(p => p.name.startsWith(nm)); const zs = pt.mesh.pts.map(q => q[2]), zz = hi ? Math.max(...zs) : Math.min(...zs), a = pt.mesh.pts.filter(q => Math.abs(q[2] - zz) < 1e-6); return a.reduce((t, q) => t + q[1], 0) / a.length; };
+      out.tiltPile = Math.abs(cen('Stålrörspålar', 0) - cen('Stålrörspålar', 1)) > 1.5; out.tiltWeb = Math.abs(cen('Mellanspont', 0) - cen('Mellanspont', 1)) > 1.5; out.tiltLock = Math.abs(cen('Kopplingslås', 0) - cen('Kopplingslås', 1)) > 1.5; }
     // klistra in: skapar pålar i koordinaterna
     l3SetPref('measure', 'wall'); l3SetTool('measure'); await w(200); out.entry = !!document.getElementById('v3SwPaste'); l3swpPaste(); const ta = document.getElementById('v3SwpTa'); ta.value = '6512330 150130 100\n6512332.5 150130 100\n6512335 150130.5 99.8'; ta.dispatchEvent(new Event('input')); await w(100);
     out.sum = document.getElementById('v3SwpSum').textContent; document.querySelector('#v3SwpPaste [data-go]').click(); await w(500);
@@ -74,6 +77,6 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 400)); process.exit(1); }
-  if (!r.noGap || !r.pos || !r.parse || !r.entry || !/3 pålar/.test(r.sum) || !r.cur || !r.xy || !r.acts || !r.tbl || !r.tEdit || !r.tX || !r.tLen || !r.tOk || !r.tSl || !r.tNm || !r.tSync || !r.tAdd || !r.tDel || !r.pl || !r.pasteList || !r.lbl || !r.made || !r.eBtn || !r.eOpen || !r.eUpd || !r.eCancel || !r.wGz || !r.wMoved || !r.wRes) { console.error('FAIL Pålkoordinater: ' + JSON.stringify(r)); process.exit(1); }
+  if (!r.noGap || !r.pos || !r.parse || !r.entry || !/3 pålar/.test(r.sum) || !r.cur || !r.xy || !r.acts || !r.tbl || !r.tEdit || !r.tX || !r.tLen || !r.tOk || !r.tSl || !r.tNm || !r.tSync || !r.tAdd || !r.tDel || !r.pl || !r.pasteList || !r.lbl || !r.tiltPile || !r.tiltWeb || !r.tiltLock || !r.made || !r.eBtn || !r.eOpen || !r.eUpd || !r.eCancel || !r.wGz || !r.wMoved || !r.wRes) { console.error('FAIL Pålkoordinater: ' + JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: utfackningen faller inte bort vid brytpunkter, tabell X Y Z och pålar i inklistrade koordinater');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
