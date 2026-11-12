@@ -42,6 +42,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     leaf.state = 1; c.lod.loading = 1; await l3olLoadNode(c, leaf);
     out.leafCut = !!leaf.pts && zOf(leaf)[0] < 1000 && zOf(leaf)[1] + 50 <= 80.01;
     l3peUndo(c); out.undoRoot = zOf(root)[0] === 1000; out.undoLeafDropped = !leaf.pts; leaf.state = 1; c.lod.loading = 1; await l3olLoadNode(c, leaf); out.undoLeaf = zOf(leaf)[0] === 1000;
+    // bortklippt som lager: tänd = punkterna är med igen, släckt = bortklippta
+    { const c2 = c; l3peReset(c2); const r1 = l3peAddFilter(c2, { t: 'z', mode: 'above', z0: 80 }); const rowsOn = () => document.querySelectorAll('[data-pc-ed]').length;
+      out.edRow = typeof l3peLabel === 'function' && /Höjdfilter/.test(l3peLabel(c2.edits[0], 0)) && c2.edits[0].nrem > 100;
+      const rt = l3peToggle(c2.id, 0); out.layerOn = rt && rt.off === true && zOf(root)[0] === 1000 && !leaf.pts; leaf.state = 1; c2.lod.loading = 1; await l3olLoadNode(c2, leaf); out.layerOnLeaf = zOf(leaf)[0] === 1000;
+      const rt2 = l3peToggle(c2.id, 0); out.layerOff = rt2 && rt2.off === false && zOf(root)[0] < 1000 && !leaf.pts; leaf.state = 1; c2.lod.loading = 1; await l3olLoadNode(c2, leaf); out.layerOffLeaf = zOf(leaf)[0] < 1000 && zOf(leaf)[1] + 50 <= 80.01;
+      const html = l3pcHtml((a, on, l, ex, cls) => `<div ${a} data-on="${on}" class="${cls || ''}">${l}${ex}</div>`, escHtml); out.listRow = /data-pc-ed="tlod\|0"/.test(html) && /Bortklippt 1: Höjdfilter/.test(html) && /v3-lr-sub/.test(html); }
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 500)); process.exit(1); }

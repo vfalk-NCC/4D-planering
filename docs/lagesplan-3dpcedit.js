@@ -68,7 +68,7 @@ function l3peAddFilter(c, spec) { const before = c.nTot; (c.edits = c.edits || [
 /* Redigeringarna på en enskild nod/ruta som läses in (detaljnoder i okträdet): ger nya { pos, rgb, inten } utan de borttagna punkterna. */
 function l3peFilterData(c, o) {
   const ed = c.edits || []; if (!ed.length) return o; const n = o.pos.length / 3, keep = new Uint8Array(n).fill(1); let cnt = n;
-  ed.forEach(e => { cnt -= e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); });
+  ed.forEach(e => { if (e.off) return; cnt -= e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); });
   if (cnt === n) return o;
   const P = new Float32Array(cnt * 3), R = o.rgb ? new Uint8Array(cnt * 3) : undefined, I = o.inten ? new Uint8Array(cnt) : undefined; let d = 0;
   for (let i = 0; i < n; i++) { if (!keep[i]) continue; P[d * 3] = o.pos[i * 3]; P[d * 3 + 1] = o.pos[i * 3 + 1]; P[d * 3 + 2] = o.pos[i * 3 + 2]; if (R) { R[d * 3] = o.rgb[i * 3]; R[d * 3 + 1] = o.rgb[i * 3 + 1]; R[d * 3 + 2] = o.rgb[i * 3 + 2]; } if (I) I[d] = o.inten[i]; d++; }
@@ -76,12 +76,12 @@ function l3peFilterData(c, o) {
 }
 function l3peApply(c) {
   if (!c.orig) c.orig = c.chunks.map(ch => ({ pos: ch.pos, rgb: ch.rgb, inten: ch.inten }));
-  const ed = c.edits || []; let total = 0;
+  const ed = c.edits || []; let total = 0; ed.forEach(e => { if (!e.off) e.nrem = 0; });
   c.chunks.forEach((ch, k) => {
     const o = c.orig[k], n = o.pos.length / 3; let keep = null, cnt = n;
     if (ed.length) {
       keep = new Uint8Array(n).fill(1); cnt = n;
-      ed.forEach(e => { if (e.t) cnt -= l3peFilterRun(c, e, o.pos, keep, n); else cnt -= l3pePolyRun(c, e, o.pos, keep, n); });
+      ed.forEach(e => { if (e.off) return; const r = e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); e.nrem = (e.nrem || 0) + r; cnt -= r; });
     }
     if (!keep || cnt === n) { ch.pos = o.pos; ch.rgb = o.rgb; ch.inten = o.inten; }
     else {
@@ -172,3 +172,10 @@ function l3peStart(id) {
 function l3peStop() {
   [l3pe.ov, l3pe.panel].forEach(n => n && n.remove()); Object.assign(l3pe, { c: null, ov: null, svg: null, panel: null, pend: null, pts: [], drag: null, kb: null }); if (typeof l3pcLegend === "function") l3pcLegend();
 }
+
+/* Det som klippts bort ligger som lager under molnet i listan: tänd = punkterna är med igen, släckt = bortklippta (Victor 2026-11-12). */
+function l3peLabel(e, i) {
+  const nm = e.t === "z" ? "Höjdfilter" : e.t === "thin" ? "Utglesning" : e.t === "noise" ? "Brusfilter" : e.t === "ground" ? "Mark / över mark" : e.mode === "out" ? "Ring (utanför)" : "Ring (innanför)";
+  return `Bortklippt ${i + 1}: ${nm}`;
+}
+function l3peToggle(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return null; c.edits[k].off = !c.edits[k].off; const left = l3peApply(c); l3peSave(c); return { left, off: c.edits[k].off }; }
