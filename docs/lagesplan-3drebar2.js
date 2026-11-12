@@ -375,3 +375,6 @@ l3rb2Click = function (e) {
 };
 const l3rb2ChangeBase = l3rb2Change;
 l3rb2Change = function (e) { const t = e.target; if (t.dataset && t.dataset.rb2 === "pdia") { l3rbPickDia(Number(t.value)); return; } return l3rb2ChangeBase(e); };
+
+/* Genväg från objektets panel: öppna Armering och generera för den markerade betongdelen (Victor 2026-11-12). */
+document.addEventListener("click", async e => { const b = e.target.closest && e.target.closest("[data-armera]"); if (!b) return; e.stopPropagation(); await l3rbOpen(); l3rb.sel = l3rbSelection(); if (!l3rb.sel.length) { l3Status("Markera en betongdel först.", true); return; } const r = l3rbGenerateAll(); l3Status(r.ok ? `Armering genererad för ${r.ok} objekt – justera i Armering-panelen.` : "Det gick inte att generera armering: " + ((r.fails[0] && r.fails[0].r && r.fails[0].r.err) || "okänt fel"), !r.ok); }, true);

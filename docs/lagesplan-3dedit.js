@@ -105,8 +105,9 @@ async function l3edSave() {
 function l3edSideHtml(p) {
   const tx = p && p.txt3d ? `<button type="button" class="v3-wide v3-primary" data-txedit title="Ändra text, typsnitt, storlek, tjocklek och vridning – objektet uppdateras">Aa Redigera 3D-texten…</button>` : "";
   const ed = l3edEditable(p) && !l3ed.on ? `<button type="button" class="v3-wide" data-ed="start" title="Dela upp objektet i delar, redigera dem och spara som ett nytt objekt i 3D-biblioteket">✎ Redigera objektet…</button>` : "";
+  const rb = p && p.m && p.m.k === "mesh" && p.m.closed !== false && typeof l3rbOpen === "function" && !p.txt3d && !p.wsrc ? `<button type="button" class="v3-wide" data-armera title="Öppnar Armering och genererar armering (nät, bygel, ändjärn) för den markerade betongdelen">▦ Armera betongdelen…</button>` : "";
   const rl = p && p.rsrc && p.rset ? `<button type="button" class="v3-wide v3-primary" data-redit title="Öppna hela byggvägen igen: ändra punkter, bredd, lutning och uppbyggnad">✎ Redigera byggvägen…</button>` : "";
   const wl = p && p.wsrc && p.set ? `<button type="button" class="v3-wide v3-primary" data-swedit title="Öppna hela stödmuren/pålningen i verktyget igen: ändra typ, mått, punkter och pålarnas tabell">✎ Redigera stödmur/pålar…</button>` : "";
-  return tx || ed || wl || rl ? `<div class="v3-sec">Redigera</div>${rl}${wl}${tx}${ed}` : "";
+  return tx || ed || wl || rl || rb ? `<div class="v3-sec">Redigera</div>${rl}${wl}${tx}${ed}${rb}` : "";
 }
 function l3edSideBind(side, p) { const b = side.querySelector('[data-ed="start"]'); if (b) b.onclick = () => l3edStart(p); }
