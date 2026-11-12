@@ -138,6 +138,7 @@ function askOpener(type, extra = {}, timeoutMs = 10000, onProgress = null) {
       if (d.error) return reject(new Error(d.error));
       // Allt som sparas i TC hamnar i historiken med en länk till mappen.
       if (type === "tcUpload" && d && typeof tcSavedNote === "function") { try { tcSavedNote(d, extra.files); } catch (e) { console.warn(e); } }
+      else if ((type === "placeSaveIfc" || type === "placeUploadIfc") && d && d.name && typeof tcSavedNote === "function") { try { tcSavedNote({ folder: d.folder, link: d.link, uploaded: (d.files || []).length }, (d.files || [d.name]).map(n => (typeof n === "string" ? { name: n } : n))); } catch (e) { console.warn(e); } } // IFC från 3D-editorn via 4D-planering: också en rad med länk till mappen
       resolve(d);
     });
     try { op.postMessage({ lagesplan: true, type, reqId, ...extra }, location.origin); }

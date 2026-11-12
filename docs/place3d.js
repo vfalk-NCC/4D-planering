@@ -551,7 +551,7 @@ async function placeSaveIfc(opts = {}) {
   const coupled = r && etabId ? await placeCouple4D(etabId) : { n: 0 };
   setPlaceStatus(`✓ ${n} objekt sparade i mappen "${PLACE_TC_FOLDER}" (${files.map(f => f.name).join(", ")}).${shown ? " Den nya filen visas i 3D-vyn och den förra är släckt." : " Öppna filen i 3D-vyn för att se dem."}${coupled.n ? ` ${coupled.n} ${coupled.n === 1 ? "objekt kopplat" : "objekt kopplade"} till sina aktiviteter (4D).` : ""}`);
   renderPlacePanel(); placeRedraw();
-  return { n, name, files: files.map(f => f.name), coupled: coupled.n };
+  return { n, name, files: files.map(f => f.name), coupled: coupled.n, link: (upRes && upRes.link) || null, folder: (upRes && upRes.folder) || PLACE_TC_FOLDER };
 }
 
 /* Urvalet av etableringsobjekt som IFC4-text, för att läggas in i en annan IFC-fil (Exportera markerade tillsammans med

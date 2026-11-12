@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-11-12 08:45";
+const APP_VERSION = "2026-11-12 08:49";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -471,8 +471,8 @@ async function lagesplanHandle(msg, reply, progress) {
       if (typeof tcUploadFiles !== "function" || typeof placeStamp !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       const given = String(msg.fileName || "").replace(/\.ifc$/i, "").trim(), nm = (given ? `${given} ${placeStamp()}.ifc` : `Ritade objekt ${placeStamp()}.ifc`).replace(/[\\/:*?"<>|]/g, "-");
       const file = new File([new TextEncoder().encode(String(msg.text || ""))], nm, { type: "application/x-step" });
-      await tcUploadFiles([file], PLACE_TC_FOLDER);
-      reply({ n: Number(msg.n) || 0, name: nm, files: [nm] });
+      const up = await tcUploadFiles([file], PLACE_TC_FOLDER);
+      reply({ n: Number(msg.n) || 0, name: nm, files: [nm], link: (up && up.link) || null, folder: (up && up.folder) || PLACE_TC_FOLDER });
     } else if (msg.type === "placeIfcText") {
       if (typeof placeIfcTextFor !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
