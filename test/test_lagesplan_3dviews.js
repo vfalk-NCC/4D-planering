@@ -63,7 +63,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     // Direktspar med standardval (utan datum).
     const a = l3SaveView('Direkt');
     out.defParts = a.parts.join();
-    out.noDate = a.date === undefined;
+    out.noDate = a.date === '2026-05-04';   // allt sparas som det är, även datumet
     // Bara kamera.
     const b = l3SaveView('Kamera', []);
     out.camOnly = b.clips === undefined && b.meas === undefined && b.hid === undefined && b.models === undefined;
@@ -85,7 +85,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     // Dialogen: avmarkera Snitt, spara.
     const p = l3SaveViewAsk('Dlg');
     const ov = document.getElementById('v3SvDlg');
-    ov.querySelector('[data-svp="clips"]').click(); ov.querySelector('[data-svp="datum"]').click();
+    ov.querySelector('[data-svp="clips"]').click();
     ov.querySelector('[data-svok]').click();
     await p;
     const d = l3SavedViews().find(v => v.name === 'Dlg');

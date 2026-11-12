@@ -43,11 +43,26 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       out.ghost = !!fut && fut.alpha === 0.4 && fut.orig === true; out.act = l3gm.next.length === 1 && !!cur && cur.orig === true;
       l3gmSet('future', false); const hid = l3gmRange([{ id: 'a', start_date: '2030-01-01', end_date: '2030-02-01' }], '2026-11-12', null); out.hid = !!hid && hid.off === true; l3gm.mode = 'off'; l3gmSet('origCol', false); l3gmSet('future', false); }
     out.startToday = !!sw('startToday') && sw('startToday').checked; click('startToday'); out.stOff = l3Prefs().startToday === false; click('startToday'); out.stOn = l3Prefs().startToday !== false;
+    { // sparad vy: Visning-menyn kommer tillbaka exakt
+      click('tlOrig'); l3gmSet('pulse', true); l3gmSet('future', true); l3gmSet('futureOp', 40); l3SetPref('bubClick', false); l3SetPref('bubOn', true);
+      const v = l3SaveView('Visn-test'), has = !!v.visn && v.visn.mode === 'time' && v.visn.gm.origCol === true && v.visn.prefs.bubClick === false;
+      l3gmSetMode('off', true); l3gmSet('pulse', false); l3gmSet('future', false); l3gmSet('futureOp', 80); l3gmSet('origCol', false); l3SetPref('bubClick', true); l3SetPref('bubOn', false); l3Original(true);
+      const i = l3SavedViews().findIndex(x => x.name === 'Visn-test'); l3GoView(i); await new Promise(r => setTimeout(r, 600));
+      out.viewSave = has && l3gm.mode === 'time' && !l3b.orig && l3gmCfg().origCol === true && l3gmCfg().pulse === true && l3gmCfg().future === true && l3gmCfg().futureOp === 40 && l3Prefs().bubClick === false && l3Prefs().bubOn === true;
+      l3gmSetMode('off', true); l3gmSet('pulse', false); l3gmSet('future', false); l3gmSet('origCol', false); l3SetPref('bubClick', true); l3SetPref('bubOn', false); l3DelView(i);
+    }
+    { // objektmapparnas tänd/släck + lager följer med vyn
+      const P = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]], F = [[1,3,2],[1,4,3],[5,6,7],[5,7,8],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,4,8],[3,8,7],[4,1,5],[4,5,8]];
+      const a = modCreate({ k: 'mesh', pts: P, faces: F, closed: true }, [6512330, 150130, 100], { name: 'VA' }), b = modCreate({ k: 'mesh', pts: P, faces: F, closed: true }, [6512335, 150130, 100], { name: 'VB' });
+      l3mnVis([b.id], false, 'släck'); const v = l3SaveView('Obj-test'), saved = !!v.hid && v.hid.place.includes(b.id) && !!v.lager;
+      l3mnVis([b.id], true, 'tänd'); l3PlacedShow(false); const i = l3SavedViews().findIndex(x => x.name === 'Obj-test'); l3GoView(i); await new Promise(r => setTimeout(r, 600));
+      out.viewObj = saved && l3.hidden.has(b.id) && !l3.hidden.has(a.id) && l3Prefs().placedOn !== false; l3DelView(i); l3mnVis([b.id], true, 'tänd');
+    }
     out.icon = !!document.querySelector('#v3Original svg circle');
     return out;
   });
   console.log(JSON.stringify(r));
-  if (r.rows !== 11 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.startToday || !r.stOff || !r.stOn || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
+  if (r.rows !== 11 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.viewSave || !r.viewObj || !r.startToday || !r.stOff || !r.stOn || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
   if (errors.length) fail('JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK: Visning-dropdown');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

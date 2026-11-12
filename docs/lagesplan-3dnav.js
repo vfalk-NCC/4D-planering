@@ -516,9 +516,13 @@ const L3V_PARTS = [
   ["mod", "IFC-modeller", "Vilka modeller som syns – saknade läses in igen vid inläsning", true],
   ["moln", "Punktmoln", "Vilka punktmoln som syns", true],
   ["vm", "Visningsläge", "Skuggad, tråd, X-Ray eller realistisk", true],
-  ["datum", "4D-datum", "Datumet i tidplanen så att bygget visar rätt skede", false],
+  ["datum", "4D-datum", "Datumet i tidplanen så att bygget visar rätt skede", true],
+  ["visn", "Visning", "Allt i Visning-menyn: Originalmodell, tidslinje (originalfärg/framdrift), pulsering, spöke, bubblor, ritningen som mark …", true, 1],
+  ["rutnat", "Rutnät", "Vilka rutnät som syns", true, 1],
+  ["lager", "Lager & bakgrund", "2D-lager (ritning, DXF, ortofoto), placerade objekt, skyltar och bakgrundskarta", true, 1],
 ];
-const l3vParts = () => { const p = l3Prefs().viewParts; return Array.isArray(p) ? p.filter(k => L3V_PARTS.some(x => x[0] === k)) : L3V_PARTS.filter(x => x[3]).map(x => x[0]); };
+const L3V_VISN_PREFS = ["bubOn", "bubClick", "bubScope", "bubMax", "bubProg", "bubFields", "bubLine", "bubNeutral", "actOutline", "plan", "objs", "labels", "legend"];
+const l3vParts = () => { const p = l3Prefs().viewParts; if (!Array.isArray(p)) return L3V_PARTS.filter(x => x[3]).map(x => x[0]); const out = p.filter(k => L3V_PARTS.some(x => x[0] === k)); if (l3Prefs().viewPartsV !== 2) L3V_PARTS.filter(x => x[4] && x[3] && !out.includes(x[0])).forEach(x => out.push(x[0])); return out; };   // nya delar (Visning, Rutnät) följer med tills man valt själv
 const l3vHas = (v, k) => !Array.isArray(v.parts) || v.parts.includes(k);   // äldre vyer har inget "parts" = allt de innehåller
 /* Liten förhandsbild (160 px, JPEG ≈ 3–6 kB) tas bara när en vy sparas eller uppdateras – inget extra arbete annars. */
 function l3vThumb() {
@@ -563,7 +567,7 @@ function l3SvDialog(name0) {
     ov.addEventListener("click", e => {
       if (e.target === ov || e.target.closest("[data-svc]")) return done(null);
       const q = e.target.closest("[data-svq]"); if (q) { ov.querySelectorAll("[data-svp]").forEach(c => { c.checked = q.dataset.svq === "all"; c.closest("label").classList.toggle("on", c.checked); }); return; }
-      if (e.target.closest("[data-svok]")) { const parts = picked(); l3SetPref("viewParts", parts); done({ name: ov.querySelector("#v3SvdName").value, parts }); }
+      if (e.target.closest("[data-svok]")) { const parts = picked(); l3SetPref("viewParts", parts); l3SetPref("viewPartsV", 2); done({ name: ov.querySelector("#v3SvdName").value, parts }); }
     });
     ov.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") done(null); else if (e.key === "Enter" && e.target.id === "v3SvdName") ov.querySelector("[data-svok]").click(); });
     ["pointerdown", "wheel", "contextmenu"].forEach(t => ov.addEventListener(t, e => e.stopPropagation()));
@@ -584,7 +588,7 @@ function l3ViewState(parts) {
   if (has("dolt")) {
     const g = [];
     if (typeof l3b !== "undefined") l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; if (u && u.hidden) u.hidden.forEach(ri => { const r = u.ranges[ri]; if (r && r.guid) g.push(r.guid); }); }));
-    st.hid = { place: [...(l3.hidden || [])], objs: [...(l3.hiddenObjs || [])], guids: g.slice(0, 20000) };
+    st.hid = { place: [...(l3.hidden || [])], objs: [...(l3.hiddenObjs || [])], guids: g.slice(0, 20000), iso: !!l3.isolated, bldg: l3.groups.bldg.visible, obj: l3.objMesh ? l3.objMesh.visible : true };
   }
   if (has("mod") && typeof l3b !== "undefined") {
     st.models = l3b.models.map(m => [m.id, m.visible !== false]);
@@ -592,9 +596,39 @@ function l3ViewState(parts) {
   }
   if (has("vm") && typeof l3vmPref === "function") st.vm = l3vmPref();
   if (has("datum")) { const d = document.getElementById("dateInput"); if (d && d.value) st.date = d.value; }
+  if (has("visn")) {   // Visning-menyn: exakt som den står
+    const pr = {}; L3V_VISN_PREFS.forEach(k => { const v = l3Prefs()[k]; if (v !== undefined) pr[k] = JSON.parse(JSON.stringify(v)); });
+    st.visn = { orig: !!(typeof l3b !== "undefined" && l3b.orig), mode: typeof l3gm !== "undefined" ? l3gm.mode : "off", gm: typeof l3plPrefs === "function" ? JSON.parse(JSON.stringify(l3plPrefs().gm || {})) : {}, prefs: pr };
+  }
+  if (has("lager")) {   // Lager-menyn: 2D-lager, placerade objekt, bakgrundskarta
+    const L = {}; if (typeof layerState !== "undefined") Object.entries(layerState).forEach(([k, x]) => { if (x && typeof x === "object" && "visible" in x) L[k] = [!!x.visible, Number(x.opacity)]; });
+    st.lager = { ls: L, placed: l3Prefs().placedOn !== false, map: l3Prefs().mapOn === true, labels: l3Prefs().labels !== false };
+  }
+  if (has("rutnat") && typeof l3gd !== "undefined") st.grids = { all: l3Prefs().gdAll !== false, vis: l3gd.list.map(g => [g.id, !!g.vis]) };
   return st;
 }
 function l3ViewApplyState(v) {
+  if (v.visn && typeof v.visn === "object") {
+    const V = v.visn; try {
+      Object.entries(V.prefs || {}).forEach(([k, val]) => { if (k === "plan") { const c = document.getElementById("v3ShowPlan"); if (c && c.checked !== !!val) { c.checked = !!val; c.dispatchEvent(new Event("change")); } else l3SetPref("plan", val); } else l3SetPref(k, val); });
+      if (typeof l3plSet === "function") l3plSet("gm", V.gm || {});
+      if (typeof l3gmSetMode === "function" && l3gm.mode !== (V.mode || "off")) l3gmSetMode(V.mode || "off", true);
+      if (typeof l3Original === "function" && !!l3b.orig !== !!V.orig) l3Original(!!V.orig);
+      if (typeof l3gmApply === "function") l3gmApply(true); if (typeof l3RenderLabels === "function") l3RenderLabels(); if (typeof l3bRecolor === "function") l3bRecolor(); if (typeof l3UiOrigPill === "function") l3UiOrigPill(); l3Render();
+    } catch (e) { console.warn("Visning i vyn", e); }
+  }
+  if (v.lager && typeof v.lager === "object") {
+    try {
+      const on = [], off = []; Object.entries(v.lager.ls || {}).forEach(([k, [vis, op]]) => { if (typeof layerState === "undefined" || !layerState[k]) return; if (Number.isFinite(op) && layerState[k].opacity !== op) layerState[k].opacity = op; if (!!layerState[k].visible !== vis) (vis ? on : off).push(k); });
+      if (on.length && typeof setLayersVisible === "function") setLayersVisible(on, true); if (off.length && typeof setLayersVisible === "function") setLayersVisible(off, false);
+      if (typeof saveLayerState === "function") saveLayerState(); if (typeof applyLayerCss === "function") applyLayerCss();
+      if (typeof v.lager.placed === "boolean" && (l3Prefs().placedOn !== false) !== v.lager.placed && typeof l3PlacedShow === "function") l3PlacedShow(v.lager.placed);
+      if (typeof v.lager.labels === "boolean") { l3SetPref("labels", v.lager.labels); if (typeof l3RenderLabels === "function") l3RenderLabels(); }
+      if (typeof v.lager.map === "boolean" && (l3Prefs().mapOn === true) !== v.lager.map) { l3SetPref("mapOn", v.lager.map); if (typeof l3mapRefresh === "function") l3mapRefresh(false); }
+      if (typeof l3LayersRender === "function") l3LayersRender(); l3Render();
+    } catch (e) { console.warn("Lager i vyn", e); }
+  }
+  if (v.grids && typeof l3gd !== "undefined") { l3SetPref("gdAll", v.grids.all !== false); (v.grids.vis || []).forEach(([id, on]) => { const g = l3gd.list.find(x => x.id === id); if (g) g.vis = !!on; }); l3gdDraw(); }
   if (Array.isArray(v.meas) && typeof l3m !== "undefined") { const on = new Set(v.meas); l3m.list.forEach(m => { m.hid = !on.has(m.id); }); l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar(); }
   if (typeof v.kHidden === "boolean" && typeof l3k !== "undefined" && l3k.hidden !== v.kHidden) { l3kToggle(); }
   if (typeof v.photos === "boolean" && typeof l3phOn === "function" && l3phOn() !== v.photos) l3phToggle(v.photos);
@@ -611,7 +645,7 @@ function l3ViewApplyState(v) {
   if (v.date) { const d = document.getElementById("dateInput"); if (d && d.value !== v.date) { d.value = v.date; d.dispatchEvent(new Event("change")); if (typeof l3SyncDate === "function") l3SyncDate(); } }
   if (v.hid && typeof l3VisApply === "function") {
     const want = new Set(v.hid.guids || []), meshes = typeof l3b !== "undefined" ? l3b.models.flatMap(m => m.meshes.map(x => { const u = x.userData.l3b; return [x, u ? Uint32Array.from(u.ranges.map((r, i) => (r.guid && want.has(r.guid) ? i : -1)).filter(i => i >= 0)) : []]; })) : [];
-    l3VisApply({ hidden: v.hid.place || [], hiddenObjs: v.hid.objs || [], isolated: false, bldg: l3.groups.bldg.visible, obj: l3.objMesh ? l3.objMesh.visible : true, meshes });
+    l3VisApply({ hidden: v.hid.place || [], hiddenObjs: v.hid.objs || [], isolated: !!v.hid.iso, bldg: typeof v.hid.bldg === "boolean" ? v.hid.bldg : l3.groups.bldg.visible, obj: typeof v.hid.obj === "boolean" ? v.hid.obj : (l3.objMesh ? l3.objMesh.visible : true), meshes });
   }
 }
 /* Tid för övergången mellan vyer (sekunder, 0 = direkt) – väljs i snabbknappen för vyer. */
