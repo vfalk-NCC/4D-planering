@@ -34,6 +34,12 @@ function l3pcRemember(src, on) {
   list.push({ id: src.id, name: src.name, fileId: src.fileId || null, version: src.version || "", parentId: src.parentId || null, local: !!src.local, on: !!on, dz: Number(src.dz) || 0 });
   try { localStorage.setItem(l3pcKey(), JSON.stringify(list.slice(-20))); } catch (e) { /* privat läge */ }
 }
+/* Soptunnan frågar en gång till (Victor 2026-11-12: ett punktmoln raderades av ett lätt tryck). */
+async function l3pcAskForget(id) {
+  const c = (typeof l3pc !== "undefined" && l3pc.clouds || []).find(x => x.id === id), r = l3pcRemembered().find(x => x.id === id), name = (c && c.name) || (r && r.name) || "punktmolnet";
+  const ok = typeof uiConfirm === "function" ? await uiConfirm(`Ta bort ${name} ur listan och från 3D-vyn?\n\nInget i Trimble Connect ändras – molnet kan hämtas igen därifrån. Redigeringar du gjort i molnet (borttagna punkter) och dess sparade detaljnivåer försvinner.`, { ok: "Ta bort", danger: true }) : confirm(`Ta bort ${name}?`);
+  if (ok) l3pcForget(id);
+}
 function l3pcForget(id) {
   try { localStorage.setItem(l3pcKey(), JSON.stringify(l3pcRemembered().filter(x => x.id !== id))); } catch (e) { /* privat läge */ }
   l3pcRemove(id);
@@ -628,7 +634,7 @@ function l3pcMoreMenu(btn, id) {
     else if (a.dataset.a === "edit") l3peStart(id);
     else if (a.dataset.a === "slice") { if (typeof l3pcsDialog === "function") l3pcsDialog(id); }
     else if (a.dataset.a === "dz") l3pcSetDz(id);
-    else if (a.dataset.a === "del") l3pcForget(id);
+    else if (a.dataset.a === "del") l3pcAskForget(id);
     else if (a.dataset.a === "reload") {
       // Med den punktbudget som gäller nu; en fil från datorn läses igen ur samma fil (finns kvar tills sidan laddas om).
       const src = { ...c.src }; l3pcRemove(id); l3pcRemember(src, true);
@@ -643,7 +649,7 @@ function l3pcBind(host) {
   host.querySelectorAll("[data-pc-cancel]").forEach(b => { b.onclick = () => { if (l3pc.cancel) l3pc.cancel(); }; });
   host.querySelectorAll("[data-pc-rem]").forEach(b => { b.onclick = () => l3pcLoadRemembered(b.dataset.pcRem); });
   host.querySelectorAll("[data-pc-zoom]").forEach(b => { b.onclick = () => l3pcZoom(b.dataset.pcZoom); });
-  host.querySelectorAll("[data-pc-forget]").forEach(b => { b.onclick = () => l3pcForget(b.dataset.pcForget); });
+  host.querySelectorAll("[data-pc-forget]").forEach(b => { b.onclick = () => l3pcAskForget(b.dataset.pcForget); });
   host.querySelectorAll("[data-pc-more]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3pcMoreMenu(b, b.dataset.pcMore); }; });
   const out = (el, t) => { const o = el.parentElement.querySelector("output"); if (o) o.textContent = t; };
   // Omfärgning (ljus/kontrast) först när reglaget släpps – grafikkortsinställningarna direkt medan man drar.

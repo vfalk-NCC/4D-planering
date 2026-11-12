@@ -335,7 +335,12 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const hm = await page.evaluate(() => ({ rem: !!document.querySelector('#v3PalLayers [data-l3l-rem="f:F9"]'), trashF2: !!document.querySelector('#v3PalLayers [data-l3l-forget="f:F2"]'), restoreSkips: !l3bRemembered().some(w => w.id === 'f:F9') }));
   if (!hm.rem || !hm.trashF2 || !hm.restoreSkips) fail('Släckta hämtade modeller ska stå kvar med soptunna: ' + JSON.stringify(hm));
   const tcF = await page.evaluate(() => window.__calls.length);
-  await page.click('#v3PalLayers [data-l3l-forget="f:F9"]'); await page.waitForTimeout(150);
+  // Soptunnan frågar en gång till: Avbryt behåller modellen, Ta bort tar bort den
+  { let msg = ''; page.on('dialog', d => { msg = d.message(); d.dismiss(); }); await page.click('#v3PalLayers [data-l3l-forget="f:F9"]'); await page.waitForTimeout(250);
+    if (!/Ta bort Gammal\.ifc/.test(msg) || !(await page.$('#v3PalLayers [data-l3l-rem="f:F9"]'))) fail('Soptunnan ska fråga och Avbryt ska behålla modellen: ' + msg);
+    page.__uiDialogHandlers.length = 0; page.on('dialog', d => d.accept()); }
+  await page.click('#v3PalLayers [data-l3l-forget="f:F9"]'); await page.waitForTimeout(250);
+  page.__uiDialogHandlers.length = 0;
   if (await page.$('#v3PalLayers [data-l3l-rem="f:F9"]') || await page.evaluate(() => l3bRememberedAll().some(w => w.id === 'f:F9')) || (await page.evaluate(() => window.__calls.length)) !== tcF) fail('Soptunnan ska ta bort modellen ur Hämtade (utan anrop till TC)');
 
   // Blandad markering: fundament (IFC-objekt) + pelare (etablering) med Ctrl-klick, högerklick → Exportera markerade som IFC.

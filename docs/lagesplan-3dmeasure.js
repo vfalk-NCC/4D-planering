@@ -213,6 +213,7 @@ function l3mPlusDown(e, i) {
 function l3mRecalc(m) {
   const P = m.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
   if (m.kind === "dist") m.text = `${l3Fmt(P[0].distanceTo(P[1]))} m`;
+  else if (m.kind === "slope" && typeof l3SlopeText === "function") m.text = l3SlopeText(P[0], P[1]).text;
   else if (m.kind === "point") m.text = `X ${l3Fmt(P[0].x, 2)} m | Y ${l3Fmt(P[0].y, 2)} m | Z ${l3Fmt(P[0].z, 2)} m`;
   else if (m.kind === "volume" && typeof l3PolyArea === "function") m.text = `${l3Fmt(Math.abs(l3PolyArea(P).area * (Number(m.h) || 0)))} m³`;
   else if (m.kind === "poly") { let s = 0; for (let i = 1; i < P.length; i++) s += P[i].distanceTo(P[i - 1]); m.text = `${l3Fmt(s)} m`; }
@@ -372,11 +373,12 @@ function l3mInfo(m) {
   const sg = (v, d = 3) => (Math.abs(v) < 0.5 * Math.pow(10, -d) ? "0" : (v > 0 ? "+" : "") + f(v, d));
   const deg = r => r * 180 / Math.PI;
   let sub = "";
-  if (m.kind === "dist" && P.length >= 2) {
+  if ((m.kind === "dist" || m.kind === "slope") && P.length >= 2) {
     const [a, b] = P, d = a.distanceTo(b), hz = Math.hypot(b.x - a.x, b.y - a.y), dz = b.z - a.z;
     const slope = hz > 1e-6 ? dz / hz * 100 : null, ang = deg(Math.atan2(dz, hz));
     rows.push(["Avstånd (3D)", `${f(d)} m`], ["Vågrätt", `${f(hz)} m`], ["Höjdskillnad", `${sg(dz)} m`],
       ["Lutning", slope == null ? "lodrätt" : `${sg(slope, 1)} % (${sg(ang, 1)}°)`], ["ΔX / ΔY", `${f(b.x - a.x)} / ${f(b.y - a.y)} m`]);
+    if (m.kind === "slope" && typeof l3SlopeInfo === "function") { const S = l3SlopeInfo(a, b); rows.push(["Vinkel", `${f(S.deg, 2)}°`], ["Procent", Number.isFinite(S.pct) ? `${f(S.pct, 2)} %` : "lodrätt"], ["Förhållande", Number.isFinite(S.n) ? `1:${f(S.n, 2)}` : "plant"]); }
     sub = `vågrätt ${f(hz, 2)} m · höjd ${sg(dz, 2)} m${slope != null && Math.abs(dz) > 0.005 ? ` · ${sg(slope, 1)} %` : ""}`;
   } else if (m.kind === "objvol" && P.length >= 1) {
     rows.push(["Volym", m.text], ...(m.dims ? [["Bredd / längd", `${f(m.dims[0], 3)} m`], ["Höjd / bredd", `${f(m.dims[1], 3)} m`], ["Djup (tjocklek)", `${f(m.dims[2], 3)} m`], ["Måttbox (B×H×D)", `${f(m.dims[0] * m.dims[1] * m.dims[2], 3)} m³`]] : []), ["Punkt", `X ${f(P[0].x)}\nY ${f(P[0].y)}\nZ ${f(P[0].z)}`]);

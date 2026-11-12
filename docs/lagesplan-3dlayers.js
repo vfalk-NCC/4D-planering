@@ -385,7 +385,7 @@ async function l3lLoadRemembered(id) {
 async function l3lForget(id) {
   const m = l3b.models.find(x => x.id === id), w = l3bRememberedAll().find(x => x.id === id), name = (m || w || {}).name || "modellen";
   const pend = m && typeof l3bmPending === "function" ? l3bmPending(m.id) : 0;
-  if (pend && !(await uiConfirm(`${name} har ${pend} flyttade objekt som inte är sparade. Ta bort den ändå? Flyttarna försvinner.`, { ok: "Ta bort" }))) return;
+  if (!(await uiConfirm(pend ? `${name} har ${pend} flyttade objekt som inte är sparade. Ta bort den ändå? Flyttarna försvinner.` : `Ta bort ${name} från Hämtade 3D-modeller?\n\nInget i Trimble Connect ändras – modellen kan hämtas igen därifrån.`, { ok: "Ta bort", danger: true }))) return;
   l3bForget(id);
   if (typeof l3bm !== "undefined" && l3bm.edits) l3bm.edits.delete(id); // osparade flyttar i den
 

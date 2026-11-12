@@ -47,7 +47,7 @@ function l3RenderSnapBar() {
   }
   const tool = (l3.tool === "move" ? `<label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : "")
     + (l3.tool === "draw" || l3.tool === "model" ? l3dwBarHtml() : "")
-    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["quick", "Snabbmått"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"], ["road", "Byggväg"], ["wall", "Stödmur"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${m === "wall" && !(typeof l3sw !== "undefined" && l3sw.cur) ? `<button type="button" id="v3SwPaste" class="v3-ghost" title="Skriv eller klistra in X Y Z – pålarna placeras i koordinaterna">⎘ Klistra in pålkoordinater…</button>` : ""}${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
+    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["quick", "Snabbmått"], ["slope", "Lutning"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"], ["road", "Byggväg"], ["wall", "Stödmur"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${m === "wall" && !(typeof l3sw !== "undefined" && l3sw.cur) ? `<button type="button" id="v3SwPaste" class="v3-ghost" title="Skriv eller klistra in X Y Z – pålarna placeras i koordinaterna">⎘ Klistra in pålkoordinater…</button>` : ""}${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
   bar.innerHTML = tool; if (typeof l3dwBarBind === "function") l3dwBarBind(bar); bar.style.display = tool ? "" : "none"; host.style.setProperty("--v3-tb", tool ? Math.round(bar.offsetHeight + 8) + "px" : "0px"); // Originalvy/Layout-banner ligger under mätfältet
   if (typeof l3mBindBar === "function") l3mBindBar(bar); if (tool) requestAnimationFrame(() => host.style.setProperty("--v3-tb", Math.round(bar.offsetHeight + 8) + "px"));
   if (pop) pop.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
@@ -56,7 +56,7 @@ function l3RenderSnapBar() {
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
   bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); if (x.dataset.mmode !== "wall" && typeof l3swClose === "function") l3swClose(); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
 }
-const L3_MEAS_START = { quick: "Snabbmått: tryck två punkter – måttet visas tills du trycker igen eller Esc (sparas inte). F startar Snabbmått.", wall: "Stödmur: tryck ut murens fotlinje (framkanten längst ner) punkt för punkt – punkterna fäster mot punktmoln, modell och mark. Avsluta med Enter eller tryck på sista punkten igen.", smart: "Smart mått: tryck på ett objekt – bredd, höjd och volym sätts ut direkt (på en vågrät yta: längd och bredd).", point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck ut området (hörnen i tur och ordning), avsluta med Enter eller första punkten. Sedan väljer du vad som ska mätas mot vad – punktmoln, modell, plan eller en yta du klickar ut.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
+const L3_MEAS_START = { slope: "Lutning: tryck två punkter längs slänten/vägen/taket – du får vinkeln i grader, procent och förhållande (1:n).", quick: "Snabbmått: tryck två punkter – måttet visas tills du trycker igen eller Esc (sparas inte). F startar Snabbmått.", wall: "Stödmur: tryck ut murens fotlinje (framkanten längst ner) punkt för punkt – punkterna fäster mot punktmoln, modell och mark. Avsluta med Enter eller tryck på sista punkten igen.", smart: "Smart mått: tryck på ett objekt – bredd, höjd och volym sätts ut direkt (på en vågrät yta: längd och bredd).", point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck ut området (hörnen i tur och ordning), avsluta med Enter eller första punkten. Sedan väljer du vad som ska mätas mot vad – punktmoln, modell, plan eller en yta du klickar ut.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
 let l3t = { step: 0, lock: null, vcb: "", last: null };
 let l3HoverRaf = 0;
 
@@ -439,7 +439,7 @@ function l3ToolHover(e) {
     const s = l3Snap(e); l3ShowMarker(s);
     if (s && l3t.volPick) { const h = s.point.z - l3t.volPick.z0; l3ShowVcb("Höjd", l3Fmt(h) + " m · " + l3Fmt(Math.abs(l3t.volPick.area * h)) + " m³"); }
     if (s && !l3t.volPick) l3ShowVcb("Z", l3Fmt(s.point.z + l3.O[2], 2) + " m");
-  } else if (t === "measure" && !["dist", "quick"].includes(l3Prefs().measure || "dist")) {
+  } else if (t === "measure" && !["dist", "quick", "slope"].includes(l3Prefs().measure || "dist")) {
     const mp = l3t.mp || [], s = mp.length ? l3Target(e, mp[mp.length - 1]) : l3Snap(e);
     l3ShowMarker(s);
     if (s) {
@@ -521,7 +521,7 @@ function l3ToolTap(e) {
     if (typeof l3mAdd === "function") l3mAdd("point", [P.clone()], `X ${f(X)} m | Y ${f(Y)} m | Z ${f(Z)} m`, typeof l3mObjAt === "function" ? [l3mObjAt(e)] : []);
     return true;
   }
-  if (t === "measure" && !["dist", "quick"].includes(l3Prefs().measure || "dist")) {
+  if (t === "measure" && !["dist", "quick", "slope"].includes(l3Prefs().measure || "dist")) {
     const mode = l3Prefs().measure, mp = l3t.mp || (l3t.mp = []);
     const s = mp.length ? l3Target(e, mp[mp.length - 1]) : l3Snap(e);
     if (!s) return true;
@@ -693,12 +693,18 @@ function l3MeasureTo(b) {
   l3TmpLine(a, b, "#dc2626", false, l3.groups.meas); l3Dot(b, 0xdc2626, l3.groups.meas);
   l3.measLabel = { at: a.clone().add(b).multiplyScalar(0.5), text: `${l3Fmt(d)} m` };
   l3PlaceMeasLabel();
-  l3Status(`Avstånd ${l3Fmt(d)} m · vågrätt ${l3Fmt(hz)} m · höjdskillnad ${l3Fmt(dz)} m. Tryck en ny punkt för att mäta igen.`);
+  const slope = l3Prefs().measure === "slope";
+  if (slope) { const T = l3SlopeText(a, b); l3TmpLine(a, new THREE.Vector3(b.x, b.y, a.z), "#f59e0b", true, l3.groups.meas); l3TmpLine(new THREE.Vector3(b.x, b.y, a.z), b, "#f59e0b", true, l3.groups.meas); l3.measLabel = { at: a.clone().add(b).multiplyScalar(0.5), text: T.text }; l3PlaceMeasLabel(); l3Status(`Lutning ${T.text} · vågrätt ${l3Fmt(hz)} m · höjdskillnad ${l3Fmt(dz)} m (${dz >= 0 ? "stigande" : "fallande"} mot andra punkten). Tryck en ny punkt för att mäta igen.`); }
+  else l3Status(`Avstånd ${l3Fmt(d)} m · vågrätt ${l3Fmt(hz)} m · höjdskillnad ${l3Fmt(dz)} m. Tryck en ny punkt för att mäta igen.`);
   const quick = l3Prefs().measure === "quick";   // Snabbmått: syns tills nästa tryck/Esc, sparas inte
   if (quick) { l3.measLabel = { at: a.clone().add(b).multiplyScalar(0.5), text: `${l3Fmt(d)} m  (↔ ${l3Fmt(hz)} · ↕ ${l3Fmt(dz)})` }; l3PlaceMeasLabel(); }
   l3t = { ...l3t, step: 0, M1: null, lock: null, vcb: "", last: null }; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); l3Render();
-  if (!quick && typeof l3mAdd === "function") { l3mAdd("dist", [a, b], `${l3Fmt(d)} m`, objs); l3ClearMeasure(); } // ligger kvar
+  if (slope && typeof l3mAdd === "function") { l3mAdd("slope", [a, b], l3SlopeText(a, b).text, objs); l3ClearMeasure(); }
+  else if (!quick && typeof l3mAdd === "function") { l3mAdd("dist", [a, b], `${l3Fmt(d)} m`, objs); l3ClearMeasure(); } // ligger kvar
 }
+/* Lutning mellan två punkter: grader, procent och förhållande 1:n (1 höjdenhet per n vågräta). Victor 2026-11-12. */
+function l3SlopeInfo(a, b) { const hz = Math.hypot(b.x - a.x, b.y - a.y), dz = Math.abs(b.z - a.z), deg = hz < 1e-9 ? (dz < 1e-9 ? 0 : 90) : Math.atan(dz / hz) * 180 / Math.PI, pct = hz < 1e-9 ? Infinity : dz / hz * 100, n = dz < 1e-9 ? Infinity : hz / dz; return { hz, dz, deg, pct, n }; }
+function l3SlopeText(a, b) { const s = l3SlopeInfo(a, b), pc = Number.isFinite(s.pct) ? l3Fmt(s.pct, 1) + " %" : "lodrätt", rt = Number.isFinite(s.n) ? "1:" + l3Fmt(s.n, 2) : "plant"; return { ...s, text: `${l3Fmt(s.deg, 1)}° · ${pc} · ${rt}` }; }
 function l3MoveTo(T) {
   const d = T.clone().sub(l3t.base), n = (l3t.objs || []).length;
   if (l3t.copyMode) {
