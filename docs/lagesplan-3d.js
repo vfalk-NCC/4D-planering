@@ -1418,7 +1418,7 @@ function l3OpenCtx(x, y, e) {
     ...expItem,
     ["del", n === 1 ? "Ta bort" : `Ta bort ${n} objekt`, "Del"],
     ...(typeof l3kNew === "function" && at ? [null, ["comment", "Kommentar här…", ""]] : []),
-  ] : [...expItem, ...(typeof l3kNew === "function" && at ? [["comment", "Kommentar här…", ""], null] : []), ...(objHit ? [["hideobj", "Dölj objektet", ""], ["info", "Visa uppgifter", ""], null] : []), ["paste", "Klistra in här", "Ctrl+V"], ["showall", "Visa alla", "U"], ["fit", "Visa allt", "Home"], ["top", "Uppifrån", ""], ["clip", "Snitt här", ""]];
+  ] : [...expItem, ...(typeof l3kNew === "function" && at ? [["comment", "Kommentar här…", ""], null] : []), ...(objHit ? [["hideobj", "Dölj objektet", ""], ["info", "Visa uppgifter", ""], null] : []), ["paste", "Klistra in här", "Ctrl+V"], ...(typeof l3lift !== "undefined" && l3lift.trace ? [["clearpath", "Ta bort rörelsebanan", ""]] : []), ["showall", "Visa alla", "U"], ["fit", "Visa allt", "Home"], ["top", "Uppifrån", ""], ["clip", "Snitt här", ""]];
   ctx.innerHTML = items.map(it => it ? `<button type="button" data-ctx="${it[0]}" ${it[0] === "paste" && !(l3.clip && l3.clip.length) ? "disabled" : ""} class="${it[0] === "del" ? "v3-danger" : ""}"><span>${it[1]}</span><kbd>${it[2]}</kbd></button>` : "<hr/>").join("");
   const r = document.getElementById("v3Canvas").getBoundingClientRect();
   ctx.classList.remove("hidden");
@@ -1433,7 +1433,7 @@ function l3OpenCtx(x, y, e) {
     else if (k === "union") l3unRun(); else if (k === "focus") l3View("sel"); else if (k === "del") l3DeleteSel();
     else if (k === "paste") l3Paste(at); else if (k === "fit") l3Frame(true); else if (k === "top") l3View("top");
     else if (k === "cspec") l3OpenSpecial("copy"); else if (k === "mspec") l3OpenSpecial("move"); else if (k === "similar") l3SelectSimilar();
-    else if (k === "hide") l3HideSel(); else if (k === "iso") l3Isolate(); else if (k === "showall") l3ShowAll();
+    else if (k === "clearpath") { l3liftTraceClear(); l3Render(); l3Status("Rörelsebanan är borttagen."); } else if (k === "hide") l3HideSel(); else if (k === "iso") l3Isolate(); else if (k === "showall") l3ShowAll();
     else if (k === "hideobj") l3HideHit(objHit); else if (k === "info") l3ShowHitInfo(objHit);
     else if (k === "comment") l3kNew(at, hit);
     else if (k === "exp") l3ExportSelected();
