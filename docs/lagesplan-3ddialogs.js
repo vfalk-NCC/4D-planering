@@ -395,14 +395,8 @@ function l3UpdateHidden() {
   const n = l3HiddenCount();
   chip.classList.toggle("hidden", !n);
   chip.textContent = l3.isolated ? "Visar bara markerade · Visa alla (U)" : `${n} dolda · Visa alla (U)`;
-  // Tydlig knapp mitt i bilden också (Victor 2026-10-10: "Har jag en knapp för att återställa när jag har dolt objekt?").
-  let fl = document.getElementById("v3HiddenFloat");
-  if (!fl && l3.renderer) { fl = document.createElement("button"); fl.type = "button"; fl.id = "v3HiddenFloat"; fl.className = "v3-hidden-float"; fl.onclick = e => { e.stopPropagation(); l3ShowAll(); }; fl.onpointerdown = e => e.stopPropagation(); l3.renderer.domElement.parentElement.appendChild(fl); }
-  if (fl) {
-    fl.classList.toggle("hidden", !n);
-    fl.innerHTML = `${L3_ICO.eye}<span>${l3.isolated ? "Visar bara de markerade" : `${n} ${n === 1 ? "objekt dolt" : "objekt dolda"}`}</span><b>Visa alla</b><kbd>U</kbd>`;
-    fl.title = "Visa allt som är dolt igen (U) – Ctrl+Z ångrar det senaste";
-  }
+  // Knappen mitt i bilden är borttagen (Victor 2026-11-12: finns redan nere till vänster); en gammal ruta städas bort.
+  { const old = document.getElementById("v3HiddenFloat"); if (old) old.remove(); }
   l3RenderObjList(); l3Render();
 }
 

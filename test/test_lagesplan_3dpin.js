@@ -32,13 +32,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await w(1500); l3SelectIds([p.id]); await w(500);
     const pin = () => side.querySelector('.v3-side-h > .v3-pin');
     out.hasPin = !!pin() && !side.classList.contains('hidden');
+    if (!pin()) return out;
     pin().click(); await w(200); out.pinned = l3Prefs().sidePin === true && pin().classList.contains('on');
     l3SelectIds([]); await w(300); out.stays = !side.classList.contains('hidden') && !!pin() && /Inget objekt markerat/.test(side.textContent);
     l3SelectIds([p.id]); await w(400); out.back = !!pin() && !/Inget objekt markerat/.test(side.textContent);
     pin().click(); await w(200); l3SelectIds([]); await w(300); out.hidden = side.classList.contains('hidden');
+    l3SelectIds([p.id]); await w(400); const col = side.querySelector('.v3-side-h > .v3-rcol'); out.col = !!col; col.click(); await w(300);
+    out.rhide = document.getElementById('view3d').classList.contains('v3-rhide') && getComputedStyle(side).display === 'none' && !document.getElementById('v3RightOpen').classList.contains('hidden') && l3Prefs().rightHide === true;
+    document.getElementById('v3RightOpen').click(); await w(300); out.rshow = !document.getElementById('view3d').classList.contains('v3-rhide') && getComputedStyle(side).display !== 'none' && document.getElementById('v3RightOpen').classList.contains('hidden');
     return out;
   });
   console.log(JSON.stringify(r));
-  if (!r.hasPin || !r.pinned || !r.stays || !r.back || !r.hidden) fail('Fäst meny: ' + JSON.stringify(r));
+  if (!r.hasPin || !r.pinned || !r.stays || !r.back || !r.hidden || !r.col || !r.rhide || !r.rshow) fail('Fäst meny: ' + JSON.stringify(r));
   await browser.close(); server.close(); console.log('OK: fäst högermeny – står kvar utan markering, lossas igen');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
