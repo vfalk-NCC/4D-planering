@@ -4,12 +4,12 @@
 <link rel="manifest" href="app.webmanifest">
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261112150953" />
-<script src="error-guard.js?v=20261112150953"></script>
+<link rel="stylesheet" href="style.css?v=20261112164100" />
+<script src="error-guard.js?v=20261112164100"></script>
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261112150953"></script>
-<script src="plan-excel-comments.js?v=20261112150953"></script>
+<script src="plan-excel-parser.js?v=20261112164100"></script>
+<script src="plan-excel-comments.js?v=20261112164100"></script>
 </head>
 <body>
 
@@ -38,6 +38,13 @@
           <li><b>Temporär · Rivning · Egen färg efter slut</b>: under <i>Avancerat</i> på aktiviteten – t.ex. mobilkran som bara syns mellan start och slut. <a href="guide.html#pp" target="_blank" rel="noopener">Guide</a></li>
           <li><b>🗺️ Lägesplan 2D</b> (kartikonen): PDF-ritning med zoner, kalibrering mot 3D, status per zon, DXF, foton, dagsplanering (lag, leveranser, lyft), A1/A3-utskrift. <a href="guide.html#lagesplan" target="_blank" rel="noopener">Guide</a></li>
           <li><b>Lägesplan 3D</b> (knappen <i>3D</i> i lägesplanen): byggnaden från TC, etablering, mått, snitt, markera/flytta IFC, punktmoln, film, bubblor, HTML-export. <a href="guide.html#editor3d" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>Stödmur, pålar &amp; spont</b>: Verktyg för stödmur, betongmur, stålrörspålar med mellanspont och kopplingslås (även lutande), spont/slitsmur m.fl. Pållista i redigerbar tabell (Littera, Påltyp, X, Y, Lutning, ÖK, Pållängd), inklistring av pållista, bock per mellanspont, justerbart fönster. Detaljval per påltyp/mur: dränering, bärlager, räcke, stämp. Placerade murar/pålar och byggvägar kan redigeras igen (✎). Flyttverktyget roterar inte vyn.</li>
+          <li><b>Byggdelar (egen modul)</b>: Separat verktyg från Stödmur: 10 trä-/finishtyper, minns fält per typ, finns även i biblioteket. Regelvägg, takstolar, trä-bjälklag och skivplacering byggs som egna typer/moduler.</li>
+          <li><b>3D-text</b>: Text på linje (centrerad hoppar till linjens mitt), flytt med gizmo, snabb färguppdatering, ✕ städar bort texten helt.</li>
+          <li><b>Mät → Lutning</b>: Mäter lutning i grader, procent och förhållande (1:n) mellan två punkter.</li>
+          <li><b>Punktmoln</b>: Redigera/ta bort punkter (även LOD-moln), bortklippta delar som namngivna lager (visa/dölj, döp om, exportera), export av utklippet eller hela molnet direkt som LAZ/LAS.</li>
+          <li><b>Scenarier (tidplansjämförelse)</b>: Från början tomma och olänkade scenarier (t.ex. kontraktstidplan, nuvarande, före omplanering): koppla modellobjekt till egna aktiviteter, valfritt koppla mot Powerproject-tidplanen, visa status vid valt datum, jämför och exportera rapport (PDF/bild). Öppnas under Vyer → Scenarier.</li>
+          <li><b>Övrigt i editorn</b>: Förhandsobjekt (pålar, byggvägar, text) kan snappas och orbitas redan i redigeringsläget; extra bekräftelse vid papperskorg för modeller och punktmoln; ”Armera”-genväg på betongobjekt.</li>
           <li><b>Gantt i 3D</b> (fliken <i>4D-planering</i> i 3D): tavla/staplar/lista, 3D-lägen Alla · Kopplade · Okopplade · ⏱ Tid, dragstreck över Gantten, pulsera/markera pågående, Powerproject-export. <a href="guide.html#gantt3d" target="_blank" rel="noopener">Guide</a></li>
           <li><b>Samspel med 4D-dashboarden</b>: dashboardens Gantt har företräde i TC:s 3D-vy – medan den styr (Kopplade/Okopplade/Tid) skriver 4D-planering inget automatiskt till modellen, och reglaget här flyttar dashboardens datum.</li>
           <li><b>Ångra</b>: <kbd>Ctrl</kbd>+<kbd>Z</kbd> eller ↶. <b>Hjälp</b>: <b>?</b> i sidhuvudet.</li>
@@ -760,40 +767,40 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261112150953"></script>
-<script src="offline.js?v=20261112150953"></script>
-  <script src="excel-link.js?v=20261112150953"></script>
-  <script src="dashboard-link.js?v=20261112150953"></script>
-  <script src="app.js?v=20261112150953"></script>
-<script src="import-report-html.js?v=20261112150953"></script>
-  <script src="manual-markings.js?v=20261112150953"></script>
-  <script src="ifc-writer.js?v=20261112150953"></script>
-  <script src="pp-import.js?v=20261112150953"></script>
-  <script src="pp-compare.js?v=20261112150953"></script>
-  <script src="data-maintenance.js?v=20261112150953"></script>
-  <script src="ifc-subset.js?v=20261112150953"></script>
-  <script src="tc-organizer.js?v=20261112150953"></script>
-  <script src="week-summary.js?v=20261112150953"></script>
-  <script src="ifc-mesh.js?v=20261112150953"></script>
-  <script src="place-models.js?v=20261112150953"></script>
-  <script src="place-formats.js?v=20261112150953"></script>
-  <script src="tc-livemove.js?v=20261112150953"></script>
-  <script src="place3d.js?v=20261112150953"></script>
-  <script src="place-geo.js?v=20261112150953"></script>
-<script src="place-smart.js?v=20261112150953"></script>
-<script src="place-smart-objs.js?v=20261112150953"></script>
-<script src="place-smart-scaffold.js?v=20261112150953"></script>
-<script src="place-detail.js?v=20261112150953"></script>
-<script src="place-machines.js?v=20261112150953"></script>
-<script src="place-parts.js?v=20261112150953"></script>
-<script src="place-frame.js?v=20261112150953"></script>
-<script src="place-crew.js?v=20261112150953"></script>
-  <script src="volume-ifc.js?v=20261112150953"></script>
-  <script src="sub-activity-list.js?v=20261112150953"></script>
-  <script src="activity-remove.js?v=20261112150953"></script>
-  <script src="dup-check.js?v=20261112150953"></script>
-  <script src="ui-shell.js?v=20261112150953"></script>
-  <script src="undo.js?v=20261112150953"></script>
-  <script src="planning-keys.js?v=20261112150953"></script>
+  <script src="github-storage.js?v=20261112164100"></script>
+<script src="offline.js?v=20261112164100"></script>
+  <script src="excel-link.js?v=20261112164100"></script>
+  <script src="dashboard-link.js?v=20261112164100"></script>
+  <script src="app.js?v=20261112164100"></script>
+<script src="import-report-html.js?v=20261112164100"></script>
+  <script src="manual-markings.js?v=20261112164100"></script>
+  <script src="ifc-writer.js?v=20261112164100"></script>
+  <script src="pp-import.js?v=20261112164100"></script>
+  <script src="pp-compare.js?v=20261112164100"></script>
+  <script src="data-maintenance.js?v=20261112164100"></script>
+  <script src="ifc-subset.js?v=20261112164100"></script>
+  <script src="tc-organizer.js?v=20261112164100"></script>
+  <script src="week-summary.js?v=20261112164100"></script>
+  <script src="ifc-mesh.js?v=20261112164100"></script>
+  <script src="place-models.js?v=20261112164100"></script>
+  <script src="place-formats.js?v=20261112164100"></script>
+  <script src="tc-livemove.js?v=20261112164100"></script>
+  <script src="place3d.js?v=20261112164100"></script>
+  <script src="place-geo.js?v=20261112164100"></script>
+<script src="place-smart.js?v=20261112164100"></script>
+<script src="place-smart-objs.js?v=20261112164100"></script>
+<script src="place-smart-scaffold.js?v=20261112164100"></script>
+<script src="place-detail.js?v=20261112164100"></script>
+<script src="place-machines.js?v=20261112164100"></script>
+<script src="place-parts.js?v=20261112164100"></script>
+<script src="place-frame.js?v=20261112164100"></script>
+<script src="place-crew.js?v=20261112164100"></script>
+  <script src="volume-ifc.js?v=20261112164100"></script>
+  <script src="sub-activity-list.js?v=20261112164100"></script>
+  <script src="activity-remove.js?v=20261112164100"></script>
+  <script src="dup-check.js?v=20261112164100"></script>
+  <script src="ui-shell.js?v=20261112164100"></script>
+  <script src="undo.js?v=20261112164100"></script>
+  <script src="planning-keys.js?v=20261112164100"></script>
 </body>
 </html>

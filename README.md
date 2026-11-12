@@ -16,6 +16,13 @@ Samma översikt finns överst i appen (📚 *Guide – alla funktioner*) och i e
 | **Avancerat per aktivitet** | **Temporär**, **Rivning**, **Egen färg efter slut** (färg + opacitet), resurser |
 | **Lägesplan 2D** | PDF-ritning med zoner, kalibrering mot 3D, status/framdrift per zon, datum, DXF, foton, etablering, noteringar, dagsplanering, A1/A3-utskrift |
 | **Lägesplan 3D (editorn)** | Byggnaden från TC, etablering/3D-bibliotek, markera/mät/snitt/flytta IFC, Lager, punktmoln, foton, kommentarer, grupper, film, bubblor, HTML-export |
+| **Stödmur, pålar & spont** | Verktyg för stödmur, betongmur, stålrörspålar med mellanspont och kopplingslås (även lutande), spont/slitsmur m.fl. Pållista i redigerbar tabell (Littera, Påltyp, X, Y, Lutning, ÖK, Pållängd), inklistring av pållista, bock per mellanspont, justerbart fönster. Detaljval per påltyp/mur: dränering, bärlager, räcke, stämp. Placerade murar/pålar och byggvägar kan redigeras igen (✎). Flyttverktyget roterar inte vyn. |
+| **Byggdelar (egen modul)** | Separat verktyg från Stödmur: 10 trä-/finishtyper, minns fält per typ, finns även i biblioteket. Regelvägg, takstolar, trä-bjälklag och skivplacering byggs som egna typer/moduler. |
+| **3D-text** | Text på linje (centrerad hoppar till linjens mitt), flytt med gizmo, snabb färguppdatering, ✕ städar bort texten helt. |
+| **Mät → Lutning** | Mäter lutning i grader, procent och förhållande (1:n) mellan två punkter. |
+| **Punktmoln** | Redigera/ta bort punkter (även LOD-moln), bortklippta delar som namngivna lager (visa/dölj, döp om, exportera), export av utklippet eller hela molnet direkt som LAZ/LAS. |
+| **Scenarier (tidplansjämförelse)** | Från början tomma och olänkade scenarier (t.ex. kontraktstidplan, nuvarande, före omplanering): koppla modellobjekt till egna aktiviteter, valfritt koppla mot Powerproject-tidplanen, visa status vid valt datum, jämför och exportera rapport (PDF/bild). Öppnas under Vyer → Scenarier. |
+| **Övrigt i editorn** | Förhandsobjekt (pålar, byggvägar, text) kan snappas och orbitas redan i redigeringsläget; extra bekräftelse vid papperskorg för modeller och punktmoln; ”Armera”-genväg på betongobjekt. |
 | **Gantt i 3D** | Tavla/Staplar/Lista, 3D-lägen Alla · Kopplade · Okopplade · ⏱ Tid, dragstreck, pulsera/markera pågående, Ctrl-markering, redigering, Powerproject-export |
 | **Samspel** | 4D-dashboardens Gantt har företräde i TC:s 3D-vy mot 4D-planering |
 
@@ -238,6 +245,17 @@ Samma översikt finns överst i appen (📚 *Guide – alla funktioner*) och i e
 6. **Utskrift**: A1/A3-ritningsblad med ritningshuvud, förklaring, QR och symboler (vektorer). *Spara som bild* ger en PNG med datum och förklaring.
 
 ## Lägesplan 3D (editorn) – så använder du den
+
+### Nyare funktioner i 3D-editorn (sammanställning)
+
+- **Stödmur, pålar & spont**: Verktyg för stödmur, betongmur, stålrörspålar med mellanspont och kopplingslås (även lutande), spont/slitsmur m.fl. Pållista i redigerbar tabell (Littera, Påltyp, X, Y, Lutning, ÖK, Pållängd), inklistring av pållista, bock per mellanspont, justerbart fönster. Detaljval per påltyp/mur: dränering, bärlager, räcke, stämp. Placerade murar/pålar och byggvägar kan redigeras igen (✎). Flyttverktyget roterar inte vyn.
+- **Byggdelar (egen modul)**: Separat verktyg från Stödmur: 10 trä-/finishtyper, minns fält per typ, finns även i biblioteket. Regelvägg, takstolar, trä-bjälklag och skivplacering byggs som egna typer/moduler.
+- **3D-text**: Text på linje (centrerad hoppar till linjens mitt), flytt med gizmo, snabb färguppdatering, ✕ städar bort texten helt.
+- **Mät → Lutning**: Mäter lutning i grader, procent och förhållande (1:n) mellan två punkter.
+- **Punktmoln**: Redigera/ta bort punkter (även LOD-moln), bortklippta delar som namngivna lager (visa/dölj, döp om, exportera), export av utklippet eller hela molnet direkt som LAZ/LAS.
+- **Scenarier (tidplansjämförelse)**: Från början tomma och olänkade scenarier (t.ex. kontraktstidplan, nuvarande, före omplanering): koppla modellobjekt till egna aktiviteter, valfritt koppla mot Powerproject-tidplanen, visa status vid valt datum, jämför och exportera rapport (PDF/bild). Öppnas under Vyer → Scenarier.
+- **Övrigt i editorn**: Förhandsobjekt (pålar, byggvägar, text) kan snappas och orbitas redan i redigeringsläget; extra bekräftelse vid papperskorg för modeller och punktmoln; ”Armera”-genväg på betongobjekt.
+
 
 Tryck **3D** i lägesplanen. Ritningen blir mark, de planerade objekten visas i statusfärg vid valt datum och byggnaden kan läsas in från TC.
 - **Byggnaden**: *Lager → Trimble Connect* (eller *Läs in modeller* i Gantt-raden) läser de IFC-modeller som är tända i TC. De cachas i webbläsaren; kopplade objekt (GUID) färgas efter status vid datumet. iPad/iPhone använder en lätt geometrikopia i datalagret.
