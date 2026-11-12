@@ -1468,6 +1468,11 @@ function l3RenderSide(liveOnly) {
     if (!(liveOnly && side.dataset.id === "bsel:" + l3bs.sel.map(e => e.key).join(","))) l3bsRenderSide(side);
     return;
   }
+  if (!list.length && l3Prefs().sidePin) { // fäst meny (📌): panelen står kvar även utan markering
+    side.classList.remove("hidden");
+    if (side.dataset.id !== "pinempty") { side.dataset.id = "pinempty"; side.innerHTML = `<div class="v3-side-h"><b>Egenskaper</b></div><div class="v3-pal-hint">Inget objekt markerat – tryck på ett objekt för att se och ändra dess egenskaper.</div>`; }
+    return;
+  }
   side.classList.toggle("hidden", !list.length);
   if (!list.length) { side.dataset.id = ""; return; }
   if (list.length > 1) {
