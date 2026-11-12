@@ -11,10 +11,16 @@ function gjutGround(p, key, zb, poly) {
   let hit = l3gg.cache.get(ck);
   if (!hit || Date.now() - hit.t > 30000) {
     const g = l3dfGrid(bd, Math.max(0.25, Math.sqrt(((bd.x1 - bd.x0) * (bd.y1 - bd.y0)) / 60000)));
-    let ok = false; try { ok = !!l3dfBuild(key, g); } catch (e) { console.warn("Stöd mot berget", e); }
+    let ok = false; try { ok = !!l3dfBuild(key, g); if (ok && typeof l3dfFill === "function") l3dfFill(g, 12); } catch (e) { console.warn("Stöd mot berget", e); }   // glesa punktmoln: fyll hålen så att alla stöd får en markhöjd
     hit = { g, ok, t: Date.now() }; l3gg.cache.set(ck, hit); if (l3gg.cache.size > 20) l3gg.cache.delete(l3gg.cache.keys().next().value);
   }
   if (!hit.ok) return null;
   const base0 = (Number(S.z) || 0) + (Number(S.dz) || 0);   // gruppens höjd; lokala höjder räknas från den
-  return (lx, ly) => { const [X, Y] = abs(lx, ly), z = l3volGridZ(hit.g, X, Y); return z === null || z === undefined ? null : z - base0 - zb; };
+  const g = hit.g, near = (X, Y) => {   // närmaste ruta med höjd när interpoleringen saknar granne (hål i punktmolnet, kant på ytan)
+    const z0 = l3volGridZ(g, X, Y); if (z0 !== null && z0 !== undefined && Number.isFinite(z0)) return z0;
+    const ci = Math.floor((X - g.x0) / g.cell), cj = Math.floor((Y - g.y0) / g.cell);
+    for (let r = 1; r <= 16; r++) { let best = null, bd = Infinity; for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) { if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue; const ii = ci + di, jj = cj + dj; if (ii < 0 || jj < 0 || ii >= g.nx || jj >= g.ny) continue; const v = g.z[jj * g.nx + ii]; if (!Number.isFinite(v)) continue; const d = di * di + dj * dj; if (d < bd) { bd = d; best = v; } } if (best !== null) return best; }
+    return null;
+  };
+  return (lx, ly) => { const [X, Y] = abs(lx, ly), z = near(X, Y); return z === null ? null : z - base0 - zb; };
 }

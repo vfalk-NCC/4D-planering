@@ -33,10 +33,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { const a = i * 9 + j + 1, b = a + 1, c = a + 9, d = c + 1; faces.push([a, c, b], [b, c, d]); }
     const t = modCreate({ k: 'mesh', pts, faces, closed: false }, [q.x, q.y, 0], { name: 'Berg' });
     const low = k => { q.f.gsrc = k; const local = { ...q, x: 0, y: 0, z: 0, dz: 0, rot: 0 }; Object.defineProperty(local, '__src', { value: q, enumerable: false }); const parts = placeParts(local, 48); let zmin = Infinity; parts.forEach(p => { if (p.z0 < zmin) zmin = p.z0; }); return Math.round(zmin * 100) / 100; };
-    out.flat = low(''); out.rock = low('ob:' + t.id); const sel = smartSideHtml(q); out.fields = /Stöden följer berget/.test(sel) && /Snedstagets fästhöjd/.test(sel) && /Snedstagens läge/.test(sel);
+    out.flat = low(''); out.rock = low('ob:' + t.id); q.f.gfm = 'På'; out.form = low('ob:' + t.id); q.f.gfm = 'Av'; const sel = smartSideHtml(q); out.fields = /Stöden följer berget/.test(sel) && /Snedstagets fästhöjd/.test(sel) && /Snedstagens läge/.test(sel);
     return out;
   });
   console.log(JSON.stringify(r));
-  if (!(r.rock < r.flat - 0.5) || !r.fields) { console.error('FAIL Stöd mot berget: ' + JSON.stringify(r)); process.exit(1); }
+  if (!(r.rock < r.flat - 0.5) || !r.fields || !(r.form <= r.rock)) { console.error('FAIL Stöd mot berget: ' + JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: stöden följer berget (ritat underlag) – foten hamnar på markhöjden, fälten finns i formvirke-gruppen');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
