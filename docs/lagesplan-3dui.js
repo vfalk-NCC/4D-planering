@@ -440,7 +440,7 @@ const L3_ORIG_OPTS = [
 function l3OrigPopToggle() {
   let pop = document.getElementById("v3OrigPop"), open = !pop || pop.classList.contains("hidden"); l3HideMenus();
   if (!pop) { pop = document.createElement("div"); pop.id = "v3OrigPop"; pop.className = "v3-pop v3-orig-pop hidden"; l3ui.canvas.appendChild(pop); pop.onclick = e => e.stopPropagation(); pop.addEventListener("pointerdown", e => e.stopPropagation()); }
-  if (open) { l3OrigPopRender(true); pop.classList.remove("hidden"); const b = document.getElementById("v3Original").getBoundingClientRect(), c = l3ui.canvas.getBoundingClientRect(); pop.style.left = Math.max(6, Math.min(c.width - 300, b.left - c.left)) + "px"; pop.style.top = (b.bottom - c.top + 6) + "px"; }
+  if (open) { l3OrigPopRender(true); pop.classList.remove("hidden"); const b = document.getElementById("v3Original").getBoundingClientRect(), c = l3ui.canvas.getBoundingClientRect(); pop.style.left = Math.max(6, Math.min(c.width - 300, b.left - c.left)) + "px"; pop.style.top = Math.max(6, b.bottom - c.top + 6) + "px"; pop.style.maxHeight = Math.max(160, c.height - Math.max(6, b.bottom - c.top + 6) - 8) + "px"; pop.style.overflowY = "auto"; }   // verktygsraden ligger ovanför bilden: ruta som börjar ovanför kanten klipptes
 }
 function l3OrigPopRender(force) {
   const pop = document.getElementById("v3OrigPop"); if (!pop || (!force && pop.classList.contains("hidden"))) return;

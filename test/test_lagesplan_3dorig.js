@@ -58,11 +58,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       l3mnVis([b.id], true, 'tänd'); l3PlacedShow(false); const i = l3SavedViews().findIndex(x => x.name === 'Obj-test'); l3GoView(i); await new Promise(r => setTimeout(r, 600));
       out.viewObj = saved && l3.hidden.has(b.id) && !l3.hidden.has(a.id) && l3Prefs().placedOn !== false; l3DelView(i); l3mnVis([b.id], true, 'tänd');
     }
+    { const pr = document.getElementById('v3OrigPop').getBoundingClientRect(), cr = document.getElementById('v3Canvas').getBoundingClientRect(); out.inView = pr.top >= cr.top - 0.5 && pr.bottom <= cr.bottom + 0.5; }
     out.icon = !!document.querySelector('#v3Original svg circle');
     return out;
   });
   console.log(JSON.stringify(r));
-  if (r.rows !== 11 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.viewSave || !r.viewObj || !r.startToday || !r.stOff || !r.stOn || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
+  if (r.rows !== 11 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.inView || !r.viewSave || !r.viewObj || !r.startToday || !r.stOff || !r.stOn || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
   if (errors.length) fail('JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK: Visning-dropdown');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
