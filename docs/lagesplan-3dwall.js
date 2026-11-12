@@ -107,7 +107,7 @@ function l3swDraw() {
 function l3swGizmo() {
   const c = l3sw.cur; if (typeof l3mgShow !== "function") return; if (!c || !c.pts || !c.pts.length) { if (typeof l3mgHide === "function") l3mgHide("wall"); return; }
   const n = c.pts.length, a = [0, 1, 2].map(k => c.pts.reduce((t, q) => t + q[k], 0) / n);
-  l3mgShow(a, { owner: "wall", move: (dx, dy, dz) => { c.pts.forEach(q => { q[0] += dx; q[1] += dy; q[2] += dz; }); l3swDraw(); }, end: () => l3swGizmo() });
+  l3mgShow(a, { owner: "wall", move: (dx, dy, dz) => { c.pts.forEach(q => { q[0] += dx; q[1] += dy; q[2] += dz; if (q[3] != null) q[3] += dz; }); l3swDraw(); }, end: () => l3swGizmo() });
 }
 /* ---- Dragbara punkter (som byggvägen): ring på varje punkt, ＋ mitt på varje sträcka ---- */
 const l3swH = { rings: [], plus: [], drag: null };
@@ -197,17 +197,31 @@ function l3swOpen(cur) {
 }
 function l3swClose(keep) {
   const el = document.getElementById("v3WallPanel"); if (el) el.remove(); const c = l3sw.cur; if (c) l3sw.last = JSON.parse(JSON.stringify(c.spec));
-  if (typeof l3mgHide === "function") l3mgHide("wall"); l3sw.cur = null; l3swH.rings.forEach(e => e.remove()); l3swH.plus.forEach(e => e.remove()); l3swH.rings = []; l3swH.plus = []; if (l3.groups.wall) l3Clear(l3.groups.wall); if (!keep) { if (l3sw.kbd) { window.removeEventListener("keydown", l3sw.kbd, true); l3sw.kbd = null; } l3Render(); }
+  if (typeof l3mgHide === "function") l3mgHide("wall");
+  if (c && c.hidden && !c.committed) { c.hidden.forEach(id => { const g = l3.placeMeshes.get(id); if (g && !(l3.hidden && l3.hidden.has(id))) g.visible = true; }); const ex = c.hidden.filter(id => placements.some(q => q.id === id)); if (ex.length) l3SelectIds(ex); c.hidden = null; }
+  l3sw.cur = null; l3swH.rings.forEach(e => e.remove()); l3swH.plus.forEach(e => e.remove()); l3swH.rings = []; l3swH.plus = []; if (l3.groups.wall) l3Clear(l3.groups.wall); if (!keep) { if (l3sw.kbd) { window.removeEventListener("keydown", l3sw.kbd, true); l3sw.kbd = null; } l3Render(); }
 }
 function l3swMake() {
   const c = l3sw.cur; if (!c) return; const r = c.res || l3swBuild(c.pts, c.spec); if (!r.parts || !r.parts.length) { l3Status(r.err || "Inget att skapa.", true); return; }
-  placeSnapshot(); const set = ghNewId().slice(0, 8), ids = []; let vol = 0, org = null, tons = 0;
+  placeSnapshot(); const set = c.editSet || ghNewId().slice(0, 8), ids = []; let vol = 0, org = null, tons = 0; const wsrc0 = { spec: JSON.parse(JSON.stringify(c.spec)), pts: JSON.parse(JSON.stringify(c.pts)) };
+  if (c.editSet) { const old = new Set(placements.filter(q => q.set === c.editSet && q.wsrc).map(q => q.id)); placements = placements.filter(q => !old.has(q.id)); old.forEach(id => { placeDeleted.add(id); placeDirty.delete(id); const g = l3.placeMeshes.get(id); if (g) { if (l3.gizmo.object === g) l3.gizmo.detach(); l3.groups.places.remove(g); } l3.placeMeshes.delete(id); }); c.hidden = null; }
   r.parts.forEach(pt => {
     let x0 = Infinity, y0 = Infinity, z0 = Infinity; pt.mesh.pts.forEach(q => { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); z0 = Math.min(z0, q[2]); });
     const r3 = v => Math.round(v * 1000) / 1000, m = { k: "mesh", pts: pt.mesh.pts.map(q => [r3(q[0] - x0), r3(q[1] - y0), r3(q[2] - z0)]), faces: pt.mesh.faces.map(f => [f[0], f[1], f[2]]), closed: true, ifc: pt.ifc || "IFCWALL", ...(pt.pile ? { pile: pt.pile } : {}) };
-    const p = modCreate(m, [x0, y0, z0], { name: pt.name, color: pt.color || c.spec.color || "#b8bcc2", snapshot: false }); p.set = set; p.note = `Volym ${l3swFmt(pt.vol, 2)} m³ · ca ${l3swFmt((pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000, 2)} ton · längd ${l3swFmt(pt.len, 2)} m`; ids.push(p.id); vol += pt.vol; tons += (pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000; org = org || [x0, y0, z0];
+    const p = modCreate(m, [x0, y0, z0], { name: pt.name, color: pt.color || c.spec.color || "#b8bcc2", snapshot: false }); p.set = set; p.wsrc = { ...wsrc0, org: [x0, y0, z0] }; p.note = `Volym ${l3swFmt(pt.vol, 2)} m³ · ca ${l3swFmt((pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000, 2)} ton · längd ${l3swFmt(pt.len, 2)} m`; ids.push(p.id); vol += pt.vol; tons += (pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000; org = org || [x0, y0, z0];
   });
-  const kd = L3SW_KINDS[c.spec.kind], n = ids.length; l3swClose(); l3SelectIds(ids); l3Changed();
+  const kd = L3SW_KINDS[c.spec.kind], n = ids.length; c.committed = true; l3swClose(); l3SelectIds(ids); l3Changed();
   l3Toast(`Skapad: ${kd}, ${n} ${n === 1 ? "objekt" : "objekt"}, ${l3swFmt(vol, 2)} m³ (ca ${l3swFmt(tons, 1)} ton). Ctrl+Z ångrar. Redigera, dela och exportera som IFC som vanligt.`);
 }
 function l3swTap() { if (!l3sw.cur || l3.tool !== "measure" || l3Prefs().measure !== "wall") return false; l3Status("Stödmuren är öppen – skapa den eller stäng den (Esc) för att placera en ny.", true); return true; }
+
+/* Redigera utförd stödmur/spont/pålning igen: hela uppsättningen (samma set) öppnas i verktyget med samma inställningar och punkter, originalen döljs tills du trycker Uppdatera (Victor 2026-11-12). */
+function l3swEdit(p) {
+  const parts = p && p.set ? placements.filter(q => q.set === p.set && q.wsrc) : []; if (!parts.length) { l3Status("Det här objektet saknar sparade verktygsinställningar (skapat före uppdateringen).", true); return; }
+  const w = parts[0].wsrc, dx = parts[0].x - w.org[0], dy = parts[0].y - w.org[1], dz = parts[0].z - w.org[2];   // ev. flytt efter att den skapades följer med
+  const pts = JSON.parse(JSON.stringify(w.pts)).map(q => { q[0] += dx; q[1] += dy; q[2] += dz; if (q[3] != null) q[3] += dz; return q; }), spec = JSON.parse(JSON.stringify(w.spec));
+  try { l3SetPref("measure", "wall"); l3SetTool("measure"); } catch (e) {}
+  const ids = parts.map(q => q.id); l3SelectIds([]); ids.forEach(id => { const g = l3.placeMeshes.get(id); if (g) g.visible = false; });
+  l3swOpen({ pts, spec, res: null, editSet: p.set, hidden: ids }); l3Status("Redigerar " + (L3SW_KINDS[spec.kind] || "stödmur") + ": ändra i panelen, flytta punkter eller använd tabellen och tryck Uppdatera. Esc avbryter.");
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-swedit]"); if (!b) return; e.stopPropagation(); const sel = l3SelList(); if (sel.length) l3swEdit(sel[0]); }, true);
