@@ -249,6 +249,7 @@ function l3Dom() {
           <button type="button" data-v3cmd="copy">Kopiera <kbd>Ctrl+C</kbd></button>
           <button type="button" data-v3cmd="paste">Klistra in <kbd>Ctrl+V</kbd></button>
           <button type="button" data-v3cmd="drop">Ställ på ytan</button>
+          <button type="button" data-v3cmd="union" title="Slå ihop markerade solider som går i varandra till ett objekt">Sammanfoga markerade</button>
           <button type="button" data-v3cmd="del">Ta bort <kbd>Delete</kbd></button>
           <hr/>
           <button type="button" data-v3cmd="all">Markera alla <kbd>Ctrl+A</kbd></button>
@@ -409,7 +410,7 @@ function l3Dom() {
   $3("v3SvName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); svSave(); } else if (e.key === "Escape") { e.preventDefault(); e.target.blur(); l3HideMenus(); } };
   l3RenderSavedViews(); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");
   if (typeof l3LayersInit === "function") l3LayersInit(); // Lager-fliken och breddbara paneler
-  box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });
+  box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, union: () => l3unRun(), del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });
   $3("v3PhotoBtn").onclick = () => { if (typeof l3phAdd === "function") l3phAdd(); };
   $3("v3SunBtn").onclick = () => { const pn = document.getElementById("v3AnPanel"); if (pn && pn.dataset.kind === "sun") { l3sunOff(); pn.remove(); } else l3sunStart(); };
   $3("v3AnBtn").onclick = () => { if (document.getElementById("v3AnPanel")) l3anClose(); else l3anOpen(); };
@@ -1412,7 +1413,7 @@ function l3OpenCtx(x, y, e) {
   const items = has ? [
     ["move", "Flytta punkt till punkt", "M"], ["rotate", "Vrid", "Q"], n === 1 ? ["align", "Rikta kant mot kant", "A"] : null,
     ["cspec", "Kopiera special…", ""], ["mspec", "Flytta special…", ""], null,
-    ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["lock", typeof l3LockState === "function" && l3LockState() === 1 ? "Lås upp" : "Lås på plats", ""], ["drop", "Ställ på ytan", ""], ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "F"], null,
+    ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["lock", typeof l3LockState === "function" && l3LockState() === 1 ? "Lås upp" : "Lås på plats", ""], ["drop", "Ställ på ytan", ""], ...(n > 1 ? [["union", "Sammanfoga markerade", ""]] : []), ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "F"], null,
     ["hide", "Dölj", "H"], ["iso", "Visa bara markerade", "I"], null,
     ...expItem,
     ["del", n === 1 ? "Ta bort" : `Ta bort ${n} objekt`, "Del"],
@@ -1429,7 +1430,7 @@ function l3OpenCtx(x, y, e) {
     if (k === "move" || k === "rotate" || k === "align") l3SetTool(k);
     else if (k === "lock") l3LockToggle();
     else if (k === "dup") l3DuplicateSel(); else if (k === "copy") l3CopySel(); else if (k === "drop") l3DropSel();
-    else if (k === "focus") l3View("sel"); else if (k === "del") l3DeleteSel();
+    else if (k === "union") l3unRun(); else if (k === "focus") l3View("sel"); else if (k === "del") l3DeleteSel();
     else if (k === "paste") l3Paste(at); else if (k === "fit") l3Frame(true); else if (k === "top") l3View("top");
     else if (k === "cspec") l3OpenSpecial("copy"); else if (k === "mspec") l3OpenSpecial("move"); else if (k === "similar") l3SelectSimilar();
     else if (k === "hide") l3HideSel(); else if (k === "iso") l3Isolate(); else if (k === "showall") l3ShowAll();

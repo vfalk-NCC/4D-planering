@@ -30,7 +30,7 @@ function l3CtxAlt(x, y, e) {
     const key = l3bsKey(ent.mesh, ent.ri); if (!l3bs.sel.some(s => s.key === key)) { if (l3.sel.size) l3SelectIds([]); l3bsTap(hit, false); }
     const n = l3bs.sel.length;
     l3Pop(x, y, [["Zooma hit", () => l3bsZoom(), { kbd: "F" }], ["Visa uppgifter", () => { if (typeof l3PalTab === "function") l3PalTab("props"); }], null,
-      ["Dölj", () => l3bsHide(), { kbd: "H" }], ["Visa bara markerade", () => l3bsIsolate(), { kbd: "I" }], ["Spränga isär", () => l3xStart(), { disabled: n < 2 }], null, ...comment,
+      ["Dölj", () => l3bsHide(), { kbd: "H" }], ["Visa bara markerade", () => l3bsIsolate(), { kbd: "I" }], ["Spränga isär", () => l3xStart(), { disabled: n < 2 }], ["Sammanfoga markerade", () => l3unRun(), { disabled: n < 2 }], null, ...comment,
       ["Exportera markerade som IFC…", () => l3ExportSelected()], null, ["Avmarkera", () => l3bsClear(), { kbd: "Esc" }]], n > 1 ? `${n} byggnadsdelar` : "Byggnadsdel");
     return true;
   }
