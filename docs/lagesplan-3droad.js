@@ -462,9 +462,27 @@ function l3rXsFigure() {
   st.textContent = `#view3d .v3-rd-fig{width:100%;height:auto;display:block;margin:2px 0 6px;border:1px solid #e2e8f0;border-radius:10px}
 #view3d .v3-rd-gh{margin:8px 0 2px;font:700 11px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#334155}#view3d .v3-rd-gh em{font-style:normal;font-weight:500;letter-spacing:0;text-transform:none;color:#94a3b8;margin-left:6px}
 #view3d .v3-rd-up{display:flex;flex-direction:column;gap:4px;margin:4px 0}#view3d .v3-rd-up>b{font:700 11px system-ui;letter-spacing:.05em;text-transform:uppercase;color:#334155}#view3d .v3-rd-up select{padding:5px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:#fff}#view3d .v3-rd-upl{display:flex;flex-wrap:wrap;gap:3px 8px;font-size:11px;color:#475569}#view3d .v3-rd-upl i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+#view3d .v3-rd-sec{margin:6px 0}#view3d .v3-rd-sec.shut>.v3-rd-secb{display:none}#view3d .v3-rd-sec>.v3-lsec-h{margin:2px 0 4px;padding:2px 8px 2px 12px;min-height:0}#view3d .v3-rd-sec>.v3-lsec-h .v3-lsec-t{font-size:11px;padding:3px 0}#view3d .v3-rd-sec .v3-rd-up>b{display:none}
 #view3d .v3-rd-k{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.4px solid #2f7bff;color:#2f7bff;font:700 10px system-ui;flex:0 0 16px;margin-right:4px}`;
   document.head.appendChild(st);
 })();
+/* Fällbara avsnitt i Väg-fliken (Victor 2026-11-12: "gör menyer collapsable"): varje del får en rubrik med pil – valen sparas. */
+function l3rXsFold(el) {
+  const tab = el.querySelector('[data-rtab="vag"]'); if (!tab) return; const shut = new Set(l3Prefs().rdShut || []);
+  const wrap = (key, title, nodes, note) => { nodes = nodes.filter(Boolean); if (!nodes.length) return; const sec = document.createElement("section"), open = !shut.has(key); sec.className = "v3-rd-sec" + (open ? "" : " shut"); sec.dataset.rsecw = key;
+    sec.innerHTML = `<div class="v3-lg v3-lsec-h"><button type="button" class="v3-lsec-t" data-rsec="${key}" aria-expanded="${open}"><i>›</i>${title}${note ? ` <em class="v3-lsec-n">${note}</em>` : ""}</button></div><div class="v3-rd-secb"></div>`;
+    nodes[0].parentNode.insertBefore(sec, nodes[0]); const body = sec.querySelector(".v3-rd-secb"); nodes.forEach(n => body.appendChild(n));
+    sec.querySelector("[data-rsec]").onclick = e => { const b = e.currentTarget, o = b.getAttribute("aria-expanded") !== "true"; b.setAttribute("aria-expanded", String(o)); sec.classList.toggle("shut", !o); const set = new Set(l3Prefs().rdShut || []); if (o) set.delete(key); else set.add(key); l3SetPref("rdShut", [...set]); }; };
+  const q = s => tab.querySelector(s), heads = [...tab.querySelectorAll(":scope > .v3-rd-gh")], grids = [...tab.querySelectorAll(":scope > .v3-rd-g")];
+  const up = q(":scope > .v3-rd-up"), bodies = q(":scope > label.v3-rd-n"), fig = q(":scope > .v3-rd-fig");
+  wrap("src", "Följer (ytor)", [q(":scope > .v3-rd-src")]);
+  wrap("res", "Resultat", [q(":scope > [data-rres]")]);
+  wrap("build", "Vägens uppbyggnad", [up, bodies]);
+  wrap("fig", "Förklarande figur", [fig]);
+  if (grids[0]) wrap("xs", "Tvärsektionen", [grids[0]], "A–I");
+  if (heads[1] && grids[1]) wrap("long", "Längs vägen", [grids[1]]);
+  heads.forEach(h => h.remove());
+}
 function l3rPanel() {
   const c = l3road.cur; if (!c) return;
   const host = document.getElementById("v3Canvas"); if (!host) return;
@@ -554,6 +572,7 @@ function l3rPanel() {
     </div>
     <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, slänter, lager och metertal blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="ifc" ${r ? "" : "disabled"} title="Skapar objekten och sparar dem som IFC i Trimble Connect direkt">⤓ IFC till TC</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button>
       <details class="v3-rd-more"><summary title="Fler val">⋯</summary><div class="v3-rd-moreb"><label class="v3-rd-n" title="Metertalen (0 m, 10 m, 20 m …) bredvid vägen som 3D-text och ett streck över vägen vid varje meterpunkt – följer med när du skapar objekt eller exporterar IFC"><input type="checkbox" data-rim ${l3Prefs().rdIfcMeters !== false ? "checked" : ""} style="width:auto"><span>Metertal som 3D-text i IFC</span></label><button type="button" data-rb="saveroute" ${r ? "" : "disabled"} title="Spara körvägen i projektet (Kommentarer och mått → Körvägar) för att simulera den och koppla den till tidplanen">💾 Spara körväg</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶ Ta bort sista punkten</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om linjen</button><button type="button" data-rb="x">Stäng</button></div></details></div>`;
+  l3rXsFold(el);
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
   qa("[data-rt]").forEach(b => { b.onclick = () => { l3SetPref("rdTab", b.dataset.rt); l3rPanel(); }; });
   qa("input[data-rk]").forEach(i => { i.oninput = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v) && v >= Number(i.min) && v <= Number(i.max)) { spec[i.dataset.rk] = v; c.saved = false; l3rSchedule(350); } }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });

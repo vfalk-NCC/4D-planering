@@ -325,6 +325,7 @@ function l3Dom() {
         </div>
       </div>
       <button type="button" id="v3HelpBtn" class="v3-ghost" title="Hjälp och kortkommandon (?)">${I.help}<span>Hjälp</span></button>
+      <button type="button" id="v3DockBtn" class="v3-ghost" title="Docka högermenyerna: bilden hamnar mellan vänster- och högermenyn (som i Tekla). Dra i kolumnens kant för att ändra bredd"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg><span>Docka</span></button>
       <button type="button" id="v3DlIfc" class="v3-ghost" title="Ladda ner etableringen som IFC till datorn (utan Trimble Connect) – markerade objekt, annars allt"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg><span>IFC till datorn</span></button>
       <button type="button" id="v3SaveIfc" class="v3-primary" title="Etableringen som IFC i Trimble Connect (görs av 4D-planering)">${I.upload}<span>Spara som IFC i TC</span></button>
     </div>
