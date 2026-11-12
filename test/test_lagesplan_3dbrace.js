@@ -29,10 +29,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const r = await page.evaluate(() => {
     const out = {}, S = (dd, f) => gjutSide(dd, { f }), t = a => a.map(o => o.t.toFixed(2) + (o.brace ? '*' : '')).join(' ');
     out.alla = t(S(3, {})); out.cen = t(S(3, { spl: 'Centrerat' })); out.mitt = t(S(4, { spl: 'Mitt' })); out.mitt2 = S(5, { spl: 'Mitt', sd: 2 }).filter(o => o.brace).map(o => o.t.toFixed(2)).join(','); out.var2 = t(S(4, { spl: 'Var 2:a' }));
+    const poly = [[0, 0], [4, 0], [4, 2], [0, 2]], base = { f: { H: 2, spl: 'Mitt' } };
+    try { const a = gjutStuds({ ...base, f: { ...base.f, sh: 100 } }, poly), b = gjutStuds({ ...base, f: { ...base.f, sh: 50 } }, poly); out.z100 = a[0].z; out.z50 = b[0].z; out.zok = b.length === a.length && b[0].z < a[0].z; } catch (e) { out.err = e.message; }
     return out;
   });
   console.log(JSON.stringify(r));
-  const ok = r.alla === '0.00* 0.33* 0.67*' && r.cen === '0.17* 0.50* 0.83*' && r.mitt === '0.10 0.30 0.50* 0.70 0.90' && r.mitt2 === '0.50' && r.var2 === '0.13* 0.38 0.63* 0.88';
+  const ok = r.alla === '0.00* 0.33* 0.67*' && r.cen === '0.17* 0.50* 0.83*' && r.mitt === '0.10 0.30 0.50* 0.70 0.90' && r.mitt2 === '0.50' && r.var2 === '0.13* 0.38 0.63* 0.88' && r.zok;
   if (!ok) { console.error('FAIL', JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: snedstagens läge – Alla, Centrerat, Mitt (ett mitt på sidan), Var 2:a');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
