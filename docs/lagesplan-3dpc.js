@@ -580,7 +580,7 @@ function l3pcHtml(row, esc) {
   const rows = [...l3pc.clouds.map(c => ({ c, name: c.name })), ...rest.map(s => ({ s, name: s.name }))].sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
   const del = id => `<button type="button" class="v3-lr-zoom v3-lr-del" data-pc-forget="${esc(id)}" title="Ta bort ur listan (inget i Trimble Connect ändras)">${L3_ICO.trash}</button>`;
   const more = id => `<button type="button" class="v3-lr-zoom v3-lr-more" data-pc-more="${esc(id)}" title="Fler val">⋯</button>`;
-  const edRows = c => (c.edits || []).map((e, i) => row(`data-pc-ed="${esc(c.id)}|${i}"`, !!e.off, esc(typeof l3peLabel === "function" ? l3peLabel(e, i) : "Bortklippt " + (i + 1)), `<em class="v3-lr-k" title="Tänd = punkterna är med i molnet igen">${e.nrem != null ? Number(e.nrem).toLocaleString("sv-SE") + " p" : ""}</em>`, "v3-lr-sub")).join("");
+  const edRows = c => (c.edits || []).map((e, i) => row(`data-pc-ed="${esc(c.id)}|${i}"`, !!e.off, esc(typeof l3peLabel === "function" ? l3peLabel(e, i) : "Bortklippt " + (i + 1)), `<em class="v3-lr-k" title="Tänd = punkterna är med i molnet igen">${e.nrem != null ? Number(e.nrem).toLocaleString("sv-SE") + " p" : ""}</em><button type="button" class="v3-lr-zoom" data-pc-edname="${esc(c.id)}|${i}" title="Byt namn på lagret">✎</button><button type="button" class="v3-lr-zoom" data-pc-edexp="${esc(c.id)}|${i}" title="Exportera det bortklippta som punktmoln (LAS)">⤓</button>`, "v3-lr-sub")).join("");
   let h = rows.map(({ c, s, name }) => c
     ? row(`data-pc-eye="${esc(c.id)}"`, c.visible, esc(name) + (c.dz ? ` <em title="Höjdjustering">${c.dz > 0 ? "+" : ""}${String(c.dz).replace(".", ",")} m</em>` : ""), `<em class="v3-lr-k" title="${esc(c.info.format)} · ${c.info.n.toLocaleString("sv-SE")} av ${c.info.total.toLocaleString("sv-SE")} punkter">${l3pcMil(c.info.n)}</em><span class="v3-lr-acts"><button type="button" class="v3-lr-zoom" data-pc-zoom="${esc(c.id)}" title="Zooma till molnet">${L3_ICO.focus}</button>${more(c.id)}${del(c.id)}</span>`) + edRows(c)
     : row(`data-pc-rem="${esc(s.id)}"`, false, esc(name), `<span class="v3-lr-acts">${del(s.id)}</span>`)).join("");
@@ -626,13 +626,14 @@ function l3pcMoreMenu(btn, id) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c) return;
   const m = document.createElement("div"); m.className = "v3-pc-menu v3-ldd-m";
   const others = l3pc.clouds.some(x => x.id !== id && x.visible);
-  m.innerHTML = `<button type="button" data-a="zoom">Zooma till molnet</button><button type="button" data-a="solo" ${l3pc.clouds.length < 2 ? "disabled" : ""}>${others || l3pc.clouds.length < 2 ? "Visa bara detta moln" : "Tänd alla moln"}</button><button type="button" data-a="edit">✎ Redigera punkter…</button><button type="button" data-a="slice" title="Dela molnet i en LAS-fil per WBS-zon och en fil för det som ligger utanför">✂ Dela upp efter WBS-zoner…</button><button type="button" data-a="dz">Höjdjustering…${c.dz ? ` (${String(c.dz).replace(".", ",")} m)` : ""}</button><button type="button" data-a="reload" title="Med inställningen Punkter per moln som gäller nu (t.ex. full upplösning)">Läs in igen</button><button type="button" data-a="info">Om molnet</button><hr /><button type="button" data-a="del" class="bad">Ta bort ur listan</button>`;
+  m.innerHTML = `<button type="button" data-a="zoom">Zooma till molnet</button><button type="button" data-a="solo" ${l3pc.clouds.length < 2 ? "disabled" : ""}>${others || l3pc.clouds.length < 2 ? "Visa bara detta moln" : "Tänd alla moln"}</button><button type="button" data-a="export" title="Skriver molnet utan de bortklippta punkterna som en LAS-fil">⤓ Exportera molnet (LAS)</button><button type="button" data-a="edit">✎ Redigera punkter…</button><button type="button" data-a="slice" title="Dela molnet i en LAS-fil per WBS-zon och en fil för det som ligger utanför">✂ Dela upp efter WBS-zoner…</button><button type="button" data-a="dz">Höjdjustering…${c.dz ? ` (${String(c.dz).replace(".", ",")} m)` : ""}</button><button type="button" data-a="reload" title="Med inställningen Punkter per moln som gäller nu (t.ex. full upplösning)">Läs in igen</button><button type="button" data-a="info">Om molnet</button><hr /><button type="button" data-a="del" class="bad">Ta bort ur listan</button>`;
   btn.closest(".v3-lr").after(m);
   m.onclick = e => {
     const a = e.target.closest("[data-a]"); if (!a) return; m.remove();
     if (a.dataset.a === "zoom") l3pcZoom(id);
     else if (a.dataset.a === "solo") l3pcSolo(id);
     else if (a.dataset.a === "edit") l3peStart(id);
+    else if (a.dataset.a === "export") l3pxRun(c, "kept", (c.edits && c.edits.some(x => !x.off)) ? "redigerad" : "hela molnet");
     else if (a.dataset.a === "slice") { if (typeof l3pcsDialog === "function") l3pcsDialog(id); }
     else if (a.dataset.a === "dz") l3pcSetDz(id);
     else if (a.dataset.a === "del") l3pcAskForget(id);
@@ -648,6 +649,8 @@ function l3pcMoreMenu(btn, id) {
 function l3pcBind(host) {
   host.querySelectorAll("[data-pc-eye]").forEach(b => { b.onclick = () => { const c = l3pc.clouds.find(x => x.id === b.dataset.pcEye); if (c) { l3pcShow(c.id, !c.visible); l3LayersRender(); } }; });
   host.querySelectorAll("[data-pc-ed]").forEach(b => { b.onclick = () => { const [id, k] = b.dataset.pcEd.split("|"); if (typeof l3peToggle === "function") { const r = l3peToggle(id, Number(k)); if (r) l3Status(r.off ? "De bortklippta punkterna är tillbaka i molnet." : "De bortklippta punkterna är släckta igen."); } l3LayersRender(); }; });
+  host.querySelectorAll("[data-pc-edname]").forEach(b => { b.onclick = async e => { e.stopPropagation(); const [id, k] = b.dataset.pcEdname.split("|"); await l3peRename(id, Number(k)); l3LayersRender(); }; });
+  host.querySelectorAll("[data-pc-edexp]").forEach(b => { b.onclick = e => { e.stopPropagation(); const [id, k] = b.dataset.pcEdexp.split("|"), cl = l3pc.clouds.find(x => x.id === id); if (cl && cl.edits && cl.edits[Number(k)]) l3pxRun(cl, Number(k), l3peLabel(cl.edits[Number(k)], Number(k))); }; });
   host.querySelectorAll("[data-pc-cancel]").forEach(b => { b.onclick = () => { if (l3pc.cancel) l3pc.cancel(); }; });
   host.querySelectorAll("[data-pc-rem]").forEach(b => { b.onclick = () => l3pcLoadRemembered(b.dataset.pcRem); });
   host.querySelectorAll("[data-pc-zoom]").forEach(b => { b.onclick = () => l3pcZoom(b.dataset.pcZoom); });

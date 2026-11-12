@@ -48,6 +48,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const rt = l3peToggle(c2.id, 0); out.layerOn = rt && rt.off === true && zOf(root)[0] === 1000 && !leaf.pts; leaf.state = 1; c2.lod.loading = 1; await l3olLoadNode(c2, leaf); out.layerOnLeaf = zOf(leaf)[0] === 1000;
       const rt2 = l3peToggle(c2.id, 0); out.layerOff = rt2 && rt2.off === false && zOf(root)[0] < 1000 && !leaf.pts; leaf.state = 1; c2.lod.loading = 1; await l3olLoadNode(c2, leaf); out.layerOffLeaf = zOf(leaf)[0] < 1000 && zOf(leaf)[1] + 50 <= 80.01;
       const html = l3pcHtml((a, on, l, ex, cls) => `<div ${a} data-on="${on}" class="${cls || ''}">${l}${ex}</div>`, escHtml); out.listRow = /data-pc-ed="tlod\|0"/.test(html) && /Bortklippt 1: Höjdfilter/.test(html) && /v3-lr-sub/.test(html); }
+    // export: bortklippt (lager) + kvarvarande = alla punkter; LAS-huvudet stämmer
+    { l3peReset(c); l3peAddFilter(c, { t: 'z', mode: 'above', z0: 80 }); c.edits[0].name = 'Tak-skräp';
+      out.name = l3peLabel(c.edits[0], 0) === 'Tak-skräp';
+      const rd = async blob => { const b = new Uint8Array(await blob.arrayBuffer()), d = new DataView(b.buffer); return { sig: String.fromCharCode(b[0], b[1], b[2], b[3]), n: d.getUint32(107, true), len: b.length, zmax: d.getFloat64(179, true), zmin: d.getFloat64(187, true) }; };
+      const removed = await l3pxExport(c, 0, 'Tak-skräp'), kept = await l3pxExport(c, 'kept', 'redigerad'), R = await rd(removed.blob), K = await rd(kept.blob);
+      out.expRemoved = R.sig === 'LASF' && R.n === removed.count && R.len === 227 + R.n * 26 && R.n > 100 && R.zmin + 0 > 79.9 - 50 + 0.0;
+      out.expKept = K.sig === 'LASF' && K.n === kept.count && K.len === 227 + K.n * 26 && K.zmax <= 80.02;
+      out.expSum = R.n + K.n === 2000;
+      c.edits[0].off = true; const all = await l3pxExport(c, 'kept', 'hela'); out.expAll = all.count === 2000; c.edits[0].off = false;
+      // omdöpning via lagret i listan
+      const html = l3pcHtml((a, on, l, ex, cls) => `<div ${a}>${l}${ex}</div>`, escHtml); out.btns = /data-pc-edname="tlod\|0"/.test(html) && /data-pc-edexp="tlod\|0"/.test(html) && /Tak-skräp/.test(html); }
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 500)); process.exit(1); }

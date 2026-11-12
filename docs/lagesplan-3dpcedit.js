@@ -175,7 +175,9 @@ function l3peStop() {
 
 /* Det som klippts bort ligger som lager under molnet i listan: tänd = punkterna är med igen, släckt = bortklippta (Victor 2026-11-12). */
 function l3peLabel(e, i) {
+  if (e.name) return e.name;
   const nm = e.t === "z" ? "Höjdfilter" : e.t === "thin" ? "Utglesning" : e.t === "noise" ? "Brusfilter" : e.t === "ground" ? "Mark / över mark" : e.mode === "out" ? "Ring (utanför)" : "Ring (innanför)";
   return `Bortklippt ${i + 1}: ${nm}`;
 }
+async function l3peRename(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return; const e = c.edits[k], v = await uiPrompt("Namn på det bortklippta (lagret):", e.name || l3peLabel({ ...e, name: "" }, k), { ok: "Spara" }); if (v == null) return; e.name = String(v).trim().slice(0, 60) || undefined; l3peSave(c); }
 function l3peToggle(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return null; c.edits[k].off = !c.edits[k].off; const left = l3peApply(c); l3peSave(c); return { left, off: c.edits[k].off }; }
