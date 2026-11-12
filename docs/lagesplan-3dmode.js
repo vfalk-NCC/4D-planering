@@ -12,7 +12,8 @@
 const L3GM_PRESETS = { gul: ["", "#fff7c2", "Gul (standard)"], rod: ["#e5484d", "#ffd6d6", "Röd ↔ ljusröd"], vit: ["#111827", "#ffffff", "Mörk ↔ vit"], bla: ["#2563eb", "#bfdbfe", "Blå ↔ ljusblå"], gron: ["#16a34a", "#bbf7d0", "Grön ↔ ljusgrön"], orange: ["#f5a623", "#e5484d", "Orange ↔ röd"] };
 const L3GM_PCFG0 = { preset: "gul", a: "", b: "#fff7c2", period: 1.5, style: "mjuk", amp: 85 };
 const l3gm = { scale: null, strict: false, mode: "off", timer: null, pulseIv: null, pulseT0: 0, act: [], next: [], sig: "", selSig: "", selOwn: false, info: "", raf: 0 };
-const l3gmCfg = () => ({ scale: false, scaleBy: "start", scaleA: "#2563eb", scaleB: "#dc2626", strict: false, future: false, doneOp: 30, ops: {}, from: "", to: "", pulse: false, selAct: false, origCol: false, futureOp: 25, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
+const l3gmCfg0 = () => ({ scale: false, scaleBy: "start", scaleA: "#2563eb", scaleB: "#dc2626", strict: false, future: false, doneOp: 30, ops: {}, from: "", to: "", pulse: false, selAct: false, origCol: false, futureOp: 25, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
+const l3gmCfg = () => { const C = l3gmCfg0(); return typeof l3scCfg === "function" ? l3scCfg(C) : C; };   // tidplansscenarier (lagesplan-3dscen.js) kan ändra visningen medan de ritas
 const l3gmSet = (k, v) => l3plSet("gm", { ...(l3plPrefs().gm || {}), [k]: v });
 const l3gmHex = h => { const n = parseInt(String(h).replace("#", ""), 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
 
