@@ -82,6 +82,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (r.order.join() !== 'Mur B,Mur A,Platta C') fail('sortera nyast först: ' + JSON.stringify(r.order));
   if (r.sel.length !== 1) fail('markera via raden: ' + JSON.stringify(r));
   if (r.sw !== 4 || !r.mHid) fail('sektionsswitchar: ' + JSON.stringify(r));
+  const ms = await page.evaluate(async () => {
+    l3SelectIds([]); const heads = [...document.querySelectorAll('#v3Lib [data-moshut]')].filter(b => b.querySelector('em') && Number(b.querySelector('em').textContent) > 0);
+    const clk = (b, mod) => { const r = b.getBoundingClientRect(); b.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 60, clientY: r.top + 5, ctrlKey: !!mod })); };
+    const h = () => [...document.querySelectorAll('#v3Lib [data-moshut]')].filter(b => b.querySelector('em') && Number(b.querySelector('em').textContent) > 0);
+    const want = i => Number(h()[i].querySelector('em').textContent);
+    const n0 = want(0), n1 = h().length > 1 ? want(1) : 0; clk(h()[0]); const a = l3.sel.size; if (h().length > 1) clk(h()[1], true); return { n0, n1, a, b: l3.sel.size, heads: h().length };
+  });
+  if (ms.a !== ms.n0 || (ms.heads > 1 && ms.b !== ms.n0 + ms.n1)) fail('mappklick markerar: ' + JSON.stringify(ms));
   console.log('OK: ritade objekt – eget avsnitt, områden, tänd/släck, sortering; switchar på kommentarer/mått/foton/körvägar');
   if (errors.length) fail('sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();

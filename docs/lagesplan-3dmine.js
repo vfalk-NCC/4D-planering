@@ -171,7 +171,15 @@ function l3mnBind(el, groups, selMine, order) {
   $("#v3MoSort").onchange = e => { l3SetPref("moSort", e.target.value); l3mnRegWrite(r => { r.cfg = { ...r.cfg, sort: e.target.value }; }, "Objektlistan: sortering"); };
   $("#v3MoGroup").onchange = e => { l3SetPref("moGroup", e.target.value); l3mnRegWrite(r => { r.cfg = { ...r.cfg, group: e.target.value }; }, "Objektlistan: gruppering"); };
   const mv = $("#v3MoMove"); if (mv) { mv.onclick = e => { const r = mv.getBoundingClientRect(); l3mnMoveMenu(selMine, r.left, r.bottom + 4); }; $("#v3MoHide").onclick = () => l3mnVis(selMine, false, "släck valda"); $("#v3MoShow").onclick = () => l3mnVis(selMine, true, "tänd valda"); }
-  el.querySelectorAll("[data-moshut]").forEach(b => { b.onclick = () => setShut(b.dataset.moshut, b.getAttribute("aria-expanded") !== "true"); });
+  // Klick på mappens namn markerar dess objekt (Ctrl/Cmd/Skift = lägg till eller ta bort fler mappar); pilen längst till vänster fäller ihop/ut.
+  el.querySelectorAll("[data-moshut]").forEach(b => { b.onclick = e => {
+    const g = groups.find(x => x.key === b.dataset.moshut), onArrow = e.clientX - b.getBoundingClientRect().left < 22;
+    if (onArrow || !g || !g.items.length) { setShut(b.dataset.moshut, b.getAttribute("aria-expanded") !== "true"); return; }
+    const ids = g.items.map(p => p.id).filter(id => !l3mnHid(id));
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { const cur = new Set(l3.sel), all = ids.length && ids.every(id => cur.has(id)); ids.forEach(id => (all ? cur.delete(id) : cur.add(id))); l3SelectIds([...cur]); }
+    else l3SelectIds(ids);
+    if (typeof l3Status === "function") l3Status(`${l3.sel.size} objekt markerade${e.ctrlKey || e.metaKey ? " (Ctrl: håll in och klicka fler mappar)" : " – håll Ctrl för att välja flera mappar"}.`);
+  }; b.title = "Klick = markera objekten i mappen · Ctrl = flera mappar · pilen fäller ihop"; });
   el.querySelectorAll("[data-movis]").forEach(c => { c.onchange = () => { const g = groups.find(x => x.key === c.dataset.movis); if (g) l3mnVis(g.items.map(p => p.id), c.checked, `${c.checked ? "visa" : "dölj"} ${g.name || "objekt"}`); }; });
   el.querySelectorAll("[data-mosel]").forEach(b => { b.onclick = () => { const g = groups.find(x => x.key === b.dataset.mosel); if (g) { l3SelectIds(g.items.map(p => p.id)); l3ZoomSelected(); } }; });
   el.querySelectorAll("[data-monew]").forEach(b => { b.onclick = () => l3mnNewArea(null, b.dataset.monew); });
