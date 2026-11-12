@@ -52,13 +52,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     { l3peReset(c); l3peAddFilter(c, { t: 'z', mode: 'above', z0: 80 }); c.edits[0].name = 'Tak-skräp';
       out.name = l3peLabel(c.edits[0], 0) === 'Tak-skräp';
       const rd = async blob => { const b = new Uint8Array(await blob.arrayBuffer()), d = new DataView(b.buffer); return { sig: String.fromCharCode(b[0], b[1], b[2], b[3]), n: d.getUint32(107, true), len: b.length, zmax: d.getFloat64(179, true), zmin: d.getFloat64(187, true) }; };
-      const removed = await l3pxExport(c, 0, 'Tak-skräp'), kept = await l3pxExport(c, 'kept', 'redigerad'), R = await rd(removed.blob), K = await rd(kept.blob);
+      const removed = await l3pxExport(c, 0, 'Tak-skräp', null, { format: 'las' }), kept = await l3pxExport(c, 'kept', 'redigerad', null, { format: 'las' }), R = await rd(removed.blob), K = await rd(kept.blob);
       out.expRemoved = R.sig === 'LASF' && R.n === removed.count && R.len === 227 + R.n * 26 && R.n > 100 && R.zmin + 0 > 79.9 - 50 + 0.0;
       out.expKept = K.sig === 'LASF' && K.n === kept.count && K.len === 227 + K.n * 26 && K.zmax <= 80.02;
       out.expSum = R.n + K.n === 2000;
-      c.edits[0].off = true; const all = await l3pxExport(c, 'kept', 'hela'); out.expAll = all.count === 2000; c.edits[0].off = false;
+      c.edits[0].off = true; const all = await l3pxExport(c, 'kept', 'hela', null, { format: 'las' }); out.expAll = all.count === 2000; c.edits[0].off = false;
       // omdöpning via lagret i listan
       const html = l3pcHtml((a, on, l, ex, cls) => `<div ${a}>${l}${ex}</div>`, escHtml); out.btns = /data-pc-edname="tlod\|0"/.test(html) && /data-pc-edexp="tlod\|0"/.test(html) && /Tak-skräp/.test(html); }
+    // LAZ: skrivs med las-laz-js och avkodas med appens egen avkodare (laz-perf) i en separat worker
+    { c.edits[0].off = false; const decode = async blob => { const buf = await blob.arrayBuffer(), base = location.href.replace(/[^/]*$/, '');
+        const code = `importScripts(${JSON.stringify(base + 'vendor/laz-perf/laz-perf.js')}); onmessage = async e => { const L = await createLazPerf({ locateFile: p => ${JSON.stringify(base + 'vendor/laz-perf/')} + p }), n = e.data.byteLength, fp = L._malloc(n); L.HEAPU8.set(new Uint8Array(e.data), fp); const hd = new DataView(e.data), sc = hd.getFloat64(131, true), oz = hd.getFloat64(171, true), zip = new L.LASZip(); zip.open(fp, n); const len = zip.getPointLength(), cnt = zip.getCount(), dp = L._malloc(len); let zmin = Infinity, zmax = -Infinity; for (let i = 0; i < cnt; i++) { zip.getPoint(dp); const z = new DataView(L.HEAPU8.buffer, dp, len).getInt32(8, true) * sc + oz; if (z < zmin) zmin = z; if (z > zmax) zmax = z; } postMessage({ cnt, zmin, zmax, compressed: (hd.getUint16(104 - 0 + 0, true) & 0x80) !== 0 || hd.getUint8(104) >= 128 }); };`;
+        const wk = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); return new Promise((res, rej) => { wk.onmessage = e => { wk.terminate(); res(e.data); }; wk.onerror = e => { wk.terminate(); rej(new Error(e.message)); }; wk.postMessage(buf, [buf]); }); };
+      const kl = await l3pxExport(c, 'kept', 'redigerad'), rl = await l3pxExport(c, 0, 'Tak-skräp'), KL = await decode(kl.blob), RL = await decode(rl.blob);
+      out.lazKept = KL.cnt === kl.count && KL.zmax <= 80.02 && KL.cnt > 100; out.lazRemoved = RL.cnt === rl.count && RL.zmin > 79.9 - 0.2 && RL.cnt + KL.cnt === 2000; out.lazSmaller = kl.blob.size < (227 + kl.count * 26) * 0.95;
+      const las = await l3pxExport(c, 'kept', 'las', null, { format: 'las' }); out.lasStill = las.blob.size === 227 + las.count * 26 && las.count === kl.count; }
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 500)); process.exit(1); }

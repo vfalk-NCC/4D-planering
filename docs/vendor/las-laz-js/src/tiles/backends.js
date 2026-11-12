@@ -1,0 +1,239 @@
+// src/tiles/backends.js
+//==========================================================
+// Where a tile store's blobs live. Three backends behind one small
+// interface (get, put, appender, remove, list, removeAll, lock):
+//   { memory: true | Map } - a Map of name -> bytes (gone with the page)
+//   { opfs: id, root? }    - OPFS folder las-tiles/<id>, through
+//                            ScratchBinaryFile (writes need a Worker:
+//                            sync access handles); root for tests
+//   { dir: path }          - a Node folder
+// A name may hold one "/" (build/<key>.rec): a sub-folder.
+// "lock" is the OPFS writer's lock file and is never listed.
+//==========================================================
+
+import { LasError, ERROR_CODES } from "../errors.js";
+import { removeScratchFile, isQuotaError, noSpace } from "../io/ScratchBinaryFile.js";
+
+/** The OPFS folder holding every tile store. */
+export var TILES_DIR = "las-tiles";
+
+var LOCK = "lock";
+var LOCKED_ERRORS = ["NoModificationAllowedError", "InvalidModificationError"];
+var NODE_FS = ["node", "fs"].join(":");
+
+// OPFS calls that never settle (seen in Chrome: a store edit froze with no error, every file call of a group of
+// tiles waiting for ever) reject after STALL ms naming the call and the file, so the edit fails and rolls back
+// instead of hanging. A tile file's call takes milliseconds; the limit is far above any real one.
+var STALL = { ms: 60000 };
+
+function closeLate(h) { try { h.close(); } catch (e) { /* gone */ } }
+
+/** Tests: the OPFS stall limit in ms (returns the previous). Internal. */
+export function opfsStall(ms) { var was = STALL.ms; STALL.ms = ms; return was; }
+
+// late(value): what to do with a value that comes after the limit (a sync access handle is closed, or it would hold its file).
+// state: the backend's; once one call has stalled, its later calls fail at once (the edit's clean-up would otherwise wait
+// the limit for each file it removes; the next opening sweeps what is left)
+function within(state, promise, what, late) {
+	if (state.stuck) { if (late) promise.then(late, function () {}); return Promise.reject(new LasError(ERROR_CODES.BAD_STORE, "OPFS is stuck (an earlier call did not answer): not " + what + ". Reload the page and try again")); }
+	var timer;
+	var limit = new Promise(function (res, rej) {
+		timer = setTimeout(function () { state.stuck = true; if (late) promise.then(late, function () {}); rej(new LasError(ERROR_CODES.BAD_STORE, "OPFS did not answer for " + Math.round(STALL.ms / 1000) + " s while " + what + ": the browser's file system is stuck; the edit was stopped and the store left as it was. Reload the page and try again")); }, STALL.ms);
+	});
+	return Promise.race([promise, limit]).finally(function () { clearTimeout(timer); });
+}
+
+function badWhere() { return new LasError(ERROR_CODES.INVALID_ARGUMENT, "where must be { memory }, { opfs: id } or { dir: path }"); }
+
+function split(name) {
+	var i = name.lastIndexOf("/");
+	return i < 0 ? ["", name] : [name.slice(0, i), name.slice(i + 1)];
+}
+
+/**
+ * Open the backend a `where` names. Nothing is created until something is written.
+ * @param {object} where - { memory: true | Map } | { opfs: id, root?: directory handle } | { dir: path }
+ * @returns {Promise<object>} { kind, where, get, put, appender, remove, list, removeAll, lock, unlock }
+ * @throws {LasError} INVALID_ARGUMENT for anything else
+ */
+export async function openBackend(where) {
+	if (!where || typeof where !== "object") throw badWhere();
+	if (where.memory !== undefined) {
+		if (where.memory === true) return memoryBackend(new Map());
+		if (where.memory instanceof Map) return memoryBackend(where.memory);
+		throw badWhere();
+	}
+	if (where.opfs !== undefined) {
+		if (typeof where.opfs !== "string" || !where.opfs || /[/\\]/.test(where.opfs)) throw badWhere();
+		return opfsBackend(where);
+	}
+	if (where.dir !== undefined) {
+		if (typeof where.dir !== "string" || !where.dir) throw badWhere();
+		return dirBackend(where, await import(/* webpackIgnore: true */ /* @vite-ignore */ NODE_FS));
+	}
+	throw badWhere();
+}
+
+function memoryBackend(map) {
+	return {
+		kind: "memory",
+		where: { memory: map },
+		get: async function (name) { return map.has(name) ? map.get(name) : null; },
+		put: async function (name, bytes) { map.set(name, bytes.slice()); },
+		appender: async function (name) {
+			var parts = [], total = 0;
+			return {
+				write: function (bytes) { if (bytes.length) { parts.push(bytes.slice()); total += bytes.length; } },
+				close: async function () {
+					var all = new Uint8Array(total), o = 0;
+					parts.forEach(function (p) { all.set(p, o); o += p.length; });
+					map.set(name, all);
+				}
+			};
+		},
+		remove: async function (name) { map.delete(name); },
+		list: async function () { return Array.from(map.keys()).sort(); },
+		removeAll: async function () { map.clear(); },
+		lock: async function () {},
+		unlock: function () {}
+	};
+}
+
+// OPFS writes go through sync access handles, which only a Worker has
+function needWorker(err) {
+	if (err instanceof TypeError) return new LasError(ERROR_CODES.UNSUPPORTED, "writing a tile store in OPFS needs a Worker (synchronous file access)");
+	return err;
+}
+
+async function folder(root, path, create) {
+	var dir = root || await navigator.storage.getDirectory();
+	var segs = path.split("/");
+	for (var i = 0; i < segs.length; i++) if (segs[i]) dir = await dir.getDirectoryHandle(segs[i], { create: create });
+	return dir;
+}
+
+function opfsBackend(where) {
+	var base = TILES_DIR + "/" + where.opfs, held = null, state = { stuck: false };
+	function opts(sub) { return { root: where.root, dir: sub ? base + "/" + sub : base }; }
+	// the store's folders, looked up once each (a walk from the OPFS root on every file was about 7 ms of the
+	// 12 ms a tile write took); forgotten when the store's folder is removed
+	var dirs = new Map();
+	function dirFor(sub) {
+		var d = dirs.get(sub);
+		if (!d) { d = folder(where.root, sub ? base + "/" + sub : base, true); dirs.set(sub, d); d.catch(function () { dirs.delete(sub); }); }
+		return d;
+	}
+	async function writer(p, flush) {
+		var what = "opening " + p[1] + " of tile store " + where.opfs + " for writing";
+		var fh = await within(state, (await within(state, dirFor(p[0]), what)).getFileHandle(p[1], { create: true }), what), h = await within(state, fh.createSyncAccessHandle(), what, closeLate);
+		h.truncate(0);
+		var at = 0;
+		return {
+			write: function (bytes) {
+				try { h.write(bytes, { at: at }); } catch (e) { throw isQuotaError(e) ? noSpace("writing tile store " + where.opfs + " (" + p[1] + ")") : e; }
+				at += bytes.length;
+			},
+			close: function () { if (flush !== false) h.flush(); h.close(); }
+		};
+	}
+	function missing(e) { return e && e.name === "NotFoundError"; }
+	// a write refused before a byte went in: the empty file it made goes too
+	async function refused(p, e) {
+		try { await within(state, removeScratchFile(p[1], opts(p[0])), "removing " + p[1] + " of tile store " + where.opfs); } catch (x) { /* not made */ }
+		return needWorker(e);
+	}
+	async function names(dir, prefix, out) {
+		for await (var h of dir.values()) {
+			if (h.kind === "directory") await names(h, prefix + h.name + "/", out);
+			else if (prefix || h.name !== LOCK) out.push(prefix + h.name);
+		}
+		return out;
+	}
+	return {
+		kind: "opfs",
+		where: where,
+		get: async function (name) {
+			var p = split(name);
+			try {
+				return await within(state, (async function () {
+					var file = await (await (await dirFor(p[0])).getFileHandle(p[1])).getFile();
+					return new Uint8Array(await file.arrayBuffer());
+				})(), "reading " + p[1] + " of tile store " + where.opfs);
+			} catch (e) {
+				if (missing(e)) return null;
+				throw e;
+			}
+		},
+		// opts.flush false: the file is closed without forcing it to disk (a copy whose manifest comes last)
+		put: async function (name, bytes, opts) {
+			var p = split(name), w;
+			try { w = await writer(p, opts && opts.flush); } catch (e) { throw await refused(p, e); }
+			try { w.write(bytes); } finally { w.close(); }
+		},
+		appender: async function (name) {
+			var p = split(name), w;
+			try { w = await writer(p); } catch (e) { throw await refused(p, e); }
+			return { write: function (bytes) { if (bytes.length) w.write(bytes); }, close: async function () { w.close(); } };
+		},
+		remove: async function (name) {
+			var p = split(name);
+			try { await within(state, (async function () { await (await dirFor(p[0])).removeEntry(p[1]); })(), "removing " + p[1] + " of tile store " + where.opfs); } catch (e) { if (!missing(e)) throw e; }
+		},
+		list: async function () {
+			try { return (await names(await folder(where.root, base, false), "", [])).sort(); } catch (e) { if (missing(e)) return []; throw e; }
+		},
+		removeAll: async function () {
+			this.unlock();
+			dirs.clear();
+			try {
+				var parent = await folder(where.root, TILES_DIR, false);
+				await parent.removeEntry(where.opfs, { recursive: true });
+			} catch (e) { if (!missing(e)) throw e; }
+		},
+		lock: async function () {
+			if (held) return;
+			var dir = await folder(where.root, base, true);
+			var fh = await dir.getFileHandle(LOCK, { create: true });
+			try { held = await within(state, fh.createSyncAccessHandle(), "taking the write lock of tile store " + where.opfs, closeLate); } catch (e) {
+				if (e && LOCKED_ERRORS.indexOf(e.name) >= 0) throw new LasError(ERROR_CODES.BAD_STORE, "store " + where.opfs + " is open for writing in another tab or worker");
+				throw needWorker(e);
+			}
+		},
+		unlock: function () { if (held) { held.close(); held = null; } }
+	};
+}
+
+function dirBackend(where, fs) {
+	var base = where.dir.replace(/[/\\]+$/, "");
+	function full(name) { return base + "/" + name; }
+	function missing(e) { return e && e.code === "ENOENT"; }
+	function parentOf(name) { var p = split(name); return p[0] ? full(p[0]) : base; }
+	function names(dir, prefix, out) {
+		fs.readdirSync(dir, { withFileTypes: true }).forEach(function (d) {
+			if (d.isDirectory()) names(dir + "/" + d.name, prefix + d.name + "/", out);
+			else out.push(prefix + d.name);
+		});
+		return out;
+	}
+	return {
+		kind: "dir",
+		where: where,
+		get: async function (name) {
+			try { var b = await fs.promises.readFile(full(name)); return new Uint8Array(b.buffer, b.byteOffset, b.length); } catch (e) { if (missing(e)) return null; throw e; }
+		},
+		put: async function (name, bytes) {
+			await fs.promises.mkdir(parentOf(name), { recursive: true });
+			await fs.promises.writeFile(full(name), bytes);
+		},
+		appender: async function (name) {
+			await fs.promises.mkdir(parentOf(name), { recursive: true });
+			var fd = fs.openSync(full(name), "w");
+			return { write: function (bytes) { if (bytes.length) fs.writeSync(fd, bytes); }, close: async function () { fs.closeSync(fd); } };
+		},
+		remove: async function (name) { try { await fs.promises.unlink(full(name)); } catch (e) { if (!missing(e)) throw e; } },
+		list: async function () { try { return names(base, "", []).sort(); } catch (e) { if (missing(e)) return []; throw e; } },
+		removeAll: async function () { await fs.promises.rm(base, { recursive: true, force: true }); },
+		lock: async function () {},
+		unlock: function () {}
+	};
+}

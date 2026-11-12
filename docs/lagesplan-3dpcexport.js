@@ -1,5 +1,5 @@
 /* 3D-vyn – exportera punktmoln efter redigering (Victor 2026-11-12): det som klippts bort (ett lager per redigering, med eget namn) och hela molnet utan de borttagna punkterna.
-   Skrivs som LAS 1.2 (punktformat 2: läge, intensitet, färg). LAZ-komprimering finns inte i webbläsaren (laz-perf här är bara avkodare), men LAS öppnas av Trimble Connect, CloudCompare, Recap m.fl.
+   Skrivs som LAZ (LASzip, via vendor/las-laz-js) eller LAS 1.2 (punktformat 2: läge, intensitet, färg).
    Stora moln (okträd) läses nod för nod ur filen i webbläsarens lagring och skrivs direkt till disk (File System Access) så att inget behöver rymmas i minnet. Prefix l3px. */
 const L3PX_REC = 26, L3PX_HDR = 227, L3PX_BATCH = 100000;
 /* Molnets ursprungsdata bit för bit: okträdsnoder läses ur filen, vanliga moln ur de sparade originalen (före redigering). Positionerna är relativa molnets center. */
@@ -44,8 +44,32 @@ function l3pxWriter(c, name, sink) {
   };
 }
 const l3pxFile = s => String(s).replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
+/* LAZ (LASzip-komprimerat) via las-laz-js (vendor/las-laz-js, ren JavaScript): samma punkter som LAS men ofta 3–5 gånger mindre. Skrivs i omgångar så att inget moln behöver rymmas i minnet. */
+let l3pxLib = null;
+async function l3pxLaz(c, mode, name, onP, opts) {
+  l3pxLib = l3pxLib || import("./vendor/las-laz-js/src/index.js"); const lib = await l3pxLib, ctr = c.info.center, hasRgb = !!c.info.rgb;
+  let buf = null, len = 0, sink;
+  if (opts.stream) sink = { write: async (bytes, pos) => { await opts.stream.write({ type: "write", position: pos, data: bytes }); } };
+  else { buf = new Uint8Array(1 << 22); sink = { write: async (bytes, pos) => { const end = pos + bytes.length; if (end > buf.length) { const g = new Uint8Array(Math.max(end, buf.length * 2)); g.set(buf.subarray(0, len)); buf = g; } buf.set(bytes, pos); if (end > len) len = end; } }; }
+  const w = await lib.createLasWriter(sink, { version: "1.2", pointFormat: 2, compress: true, scale: { x: 0.001, y: 0.001, z: 0.001 }, offset: { x: Math.floor(ctr[0]), y: Math.floor(ctr[1]), z: Math.floor(ctr[2]) } });
+  let count = 0, t0 = performance.now();
+  try {
+    for await (const { o, f } of l3pxPieces(c)) {
+      const mask = l3pxMask(c, o, mode), n = o.pos.length / 3; let m = 0; for (let i = 0; i < n; i++) m += mask[i]; if (!m) continue;
+      const x = new Float64Array(m), y = new Float64Array(m), z = new Float64Array(m), it = new Uint16Array(m), r = new Uint16Array(m), g = new Uint16Array(m), b = new Uint16Array(m); let k = 0;
+      for (let i = 0; i < n; i++) { if (!mask[i]) continue; x[k] = o.pos[i * 3] + ctr[0]; y[k] = o.pos[i * 3 + 1] + ctr[1]; z[k] = o.pos[i * 3 + 2] + ctr[2]; const inten = o.inten ? o.inten[i] : 0; it[k] = inten * 257;
+        if (hasRgb && o.rgb) { r[k] = o.rgb[i * 3] * 257; g[k] = o.rgb[i * 3 + 1] * 257; b[k] = o.rgb[i * 3 + 2] * 257; } else { const v = Math.min(255, 40 + inten * 0.84) * 257; r[k] = g[k] = b[k] = v; } k++; }
+      await w.writePoints({ count: m, x, y, z, intensity: it, red: r, green: g, blue: b }); count += m;
+      if (onP && performance.now() - t0 > 250) { onP(f, count); t0 = performance.now(); await new Promise(res => setTimeout(res, 0)); }
+    }
+    await w.close();
+  } catch (e) { try { await w.close(); } catch (e2) { /* redan stoppad */ } throw e; }
+  if (opts.stream) { await opts.stream.close(); return { count }; }
+  return { count, blob: new Blob([buf.slice(0, len)], { type: "application/octet-stream" }) };
+}
 /* Kör exporten. Utan opts.stream samlas filen i minnet och returneras som { blob }. Med opts.stream = en skrivbar ström skrivs den direkt (sidhuvudet sist, överst i filen). */
 async function l3pxExport(c, mode, name, onP, opts = {}) {
+  if (opts.format !== "las") return l3pxLaz(c, mode, name, onP, opts);
   const parts = [], sink = opts.stream ? { write: async b => { await opts.stream.write(b); } } : { write: async b => { parts.push(b); } };
   // Sidhuvudet ska ligga först: reservera platsen och fyll i den när allt är skrivet.
   const wr = l3pxWriter(c, name, sink);
@@ -57,15 +81,15 @@ async function l3pxExport(c, mode, name, onP, opts = {}) {
   parts[0] = h; return { count: wr.count, blob: new Blob(parts, { type: "application/octet-stream" }) };
 }
 /* Användargränssnittet: välj plats (om webbläsaren kan skriva direkt till disk), annars hämtas filen. */
-async function l3pxRun(c, mode, label) {
-  const base = l3pxFile(String(c.name).replace(/\.[^.]+$/, "")), file = `${base} – ${l3pxFile(label)}.las`, big = (c.info.total || c.nTot || 0) > 4e6;
+async function l3pxRun(c, mode, label, opts = {}) {
+  const base = l3pxFile(String(c.name).replace(/\.[^.]+$/, "")), ext = opts.format === "las" ? "las" : "laz", file = `${base} – ${l3pxFile(label)}.${ext}`, big = (c.info.total || c.nTot || 0) > 4e6;
   let stream = null;
-  if (typeof showSaveFilePicker === "function") { try { const fh = await showSaveFilePicker({ suggestedName: file, types: [{ description: "Punktmoln (LAS)", accept: { "application/octet-stream": [".las"] } }] }); stream = await fh.createWritable(); } catch (e) { if (e && e.name === "AbortError") return null; stream = null; } }
+  if (typeof showSaveFilePicker === "function") { try { const fh = await showSaveFilePicker({ suggestedName: file, types: [{ description: ext === "laz" ? "Punktmoln (LAZ)" : "Punktmoln (LAS)", accept: { "application/octet-stream": ["." + ext] } }] }); stream = await fh.createWritable(); } catch (e) { if (e && e.name === "AbortError") return null; stream = null; } }
   if (!stream && big && (c.info.total || 0) > 30e6) { l3Status(`${c.name} är för stort för att samlas i minnet (${l3pcMil(c.info.total)}). Använd Chrome eller Edge, som kan skriva direkt till disk.`, true); return null; }
   l3Status(`Exporterar ${label} …`);
   try {
-    const r = await l3pxExport(c, mode, label, (f, n) => l3Status(`Exporterar ${label}: ${Math.round(f * 100)} % · ${n.toLocaleString("sv-SE")} punkter skrivna`), stream ? { stream } : {});
+    const r = await l3pxExport(c, mode, label, (f, n) => l3Status(`Exporterar ${label}: ${Math.round(f * 100)} % · ${n.toLocaleString("sv-SE")} punkter skrivna`), stream ? { ...opts, stream } : { ...opts });
     if (r.blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(r.blob); a.download = file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000); }
-    l3Toast(`${file}: ${r.count.toLocaleString("sv-SE")} punkter exporterade (LAS).`); return { ...r, file };
+    l3Toast(`${file}: ${r.count.toLocaleString("sv-SE")} punkter exporterade (${ext.toUpperCase()}).`); return { ...r, file };
   } catch (e) { try { if (stream) await stream.abort(); } catch (e2) { /* redan stängd */ } l3Status("Exporten misslyckades: " + e.message, true); return null; }
 }

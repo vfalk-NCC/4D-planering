@@ -1,0 +1,831 @@
+// src/tiles/edit.js
+//==========================================================
+// Edits on a tile store, in place:
+//  - selections: { deletes, count, tiles: { key: ascending Uint32Array } },
+//    indices into each node's points, stamped with the store's delete
+//    counter (a delete or keep moves points, so older ones are refused)
+//  - delete / keep: each touched node rewritten without the points
+//  - setColumn: a standard field by re-encoding the node's records
+//    twice (as they are, and with the new values) and copying only the
+//    bytes that differ, so nothing else changes in any point format
+//    (wave packets and extra bytes included); added columns directly
+//  - addColumn / removeColumn: a typed array per node, in every node
+//  - transform: composed into the manifest; no node is rewritten
+//  - snapshot / restore / discardSnapshot: the manifest kept in itself, and the
+//    node files it names kept too, so an edit can be taken back with no copy
+// Every edit writes nodes as their next generation, then the manifest,
+// then removes the old generation: cut short, the old manifest still
+// names the old files, and the new ones are orphans that the next
+// opening removes.
+//==========================================================
+
+import { LasError, ERROR_CODES } from "../errors.js";
+import { decodeRecords, recordFields, FIELD_TYPES } from "../read/decodeRecords.js";
+import { encodeRecords } from "../write/encodeRecords.js";
+import { createChunkCompressor } from "../laz/compressChunk.js";
+import { EXTRA_TYPES } from "../format/ExtraBytes.js";
+import { selectBox as boxOf, selectPolygon as polygonOf, selectScreen as screenSel, selectScreenLine as screenLineSel, lineTolerance, selectClasses as classesOf, unionSelections, intersectSelections, subtractSelections } from "../ops/select.js";
+import { checkTransform } from "../ops/transform.js";
+import { makePolygonTest, rectAgainstPolygon } from "../ops/polygon.js";
+import { screenOf, boxOnScreen, boxNearLine, checkLine } from "../ops/screen.js";
+import { writeManifest, readManifest } from "./manifest.js";
+import { encodeTile, COLUMN_TYPES } from "./tileFile.js";
+import { tileName } from "./TileStore.js";
+import { phase } from "./build.js";
+import { tightBox } from "./tightBox.js";
+import { movePoints } from "./movePoints.js";
+import { loadTile, rawRecords, storePool } from "./read.js";
+import { nodeWorldBox } from "./select.js";
+import { compareKeys as keyOrder } from "./octree.js";
+
+function bad(message) { return new LasError(ERROR_CODES.INVALID_ARGUMENT, message); }
+function aborted(signal) { if (signal && signal.aborted) throw new LasError(ERROR_CODES.ABORTED, "the edit was stopped"); }
+
+var SETTABLE = { classification: [0, 255], classificationFlags: [0, 15], intensity: [0, 65535], userData: [0, 255], pointSourceId: [0, 65535], red: [0, 65535], green: [0, 65535], blue: [0, 65535] };
+var MORE_RESERVED = ["count", "positions", "bounds", "stats", "colours", "normal", "extra", "extraBytes", "index"];
+
+
+// ---- selections ----
+
+function meets(nb, box) {
+	if (!nb) return false;
+	function lo(k) { return box[k] === undefined || box[k] === null ? -Infinity : box[k]; }
+	function hi(k) { return box[k] === undefined || box[k] === null ? Infinity : box[k]; }
+	return nb.maxX >= lo("minX") && nb.minX <= hi("maxX") && nb.maxY >= lo("minY") && nb.minY <= hi("maxY") && nb.maxZ >= lo("minZ") && nb.minZ <= hi("maxZ");
+}
+
+// A box's slack for pruning: rounding in a point's world coordinates (scale, offset, transform)
+// cannot carry it this far past the node's box
+function slack(nb) {
+	return 1e-9 * (1 + Math.max(Math.abs(nb.minX), Math.abs(nb.maxX), Math.abs(nb.minY), Math.abs(nb.maxY), Math.abs(nb.minZ), Math.abs(nb.maxZ)));
+}
+
+// Where a node's box lies against limits on one axis (undefined: none): -1 clear of them, 1 within, 0 across
+function axisAgainst(lo, hi, min, max, e) {
+	if (min === undefined || min === null) min = -Infinity;
+	if (max === undefined || max === null) max = Infinity;
+	if (hi < min || lo > max) return -1;
+	return lo >= min + e && hi <= max - e ? 1 : 0;
+}
+
+/**
+ * A selection across the store: fn picks points tile by tile.
+ * @param {object} store
+ * @param {function(object, {key: string, count: number, box: object}): (Uint32Array|null)} fn
+ * @param {{fields?: string[], box?: object, classify?: function(object): number, signal?: AbortSignal,
+ *   onProgress?: function({phase: string, done: number, total: number}), threads?: number}} [opts] - box: only tiles
+ *   whose box (moved by the transform) meets it; classify(box): -1 for a tile none of whose points fn
+ *   would pick (skipped), 1 for one all of whose points it would (taken whole, not read), 0 to read it.
+ *   The tiles to read are known before the first is read: onProgress({ phase: "select", done, total }) counts
+ *   them; signal stops it (ABORTED; nothing is written by a selection); LAZ tiles decode on the store's pool
+ *   (threads: 1 for this thread only)
+ * @returns {Promise<{deletes: number, count: number, tiles: object}>}
+ * @throws {LasError} ABORTED
+ */
+export async function select(store, fn, opts) {
+	opts = opts || {};
+	if (typeof fn !== "function") throw bad("select needs a function (cols, tile) -> Uint32Array or null");
+	if (opts.classify !== undefined && typeof opts.classify !== "function") throw bad("classify must be a function (box) -> -1, 0 or 1");
+	var m = store.manifest, keys = Object.keys(m.nodes).sort(keyOrder), out = { deletes: m.deletes, count: 0, tiles: {} };
+	aborted(opts.signal);
+	// every tile is classified first (no reads), so the tiles to read are known and progress counts them
+	var plan = [], toRead = [];
+	for (var i = 0; i < keys.length; i++) {
+		var node = m.nodes[keys[i]];
+		if (!node.count) continue;
+		var nb = nodeWorldBox(m, keys[i]);
+		if (opts.box && !meets(nb, opts.box)) continue;
+		var verdict = opts.classify ? opts.classify(nb) : 0;
+		if (verdict < 0) continue;
+		plan.push({ key: keys[i], count: node.count, box: nb, whole: verdict > 0 });
+		if (verdict <= 0) toRead.push(keys[i]);
+	}
+	var reading = phase(opts.onProgress, "select", toRead.length), done = 0;
+	reading.tick(0);   // the tiles are classified, the first is yet to be read: tells the caller the scan has begun
+	var gen = store.readTiles(toRead, { fields: opts.fields || ["x", "y", "z"], threads: opts.threads });
+	try {
+		for (var p = 0; p < plan.length; p++) {
+			var step = plan[p];
+			aborted(opts.signal);
+			if (step.whole) {
+				var all = new Uint32Array(step.count);
+				for (var a = 0; a < all.length; a++) all[a] = a;
+				out.tiles[step.key] = all;
+				out.count += all.length;
+				continue;
+			}
+			var got = await gen.next();
+			var picked = fn(got.value.points, { key: step.key, count: step.count, box: step.box });
+			if (picked && picked.length) { out.tiles[step.key] = picked instanceof Uint32Array ? picked : Uint32Array.from(picked); out.count += picked.length; }
+			reading.tick(++done);
+		}
+	} finally {
+		await gen.return();
+	}
+	reading.finish();
+	return out;
+}
+
+/** The points inside a box (world coordinates, after the store transform); opts: signal, onProgress, threads (as select). */
+export function selectBox(store, box, opts) {
+	if (!box || typeof box !== "object") throw bad("box must be an object { minX, maxX, minY, maxY, minZ, maxZ }");
+	var useZ = box.minZ !== undefined || box.maxZ !== undefined;
+	return select(store, function (cols) { return boxOf(cols, box); }, {
+		fields: useZ ? ["x", "y", "z"] : ["x", "y"], box: box, signal: opts && opts.signal, onProgress: opts && opts.onProgress, threads: opts && opts.threads,
+		classify: function (nb) {
+			var e = slack(nb), v = Math.min(axisAgainst(nb.minX, nb.maxX, box.minX, box.maxX, e), axisAgainst(nb.minY, nb.maxY, box.minY, box.maxY, e));
+			return useZ ? Math.min(v, axisAgainst(nb.minZ, nb.maxZ, box.minZ, box.maxZ, e)) : v;
+		}
+	});
+}
+
+/** The points inside a polygon in XY (selectPolygon's options, and signal, onProgress, threads as select): a tile wholly inside taken without reading it. */
+export function selectPolygon(store, polygon, opts) {
+	if (!polygon || polygon.length < 6) throw bad("polygon must be [x0, y0, x1, y1, ...] with 3 or more vertices");
+	var shape = makePolygonTest(polygon, opts);
+	var b = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+	for (var i = 0; i + 1 < polygon.length; i += 2) {
+		b.minX = Math.min(b.minX, polygon[i]); b.maxX = Math.max(b.maxX, polygon[i]);
+		b.minY = Math.min(b.minY, polygon[i + 1]); b.maxY = Math.max(b.maxY, polygon[i + 1]);
+	}
+	var tol = opts && opts.tolerance > 0 ? opts.tolerance : 0;
+	b.minX -= tol; b.maxX += tol; b.minY -= tol; b.maxY += tol;
+	if (opts && opts.minZ !== undefined) b.minZ = opts.minZ;
+	if (opts && opts.maxZ !== undefined) b.maxZ = opts.maxZ;
+	var useZ = opts && (opts.minZ !== undefined || opts.maxZ !== undefined);
+	return select(store, function (cols) { return polygonOf(cols, polygon, opts); }, {
+		fields: useZ ? ["x", "y", "z"] : ["x", "y"], box: b, signal: opts && opts.signal, onProgress: opts && opts.onProgress, threads: opts && opts.threads,
+		classify: function (nb) {
+			var e = slack(nb), z = useZ ? axisAgainst(nb.minZ, nb.maxZ, opts.minZ, opts.maxZ, e) : 1;
+			if (z < 0) return -1;
+			var r = rectAgainstPolygon(shape.points, nb.minX, nb.minY, nb.maxX, nb.maxY, shape.tolerance + e);
+			return r < 0 ? -1 : Math.min(r, z);
+		}
+	});
+}
+
+/**
+ * The points inside a shape drawn on the screen (selectScreen's rule): every point it covers, at any
+ * depth. A tile wholly outside the view or the shape is not read; one wholly inside both is taken
+ * without reading it.
+ * @param {object} store
+ * @param {{viewProjection: number[], width: number, height: number, localOrigin?: {x, y, z}}} view - as selectTiles
+ * @param {number[]|TypedArray} polygon - pixels from the view's top-left, y down
+ * @param {{boundary?: "touching"|"inside", tolerance?: number, signal?: AbortSignal, onProgress?: function, threads?: number}} [opts] - signal, onProgress, threads as select
+ */
+export function selectScreen(store, view, polygon, opts) {
+	var s = screenOf(view), shape = makePolygonTest(polygon, opts), margin = shape.tolerance + 1e-6 * (1 + s.width + s.height);
+	return select(store, function (cols) { return screenSel(cols, view, polygon, opts); }, {
+		fields: ["x", "y", "z"], signal: opts && opts.signal, onProgress: opts && opts.onProgress, threads: opts && opts.threads,
+		classify: function (nb) { return boxOnScreen(s, nb, shape.points, margin); }
+	});
+}
+
+/**
+ * The points whose pixel lies near an open polyline drawn on the screen (selectScreenLine's rule), at any depth: a
+ * knife line's neighbourhood. A tile whose box is outside the view, or whose pixels stay clear of the line by more
+ * than the tolerance, is not read.
+ * @param {object} store
+ * @param {{viewProjection: number[], width: number, height: number, localOrigin?: {x, y, z}}} view - as selectScreen
+ * @param {number[]|TypedArray} line - pixels from the view's top-left, y down, at least 2 vertices, open
+ * @param {{tolerance?: number, signal?: AbortSignal, onProgress?: function, threads?: number}} [opts] - tolerance in
+ *   pixels (default 4); signal, onProgress, threads as select
+ */
+export function selectScreenLine(store, view, line, opts) {
+	var s = screenOf(view), L = checkLine(line), tol = lineTolerance(opts), margin = tol + 1e-6 * (1 + s.width + s.height);
+	return select(store, function (cols) { return screenLineSel(cols, view, L, opts); }, {
+		fields: ["x", "y", "z"], signal: opts && opts.signal, onProgress: opts && opts.onProgress, threads: opts && opts.threads,
+		classify: function (nb) { return boxNearLine(s, nb, L, margin); }
+	});
+}
+
+/** The points of some classes; opts: signal, onProgress, threads (as select). */
+export function selectClasses(store, classes, opts) {
+	return select(store, function (cols) { return classesOf(cols, classes); }, { fields: ["classification"], signal: opts && opts.signal, onProgress: opts && opts.onProgress, threads: opts && opts.threads });
+}
+
+/**
+ * Combine two tile selections tile by tile.
+ * @param {object} a
+ * @param {object} b
+ * @param {"union"|"intersect"|"subtract"} op
+ * @returns {{deletes: number, count: number, tiles: object}}
+ */
+export function combineTileSelections(a, b, op) {
+	var fn = { union: unionSelections, intersect: intersectSelections, subtract: subtractSelections }[op];
+	if (!fn) throw bad("op must be union, intersect or subtract");
+	if (!a || !b || !a.tiles || !b.tiles) throw bad("combineTileSelections needs two tile selections");
+	if (a.deletes !== b.deletes) throw bad("the selections were made at different edits (a delete or keep came between them)");
+	var out = { deletes: a.deletes, count: 0, tiles: {} }, none = new Uint32Array(0);
+	var keys = Object.keys(a.tiles).concat(Object.keys(b.tiles).filter(function (k) { return !a.tiles[k]; })).sort(keyOrder);
+	keys.forEach(function (k) {
+		var c = fn(a.tiles[k] || none, b.tiles[k] || none);
+		if (c.length) { out.tiles[k] = c; out.count += c.length; }
+	});
+	return out;
+}
+
+function checkSelection(store, sel) {
+	if (!sel || typeof sel !== "object" || !sel.tiles) throw bad("a tile selection is needed (store.select, selectBox, selectPolygon or selectClasses)");
+	if (sel.deletes !== store.manifest.deletes) throw bad("this selection was made before the last delete or keep; select again");
+	Object.keys(sel.tiles).forEach(function (k) {
+		var node = store.manifest.nodes[k];
+		if (!node) throw bad("the selection names tile " + k + ", which is not in the store");
+		var s = sel.tiles[k];
+		for (var i = 0; i < s.length; i++) {
+			if (!(s[i] < node.count) || (i && s[i] <= s[i - 1])) throw bad("selection index " + s[i] + " is not an ascending point of tile " + k + " (" + node.count + " points)");
+		}
+	});
+}
+
+// ---- writing nodes ----
+
+async function readNode(store, key) {
+	var t = await loadTile(store, key);
+	return { t: t, records: rawRecords(store, t) };
+}
+
+// A node for an edit that changes only its added columns: the records are left as stored (packed
+// on a compressed store), never decompressed - put copies them through
+async function readNodeColumns(store, key) {
+	var t = await loadTile(store, key);
+	return { t: t, records: null, packed: t.compressed ? t.records : null, raw: t.compressed ? null : t.records };
+}
+
+function packOf(store) {
+	var m = store.manifest;
+	return m.laz ? createChunkCompressor(m.laz, m.recordLength) : null;
+}
+
+// Edits on one store run one at a time, in the order asked
+export function queued(store, fn) {
+	var run = (store._editing || Promise.resolve()).then(fn);
+	store._editing = run.catch(function () {});
+	return run;
+}
+
+// One edit: under the backend's lock, from the manifest this store last saw (a store changed
+// in another tab or worker since is refused, not overwritten). run(put) reads nodes and hands
+// each node's new records and columns to put, which writes its next generation at once (an
+// orphan until the manifest lands); then the manifest (change(body) edits it); then the old
+// generations go. Cut short: the new files go, unless the manifest naming them landed.
+async function session(store, run, change) {
+	var be = store._backend;
+	await be.lock();
+	try {
+		var disk = await readManifest(be);
+		if (!disk || disk.seq !== store._seq) throw new LasError(ERROR_CODES.BAD_STORE, "the tile store changed in another tab or worker since it was opened here; open it again");
+		var m = store.manifest, len = m.recordLength, pack = packOf(store);
+		var body = JSON.parse(JSON.stringify(m)), written = [], replaced = [], held = {};
+		// a node's next generation is above every one a snapshot holds (its files are kept, never written over)
+		(m.snapshots || []).forEach(function (s) { Object.keys(s.body.nodes).forEach(function (k) { held[k] = Math.max(held[k] || 0, s.body.nodes[k].gen); }); });
+		var nextGen = function (key, old) { return Math.max(old.gen, held[key] || 0) + 1; };
+		// box with records null: the node was packed and measured on the pool (count and records as they were)
+		var put = async function (key, records, columns, oldSize, same, packed, box) {
+			var old = m.nodes[key];
+			// same: a column-only edit - the node's records go through as stored (packed or raw), its box stays
+			if (same) {
+				var keep = same.packed || same.raw;
+				var kept = encodeTile({ count: old.count, records: keep, compressed: !!same.packed, columns: columns });
+				var gen = nextGen(key, old), keptName = tileName(key, gen);
+				await be.put(keptName, kept);
+				written.push(keptName);
+				replaced.push(tileName(key, old.gen));
+				body.nodes[key] = { count: old.count, gen: gen, box: old.box };
+				body.bytes += kept.length - oldSize;
+				return;
+			}
+			var measured = records === null, count = measured ? old.count : records.length / len;
+			if (pack && store._onPack) store._onPack(key);
+			var bytes = encodeTile({ count: count, records: packed || (pack ? pack(records, 0, count) : records), compressed: !!pack, columns: columns });
+			var gen = nextGen(key, old), name = tileName(key, gen);
+			await be.put(name, bytes);
+			written.push(name);
+			replaced.push(tileName(key, old.gen));
+			body.nodes[key] = { count: count, gen: gen, box: measured ? box : tightBox(records, len, m.scale, m.offset) };
+			body.bytes += bytes.length - oldSize;
+		};
+		var result, seq;
+		try {
+			result = await run(put, m, function (name) { replaced.push(name); });
+			if (change) change(body);
+			body.edits++;
+			seq = await writeManifest(be, body);
+		} catch (err) {
+			var now = null;
+			try { now = await readManifest(be); } catch (e) { now = null; }
+			if (now && now.seq === store._seq + 1 && JSON.stringify(now.body) === JSON.stringify(body)) {
+				// the manifest landed before the write reported its error: it stands
+				store.manifest = now.body;
+				store._seq = now.seq;
+				await removeEach(be, unreferenced(body, replaced));
+			} else await removeEach(be, written);
+			throw err;
+		}
+		store.manifest = body;
+		store._seq = seq;
+		await removeEach(be, unreferenced(body, replaced));
+		return result;
+	} finally {
+		be.unlock();
+	}
+}
+
+var POOL_WAIT = 30000;   // ms the pool may take over one tile before that tile is done on this thread (as buildTiles packs)
+
+// A pool task that fails or does not answer in POOL_WAIT gives null: that tile is done on this thread instead
+function pooled(task) {
+	return new Promise(function (resolve) {
+		var timer = setTimeout(function () { resolve(null); }, POOL_WAIT);
+		Promise.resolve().then(task).then(function (r) { clearTimeout(timer); resolve(r); }, function () { clearTimeout(timer); resolve(null); });
+	});
+}
+
+// Rewrite nodes: each is loaded with its records raw, work(key, { t, records }) returns { records, columns } (or
+// null to leave it), and put writes it. On a compressed store, tiles are decoded and packed on the store's worker
+// pool, several at a time (threads: 1 for this thread only); a pool that fails or stalls hands the rest to this
+// thread. The files are the same either way. Progress is as each tile is written; the signal is checked between
+// groups of tiles. skip(key) true: the tile's records are not needed (work gets records: null), so they are not decoded.
+// remote(key, t) (compressed tiles on the pool only) returns a pool.move task for a tile, which a worker decodes, changes,
+// packs and measures with no records coming back here; null leaves the tile to work.
+async function rewriteNodes(store, put, keys, opts, work, skip, remote) {
+	var m = store.manifest, len = m.recordLength, pool = null, down = false;
+	var signal = opts && opts.signal;
+	if (m.laz && !(opts && opts.threads === 1) && keys.length >= 2) pool = await storePool(store, opts && opts.threads > 0 ? Math.floor(opts.threads) : 0);
+	var step = pool ? 2 * pool.size : 1, working = phase(opts && opts.onProgress, "edit", keys.length), finished = 0;
+	working.tick(0);
+	var one = async function (key) {
+		var t = await loadTile(store, key), records = null, none = !!skip && skip(key);
+		if (pool && !down && remote && t.compressed && t.count) {
+			var task = remote(key, t), r0 = task ? await pooled(function () { return pool.move(task); }) : null;
+			if (r0) { await put(key, null, t.columns, t.size, null, r0.bytes, r0.box); working.tick(++finished); return; }
+			if (task) down = true;
+		}
+		if (pool && !down && !none && t.compressed && t.count) {
+			records = await pooled(function () { return pool.decode({ vlr: m.laz, recordLength: len, packed: t.records.slice().buffer, chunks: [{ s: 0, e: t.records.length, count: t.count }], base: 0 }); });
+			if (!records) down = true;
+		}
+		if (!records && !none) records = rawRecords(store, t);
+		var out = work(key, { t: t, records: records });
+		if (!out) { working.tick(++finished); return; }
+		var packed = null, count = out.records.length / len;
+		if (pool && !down && count) {
+			var r = await pooled(function () { return pool.compress({ vlr: m.laz, recordLength: len, records: out.records.slice().buffer, counts: [count] }); });
+			if (r) packed = r.bytes; else down = true;
+		}
+		await put(key, out.records, out.columns, t.size, null, packed);
+		working.tick(++finished);
+	};
+	for (var k = 0; k < keys.length; k += step) {
+		aborted(signal);
+		await Promise.all(keys.slice(k, k + step).map(one));
+	}
+	working.finish();
+}
+
+// The files in names that neither the manifest nor a snapshot in it names
+function unreferenced(body, names) {
+	var live = new Set();
+	var add = function (nodes) { Object.keys(nodes).forEach(function (k) { live.add(tileName(k, nodes[k].gen)); }); };
+	add(body.nodes);
+	(body.snapshots || []).forEach(function (s) { add(s.body.nodes); });
+	return names.filter(function (n) { return !live.has(n); });
+}
+
+async function removeEach(be, names) {
+	for (var i = 0; i < names.length; i++) { try { await be.remove(names[i]); } catch (e) { /* the next opening sweeps it */ } }
+}
+
+// ---- delete / keep ----
+
+function removeWhere(store, sel, keepSelected, opts) {
+	return queued(store, function () {
+		checkSelection(store, sel);
+		var removed = 0;
+		return session(store, async function (put, m) {
+			var len = m.recordLength;
+			// the tiles with something to remove (or, for keep, something to keep out); the rest stay as they are
+			var keys = (keepSelected ? Object.keys(m.nodes) : Object.keys(sel.tiles)).sort(keyOrder).filter(function (key) {
+				var node = m.nodes[key], picked = sel.tiles[key] || new Uint32Array(0);
+				return node.count && !(keepSelected && picked.length === node.count) && !(!keepSelected && !picked.length);
+			});
+			await rewriteNodes(store, put, keys, opts, function (key, n) {
+				var node = m.nodes[key], picked = sel.tiles[key] || new Uint32Array(0), flag = new Uint8Array(node.count);
+				for (var p = 0; p < picked.length; p++) flag[picked[p]] = 1;
+				var stay = keepSelected ? 1 : 0, kept = 0;
+				for (var q = 0; q < node.count; q++) if (flag[q] === stay) kept++;
+				var records = new Uint8Array(kept * len), columns = n.t.columns.map(function (c) { return new c.constructor(kept); }), o = 0;
+				for (var r = 0; r < node.count; r++) {
+					if (flag[r] !== stay) continue;
+					records.set(n.records.subarray(r * len, (r + 1) * len), o * len);
+					for (var c = 0; c < columns.length; c++) columns[c][o] = n.t.columns[c][r];
+					o++;
+				}
+				removed += node.count - kept;
+				return { records: records, columns: columns };
+			}, function (key) {
+				// a tile that loses every point (a keep with none picked, a delete with all): written empty, never decoded
+				var picked = sel.tiles[key];
+				return keepSelected ? !(picked && picked.length) : !!picked && picked.length === m.nodes[key].count;
+			});
+			return { removed: removed };
+		}, function (body) { body.deletes++; });
+	});
+}
+
+/**
+ * Delete the selected points. opts: signal (stops it between groups of tiles: ABORTED, the store as it was),
+ * onProgress({ phase: "edit", done, total }) by tile, threads (1: no worker pool; a compressed store's tiles are
+ * decoded and packed on the store's pool).
+ */
+export function deletePoints(store, sel, opts) { return removeWhere(store, sel, false, opts); }
+
+/** Keep only the selected points (opts as deletePoints). */
+export function keepPoints(store, sel, opts) { return removeWhere(store, sel, true, opts); }
+
+// ---- columns ----
+
+function checkValue(name, v, range, where) {
+	if (typeof v !== "number" || !Number.isInteger(v) || v < range[0] || v > range[1]) throw bad(name + " must be a whole number from " + range[0] + " to " + range[1] + " (" + where + " is " + v + ")");
+}
+
+function checkTyped(type, v, name, where) {
+	var e = EXTRA_TYPES[type];
+	if (e.big) {
+		if (typeof v !== "bigint" && !Number.isSafeInteger(v)) throw bad(name + " is " + type + ": " + where + " must be a whole number (or BigInt), not " + v);
+		var b = BigInt(v);
+		if (b < e.min || b > e.max) throw bad(name + " is " + type + ": " + where + " " + v + " is outside " + e.min + " to " + e.max);
+		return b;
+	}
+	if (typeof v !== "number") throw bad(name + " is " + type + ": " + where + " must be a number, not " + typeof v);
+	if (e.int && (!Number.isInteger(v) || v < e.min || v > e.max)) throw bad(name + " is " + type + ": " + where + " " + v + " is not a whole number from " + e.min + " to " + e.max);
+	if (!e.int && isFinite(v) && Math.abs(v) > e.max) throw bad(name + " is " + type + ": " + where + " " + v + " is out of range");
+	return v;
+}
+
+/**
+ * Set a field for the selected points: one value, or { key: typed array } in the selection's order.
+ * opts: signal (stops it between groups of tiles: ABORTED, the store as it was), onProgress({ phase: "edit", done, total }),
+ * threads (1: no worker pool). A compressed store's tiles are decoded and packed on the store's worker pool.
+ */
+export function setColumn(store, sel, name, value, opts) {
+	return queued(store, function () {
+		checkSelection(store, sel);
+		var m = store.manifest, added = m.columns.map(function (c) { return c.name; }), ai = added.indexOf(name);
+		if (ai < 0 && !SETTABLE[name]) throw bad(name + " cannot be set on a tile store: classification, classificationFlags, intensity, userData, pointSourceId, red, green, blue or an added column");
+		if (ai < 0 && (name === "red" || name === "green" || name === "blue") && recordFields(m.pointFormat).indexOf(name) < 0) throw bad(name + " cannot be set: point format " + m.pointFormat + " has no colour");
+		var perTile = value !== null && typeof value === "object";
+		var keys = Object.keys(sel.tiles).sort(keyOrder);
+		keys.forEach(function (k) {
+			var want = perTile ? value[k] : null, idx = sel.tiles[k];
+			if (perTile && (!want || want.length !== idx.length)) throw bad("value[" + k + "] must hold one value for each of the tile's " + idx.length + " selected points");
+			for (var i = 0; i < idx.length; i++) {
+				var v = perTile ? want[i] : value;
+				if (ai < 0) checkValue(name, v, SETTABLE[name], "point " + idx[i] + " of tile " + k);
+				else checkTyped(m.columns[ai].type, v, name, "point " + idx[i] + " of tile " + k);
+				if (!perTile) break;
+			}
+		});
+		return session(store, async function (put) {
+			if (ai < 0) {
+				// a standard field: each tile's records re-encoded (decoded and packed on the pool for a compressed store)
+				await rewriteNodes(store, put, keys, opts, function (key, n) {
+					return { records: patchField(store, n.records, name, sel.tiles[key], perTile ? value[key] : null, value), columns: n.t.columns };
+				});
+				return;
+			}
+			// an added column: the typed array only, the records go through as stored
+			var working = phase(opts && opts.onProgress, "edit", keys.length);
+			for (var t = 0; t < keys.length; t++) {
+				aborted(opts && opts.signal);
+				working.tick(t);
+				var key = keys[t], idx = sel.tiles[key], n = await readNodeColumns(store, key), want = perTile ? value[key] : null;
+				var col = n.t.columns[ai].slice(), big = EXTRA_TYPES[m.columns[ai].type].big;
+				for (var i = 0; i < idx.length; i++) { var v = perTile ? want[i] : value; col[idx[i]] = big ? BigInt(v) : v; }
+				var columns = n.t.columns.slice();
+				columns[ai] = col;
+				await put(key, null, columns, n.t.size, n);
+			}
+			working.finish();
+		}, null);
+	});
+}
+
+/**
+ * Move points: value { key: { index (ascending), x, y, z } } in world coordinates (after the store transform). The
+ * records take the store transform's inverse, then the scale and offset; each node's box is measured again.
+ * opts: signal (checked between groups of tiles: ABORTED, the store as it was), onProgress({ phase: "edit", done, total })
+ * by tile, threads (1: no worker pool; a compressed store's tiles are decoded and packed on the store's pool).
+ */
+export function setPositions(store, value, opts) {
+	return queued(store, function () {
+		var m = store.manifest;
+		if (!value || typeof value !== "object") throw bad("positions must be { key: { index, x, y, z } }");
+		var keys = Object.keys(value).sort(keyOrder), inv = m.transform ? invertTransform(m.transform) : null;
+		keys.forEach(function (k) {
+			var v = value[k], node = m.nodes[k];
+			if (!node) throw bad("the positions name tile " + k + ", which is not in the store");
+			if (!v || !v.index || !v.x || !v.y || !v.z || v.x.length !== v.index.length || v.y.length !== v.index.length || v.z.length !== v.index.length) throw bad("positions[" + k + "] must be { index, x, y, z } of one length");
+			for (var i = 0; i < v.index.length; i++) if (!(v.index[i] < node.count) || (i && v.index[i] <= v.index[i - 1])) throw bad("positions[" + k + "].index " + v.index[i] + " is not an ascending point of the tile (" + node.count + " points)");
+		});
+		return session(store, async function (put) {
+			var spec = function (key) {
+				var v = value[key];
+				return { index: Uint32Array.from(v.index), x: Float64Array.from(v.x), y: Float64Array.from(v.y), z: Float64Array.from(v.z), scale: m.scale, offset: m.offset, storeT: m.transform || null, inv: inv };
+			};
+			await rewriteNodes(store, put, keys, opts, function (key, n) {
+				var records = n.records.slice();
+				movePoints(records, m.recordLength, spec(key));
+				return { records: records, columns: n.t.columns };
+			}, null, function (key, t) { return movedTask(m, t, spec(key)); });
+		}, null);
+	});
+}
+
+// a pool.move task: the tile's packed records copied (the pool transfers them), and the spec's buffers
+function movedTask(m, t, spec) {
+	var task = { vlr: m.laz, recordLength: m.recordLength, count: t.count, packed: t.records.slice().buffer, scale: spec.scale, offset: spec.offset, storeT: spec.storeT, inv: spec.inv, index: spec.index.buffer };
+	if (spec.T) task.T = spec.T;
+	else { task.x = spec.x.buffer; task.y = spec.y.buffer; task.z = spec.z.buffer; }
+	return task;
+}
+
+/**
+ * Move the selected points by a transform { m, t } (as makeTransform: row-major 3x3 m, then t) in world coordinates
+ * (after the store transform): each becomes m * p + t. One atomic edit, on the pool like setPositions; selections stay valid.
+ * The new positions are rounded to the store's scale, so moving back by the inverse of a rotation or scale can end up
+ * one scale unit from where it began (a translation by a multiple of the scale is exact).
+ * opts: signal, onProgress, threads (as setPositions).
+ */
+export function transformPoints(store, sel, T, opts) {
+	return queued(store, function () {
+		checkSelection(store, sel);
+		checkTransform(T, "transform");
+		var m = store.manifest, keys = Object.keys(sel.tiles).sort(keyOrder), inv = m.transform ? invertTransform(m.transform) : null;
+		var move = { m: Array.from(T.m), t: Array.from(T.t) };
+		return session(store, async function (put) {
+			var spec = function (key) { return { index: Uint32Array.from(sel.tiles[key]), T: move, scale: m.scale, offset: m.offset, storeT: m.transform || null, inv: inv }; };
+			await rewriteNodes(store, put, keys, opts, function (key, n) {
+				var records = n.records.slice();
+				movePoints(records, m.recordLength, spec(key));
+				return { records: records, columns: n.t.columns };
+			}, null, function (key, t) { return movedTask(m, t, spec(key)); });
+			return { moved: sel.count };
+		}, null);
+	});
+}
+
+// { m, t } inverted: m^-1, -m^-1 t
+function invertTransform(T) {
+	var a = T.m, det = a[0] * (a[4] * a[8] - a[5] * a[7]) - a[1] * (a[3] * a[8] - a[5] * a[6]) + a[2] * (a[3] * a[7] - a[4] * a[6]);
+	var i = [(a[4] * a[8] - a[5] * a[7]) / det, (a[2] * a[7] - a[1] * a[8]) / det, (a[1] * a[5] - a[2] * a[4]) / det,
+		(a[5] * a[6] - a[3] * a[8]) / det, (a[0] * a[8] - a[2] * a[6]) / det, (a[2] * a[3] - a[0] * a[5]) / det,
+		(a[3] * a[7] - a[4] * a[6]) / det, (a[1] * a[6] - a[0] * a[7]) / det, (a[0] * a[4] - a[1] * a[3]) / det];
+	return { m: i, t: [0, 1, 2].map(function (r) { return -(i[3 * r] * T.t[0] + i[3 * r + 1] * T.t[1] + i[3 * r + 2] * T.t[2]); }) };
+}
+
+// Re-encode the node twice and copy only the bytes the new values change
+function patchField(store, records, name, idx, values, value) {
+	var m = store.manifest, len = m.recordLength, n = records.length / len;
+	var cols = decodeRecords(records, store.header, { fields: recordFields(m.pointFormat) });
+	var so = { scale: m.scale, offset: m.offset };
+	function encode() {
+		var out = new Uint8Array(records.length);
+		encodeRecords(cols, m.pointFormat, len, so, null, new DataView(out.buffer), 0, { bounds: { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity }, byReturn: new Array(15).fill(0) }, 0, null);
+		return out;
+	}
+	var before = encode();
+	for (var i = 0; i < idx.length; i++) cols[name][idx[i]] = values ? values[i] : value;
+	var after = encode(), out = records.slice();
+	for (var b = 0; b < n * len; b++) if (after[b] !== before[b]) out[b] = after[b];
+	return out;
+}
+
+/**
+ * Add a column every point holds, set to fill.
+ */
+// Run one() on each key, GROUP at a time (the tiles are independent), looking at the signal between groups and reporting each tile done
+var GROUP = 16;
+async function eachTile(keys, opts, one) {
+	var signal = opts && opts.signal, working = phase(opts && opts.onProgress, "edit", keys.length), finished = 0;
+	working.tick(0);
+	for (var k = 0; k < keys.length; k += GROUP) {
+		aborted(signal);
+		await Promise.all(keys.slice(k, k + GROUP).map(function (key) { return one(key).then(function () { working.tick(++finished); }); }));
+	}
+	working.finish();
+}
+
+// opts: signal (checked between groups of tiles: ABORTED, the store as it was), onProgress({ phase: "edit", done, total }) by tile
+export function addColumn(store, name, type, fill, opts) {
+	return queued(store, function () {
+		var m = store.manifest;
+		if (typeof name !== "string" || !name || name.length > 32 || /[^\x01-\xff]/.test(name)) throw bad("a column name is 1 to 32 characters, one byte each");
+		var taken = Object.keys(FIELD_TYPES).concat(MORE_RESERVED, store.extraBytes.map(function (f) { return f.column; }), m.columns.map(function (c) { return c.name; }));
+		if (taken.indexOf(name) >= 0) throw bad("the column name " + name + " is taken (a standard field, a reserved name, a file extra column or an added column)");
+		if (!COLUMN_TYPES[type]) throw bad("type " + type + " is not one of u8, i8, u16, i16, u32, i32, u64, i64, f32, f64");
+		if (fill === undefined) fill = 0;
+		var f = checkTyped(type, fill, name, "fill");
+		return session(store, async function (put) {
+			var keys = Object.keys(m.nodes).sort(keyOrder);
+			await eachTile(keys, opts, async function (key) {
+				var n = await readNodeColumns(store, key), col = new COLUMN_TYPES[type](n.t.count);
+				col.fill(f);
+				await put(key, null, n.t.columns.concat([col]), n.t.size, n);
+			});
+		}, function (body) { body.columns.push({ name: name, type: type, fill: typeof f === "bigint" ? String(f) : f }); });
+	});
+}
+
+/**
+ * Write an added column and drop others in ONE pass over the nodes (one generation of each node, one manifest): what
+ * addColumn + setColumn + removeColumn do in three whole-store rewrites. name is made (type, fill) when the store has no
+ * such column, else it must have that type. values { key: typed array }: per node, one value a point (or, with
+ * opts.selection, one a selected point, in its order); a node it does not name keeps its values (fill when new). drop:
+ * added columns removed in the same edit (a previous run's), never name itself. Cut short (signal, an error), the store
+ * stays as it was. opts: selection, fill, drop, signal, onProgress({ phase: "edit", done, total }) by tile.
+ */
+export function writeColumn(store, name, type, values, opts) {
+	opts = opts || {};
+	return queued(store, function () {
+		var m = store.manifest, names = m.columns.map(function (c) { return c.name; }), ai = names.indexOf(name);
+		if (!COLUMN_TYPES[type]) throw bad("type " + type + " is not one of u8, i8, u16, i16, u32, i32, u64, i64, f32, f64");
+		if (ai < 0) {
+			if (typeof name !== "string" || !name || name.length > 32 || /[^\x01-\xff]/.test(name)) throw bad("a column name is 1 to 32 characters, one byte each");
+			var taken = Object.keys(FIELD_TYPES).concat(MORE_RESERVED, store.extraBytes.map(function (f) { return f.column; }));
+			if (taken.indexOf(name) >= 0) throw bad("the column name " + name + " is taken (a standard field, a reserved name or a file extra column)");
+		} else if (m.columns[ai].type !== type) throw bad("column " + name + " is " + m.columns[ai].type + ", not " + type + "; give another name");
+		var fill = checkTyped(type, opts.fill === undefined ? 0 : opts.fill, name, "fill");
+		var drop = opts.drop === undefined ? [] : opts.drop;
+		if (!Array.isArray(drop)) throw bad("drop must be an array of added column names");
+		var dropAt = drop.map(function (d) {
+			var j = names.indexOf(d);
+			if (j < 0) throw bad("drop names " + JSON.stringify(d) + ", which is not an added column of the store");
+			if (d === name) throw bad("drop cannot name the column being written (" + name + ")");
+			return j;
+		});
+		if (!values || typeof values !== "object") throw bad("values must be { key: typed array }, per node");
+		var sel = opts.selection;
+		if (sel !== undefined) checkSelection(store, sel);
+		var Typed = COLUMN_TYPES[type], big = EXTRA_TYPES[type].big;
+		Object.keys(values).forEach(function (k) {
+			var node = m.nodes[k], v = values[k];
+			if (!node) throw bad("values names tile " + k + ", which is not in the store");
+			var want = sel ? (sel.tiles[k] ? sel.tiles[k].length : -1) : node.count;
+			if (want < 0) throw bad("values names tile " + k + ", which the selection does not");
+			if (!v || v.length !== want) throw bad("values[" + k + "] must hold one value for each of the tile's " + want + (sel ? " selected" : "") + " points");
+			if (!(v instanceof Typed)) for (var i = 0; i < v.length; i++) checkTyped(type, v[i], name, "point " + (sel ? sel.tiles[k][i] : i) + " of tile " + k);
+		});
+		var gone = new Set(dropAt);
+		return session(store, async function (put) {
+			// every node when the column is new or a column goes; else only the nodes given values
+			var keys = (ai < 0 || dropAt.length ? Object.keys(m.nodes) : Object.keys(values)).sort(keyOrder);
+			await eachTile(keys, opts, async function (key) {
+				var n = await readNodeColumns(store, key), cols = n.t.columns, v = values[key], col;
+				if (ai >= 0) col = v ? cols[ai].slice() : cols[ai];
+				else { col = new Typed(n.t.count); if (big ? fill !== 0n : fill !== 0) col.fill(fill); }
+				if (v) {
+					var idx = sel ? sel.tiles[key] : null;
+					for (var i = 0; i < v.length; i++) col[idx ? idx[i] : i] = big ? BigInt(v[i]) : v[i];
+				}
+				var next = [];
+				for (var j = 0; j < cols.length; j++) if (!gone.has(j)) next.push(j === ai ? col : cols[j]);
+				if (ai < 0) next.push(col);
+				await put(key, null, next, n.t.size, n);
+			});
+		}, function (body) {
+			var kept = body.columns.filter(function (c, j) { return !gone.has(j); });
+			if (ai < 0) kept.push({ name: name, type: type, fill: typeof fill === "bigint" ? String(fill) : fill });
+			body.columns = kept;
+		});
+	});
+}
+
+/** Remove an added column from every node. */
+// opts as addColumn
+export function removeColumn(store, name, opts) {
+	return queued(store, function () {
+		var m = store.manifest, ai = m.columns.map(function (c) { return c.name; }).indexOf(name);
+		if (ai < 0) throw bad("no added column " + name + " in the store");
+		return session(store, async function (put) {
+			var keys = Object.keys(m.nodes).sort(keyOrder);
+			await eachTile(keys, opts, async function (key) {
+				var n = await readNodeColumns(store, key);
+				await put(key, null, n.t.columns.filter(function (c, j) { return j !== ai; }), n.t.size, n);
+			});
+		}, function (body) { body.columns.splice(ai, 1); });
+	});
+}
+
+// ---- transform ----
+
+/**
+ * Compose a transform onto the store's: T after the one it has. No node is rewritten.
+ */
+export function transform(store, T) {
+	return queued(store, function () {
+		checkTransform(T, "transform");
+		var old = store.manifest.transform, m = Array.from(T.m), t = Array.from(T.t);
+		if (old) {
+			var a = m, b = old.m, mm = [];
+			for (var r = 0; r < 3; r++) for (var c = 0; c < 3; c++) mm.push(a[3 * r] * b[c] + a[3 * r + 1] * b[3 + c] + a[3 * r + 2] * b[6 + c]);
+			t = [0, 1, 2].map(function (r) { return a[3 * r] * old.t[0] + a[3 * r + 1] * old.t[1] + a[3 * r + 2] * old.t[2] + t[r]; });
+			m = mm;
+		}
+		return session(store, async function () {}, function (body) { body.transform = { m: m, t: t }; });
+	});
+}
+
+// ---- snapshots ----
+// A snapshot is the manifest as it stands, kept in the manifest (body.snapshots), and the node files it names are kept
+// as edits replace them. Taking one writes no tile file; restoring one points the store at those files again and
+// removes the ones written since. They cost the disk of the tiles replaced since, until restored or discarded.
+
+function findSnapshot(m, id) {
+	var s = (m.snapshots || []).filter(function (x) { return x.id === id; })[0];
+	if (!s) throw bad("no snapshot " + JSON.stringify(id) + " in the store");
+	return s;
+}
+
+export function snapshotInfo(s) {
+	var points = 0;
+	Object.keys(s.body.nodes).forEach(function (k) { points += s.body.nodes[k].count; });
+	return { id: s.id, label: s.label, at: s.at, points: points };
+}
+
+/**
+ * Keep the store as it is, to take later edits back (restore) or let go (discardSnapshot).
+ * @param {object} store
+ * @param {string} [label]
+ * @returns {Promise<{id: string, label: string|null, at: number, points: number}>}
+ */
+export function snapshot(store, label) {
+	return queued(store, function () {
+		var info = null;
+		return session(store, async function () {}, function (body) {
+			var copy = JSON.parse(JSON.stringify(body));
+			delete copy.snapshots;
+			body.snapshotSeq = (body.snapshotSeq || 0) + 1;
+			var s = { id: "s" + body.snapshotSeq, label: label === undefined ? null : String(label), at: Date.now(), body: copy };
+			body.snapshots = (body.snapshots || []).concat([s]);
+			info = snapshotInfo(s);
+		}).then(function () { return info; });
+	});
+}
+
+/**
+ * Put the store back as it was when the snapshot was taken, and use the snapshot up. Edits made since are taken back,
+ * their files removed. Selections made before a delete or keep since are refused (select again).
+ * @param {object} store
+ * @param {string} id - from snapshot / store.snapshots()
+ * @returns {Promise<{restored: string}>}
+ * @throws {LasError} INVALID_ARGUMENT for an id not in the store; BAD_STORE when a file the snapshot names is gone
+ */
+export function restore(store, id) {
+	return queued(store, function () {
+		var snap = findSnapshot(store.manifest, id);
+		return session(store, async function (put, m, drop) {
+			var have = new Set(await store._backend.list());
+			Object.keys(snap.body.nodes).forEach(function (k) {
+				var name = tileName(k, snap.body.nodes[k].gen);
+				if (!have.has(name)) throw new LasError(ERROR_CODES.BAD_STORE, "snapshot " + id + " has lost " + name + "; it cannot be restored");
+			});
+			Object.keys(m.nodes).forEach(function (k) {
+				var now = m.nodes[k], was = snap.body.nodes[k];
+				if (!was || was.gen !== now.gen) drop(tileName(k, now.gen));
+			});
+			return { restored: id };
+		}, function (body) {
+			var now = { deletes: body.deletes, edits: body.edits, seq: body.snapshotSeq, snapshots: body.snapshots.filter(function (x) { return x.id !== id; }) };
+			Object.keys(body).forEach(function (k) { delete body[k]; });
+			Object.assign(body, JSON.parse(JSON.stringify(snap.body)));
+			body.edits = now.edits;
+			body.snapshotSeq = now.seq;
+			if (now.snapshots.length) body.snapshots = now.snapshots;
+			// points moved by a delete or keep since: a selection from before it names other points
+			body.deletes = now.deletes === snap.body.deletes ? snap.body.deletes : now.deletes + 1;
+		});
+	});
+}
+
+/**
+ * Let a snapshot go: the files kept for it are removed. The store stays as it is.
+ * @param {object} store
+ * @param {string} id
+ * @returns {Promise<{discarded: string}>}
+ */
+export function discardSnapshot(store, id) {
+	return queued(store, function () {
+		var snap = findSnapshot(store.manifest, id);
+		return session(store, async function (put, m, drop) {
+			Object.keys(snap.body.nodes).forEach(function (k) {
+				var was = snap.body.nodes[k], now = m.nodes[k];
+				if (!now || now.gen !== was.gen) drop(tileName(k, was.gen));
+			});
+			return { discarded: id };
+		}, function (body) {
+			body.snapshots = body.snapshots.filter(function (x) { return x.id !== id; });
+			if (!body.snapshots.length) delete body.snapshots;
+		});
+	});
+}

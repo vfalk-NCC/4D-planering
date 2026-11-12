@@ -1,0 +1,417 @@
+// src/LasReader.js
+//==========================================================
+// openLas(source) -> LasReader. Opening reads only the header and
+// the VLRs; points are read later in windows of whole records
+// (default 64 MiB), so a file far larger than memory streams
+// through and is never held whole — Kirra's current import reads
+// the whole file into one ArrayBuffer; this does not.
+//
+// Sources: a File / Blob, an ArrayBuffer / Uint8Array, a Node file
+// path, or any async source { size, read(start, end) }.
+//==========================================================
+
+import { LasError, ERROR_CODES } from "./errors.js";
+import { BlobSource } from "./io/BlobSource.js";
+import { MemorySource } from "./io/MemorySource.js";
+import { NodeFileSource } from "./io/NodeFileSource.js";
+import { parseHeader } from "./format/LasHeader.js";
+import { parseVlrs, parseEvlrs } from "./format/LasVlr.js";
+import { parseCrs } from "./format/LasCrs.js";
+import { parseClassLookup } from "./format/ClassLookup.js";
+import { decodeRecords, resolveFields, columnType, columnWidth } from "./read/decodeRecords.js";
+import { parseExtraBytes } from "./format/ExtraBytes.js";
+import { windows, lazWindows } from "./read/windows.js";
+import { findLazVlr } from "./laz/LazVlr.js";
+import { readChunks } from "./laz/chunkTable.js";
+import { createChunkDecoder } from "./laz/decompressChunk.js";
+import { createLazPool, defaultThreads } from "./laz/pool.js";
+import { makeKeep, countKept } from "./filter/filters.js";
+import { dedupe } from "./filter/dedupe.js";
+import { checkTransform } from "./ops/transform.js";
+import { openScratchSyncWriter } from "./io/ScratchBinaryFile.js";
+
+var DEFAULT_WINDOW = 64 * 1024 * 1024;
+var AUTO_MIN_CHUNKS = 4;
+
+function memorySource(bytes) {
+	return { size: bytes.length, read: async function (a, b) {
+		if (b > bytes.length) throw new LasError(ERROR_CODES.TRUNCATED, "read past end of " + bytes.length + "-byte buffer", b);
+		return bytes.subarray(a, b);
+	} };
+}
+
+// A caller's own { size, read } source: every read must hand back exactly
+// the bytes asked for, or a short read would silently drop points
+function checkedSource(src) {
+	function check(got, a, b) {
+		if (got instanceof ArrayBuffer) got = new Uint8Array(got);
+		if (!(got instanceof Uint8Array)) throw new LasError(ERROR_CODES.INVALID_ARGUMENT, "source.read(" + a + ", " + b + ") must return a Uint8Array or ArrayBuffer");
+		if (got.length !== b - a) throw new LasError(ERROR_CODES.TRUNCATED, "source.read(" + a + ", " + b + ") returned " + got.length + " bytes, not " + (b - a), a + Math.min(got.length, b - a));
+		return got;
+	}
+	var out = { size: src.size, read: async function (a, b) { return check(await src.read(a, b), a, b); } };
+	if (typeof src.readInto === "function") out.readInto = async function (a, b, t) { return check(await src.readInto(a, b, t), a, b); };
+	if (typeof src.close === "function") out.close = function () { return src.close(); };
+	return out;
+}
+
+async function toSource(source) {
+	if (source instanceof Uint8Array) return memorySource(source);
+	if (source instanceof ArrayBuffer) return memorySource(new Uint8Array(source));
+	if (typeof source === "string") return NodeFileSource.open(source);
+	if (source && typeof source.slice === "function" && typeof source.size === "number" && typeof source.read !== "function") return new BlobSource(source);
+	if (source && typeof source.size === "number" && typeof source.read === "function") return checkedSource(source);
+	throw new LasError(ERROR_CODES.INVALID_ARGUMENT, "openLas needs a File / Blob, ArrayBuffer, Uint8Array, file path or { size, read } source");
+}
+
+/**
+ * Open a LAS (or LAZ) file and read its header and VLRs.
+ * @param {*} source
+ * @param {{windowSize?: number, threads?: number}} [opts] - threads: LAZ decode workers
+ *   (default automatic: cores - 1, at most 16; 1 = decode on this thread)
+ * @returns {Promise<LasReader>}
+ */
+export async function openLas(source, opts) {
+	var src = await toSource(source);
+	var headBytes = await src.read(0, Math.min(src.size, 375));
+	var header = parseHeader(new MemorySource(headBytes));
+	var vlrs = [];
+	if (header.numberOfVlrs > 0) {
+		var vlrEnd = Math.min(header.offsetToPointData, src.size);
+		var vlrBytes = await src.read(0, vlrEnd);
+		vlrs = parseVlrs(new MemorySource(vlrBytes), header.headerSize, header.numberOfVlrs, vlrEnd);
+	}
+	var evlrs = [];
+	if (header.numberOfEvlrs > 0 && header.evlrStart > 0 && header.evlrStart < src.size) {
+		evlrs = await walkEvlrs(src, header.evlrStart, header.numberOfEvlrs);
+	}
+	var reader = new LasReader(src, header, vlrs, evlrs, (opts && opts.windowSize) || DEFAULT_WINDOW);
+	reader._threads = opts && opts.threads > 0 ? Math.floor(opts.threads) : 0;   // 0 = automatic
+	return reader;
+}
+
+// EVLRs sit after the points and can be huge (waveform data): read each
+// 60-byte header, keep the bytes of small and coordinate-system records,
+// and leave the rest on disk for readEvlrBytes.
+var EVLR_EAGER = 65536;
+async function walkEvlrs(src, start, count) {
+	var out = [], pos = start;
+	for (var i = 0; i < count; i++) {
+		if (pos + 60 > src.size) throw new LasError(ERROR_CODES.BAD_VLR, "EVLR " + (i + 1) + " starts past the end of the file", pos);
+		var e = parseEvlrs(new MemorySource(await src.read(pos, pos + 60)), 0, 1, true)[0];
+		if (pos + 60 + e.length > src.size) throw new LasError(ERROR_CODES.BAD_VLR, "EVLR " + (i + 1) + " runs past the end of the file", pos);
+		e.start = pos + 60;
+		e.bytes = e.length <= EVLR_EAGER || e.userId === "LASF_Projection" ? new Uint8Array(await src.read(e.start, e.start + e.length)) : null;
+		out.push(e);
+		pos += 60 + e.length;
+	}
+	return out;
+}
+
+/**
+ * A LAS file opened for reading. Create with openLas().
+ */
+export function LasReader(src, header, vlrs, evlrs, windowSize) {
+	this._src = src;
+	this._windowSize = windowSize;
+	/** Public header. */
+	this.header = header;
+	/** Variable length records. */
+	this.vlrs = vlrs;
+	/** Extended variable length records (LAS 1.4). */
+	this.evlrs = evlrs;
+	/** Declared coordinate system (never reprojected). */
+	this.crs = parseCrs(vlrs.concat(evlrs));
+	/** Class names from the Classification Lookup VLR, { code: name } ({} when there is none, or it is malformed). */
+	this.classNames = {};
+	try { this.classNames = parseClassLookup(vlrs.concat(evlrs)); } catch (e) { this.classNames = {}; }   // names only: never stops a read
+	var eb = parseExtraBytes(vlrs.concat(evlrs), header);
+	/** The extra-bytes fields (parseExtraBytes): name, column, type, k, size, at, scale, offset, noData, min, max, description. */
+	this.extraBytes = eb.fields;
+	/** Why the Extra Bytes VLR was not used (its bytes are then one raw "extraBytes" column), or null. */
+	this.extraBytesProblem = eb.problem;
+	/** True for LAZ (compressed points). */
+	this.compressed = header.compressed;
+	/** The parsed LASzip VLR of a LAZ file (compressor, chunk size, items), else null. */
+	this.laz = null;
+	if (header.compressed) { try { this.laz = findLazVlr(vlrs); } catch (e) { this.laz = null; } }   // a bad VLR fails on read, not open
+}
+
+// How to read this file's points: the windows, and how to turn one into raw
+// LAS records (a LAS window is read as it is; a LAZ window is a run of whole
+// chunks, decompressed into the scan's buffer). Built once per reader and window size
+// (the tile build reads with its own, smaller windows).
+LasReader.prototype._plan = async function (windowSize) {
+	var size = windowSize || this._windowSize;
+	if (this._planned && this._plannedSize === size) return this._planned;
+	var h = this.header, src = this._src, len = h.recordLength;
+	var plan;
+	if (!h.compressed) {
+		var end = h.offsetToPointData + h.pointCount * len;
+		if (end > src.size) {
+			throw new LasError(ERROR_CODES.TRUNCATED, "the header promises " + h.pointCount + " points ending at byte " + end + " but the file is " + src.size + " bytes", src.size);
+		}
+		var list = windows(h, size);
+		plan = {
+			list: list,
+			// a source that can fill one reused buffer gets one (no bytes outlive a window)
+			bufferSize: typeof src.readInto === "function" && list.length ? list[0].end - list[0].start : 0,
+			records: function (win, buf) { return buf ? src.readInto(win.start, win.end, buf) : src.read(win.start, win.end); }
+		};
+	} else {
+		var vlr = findLazVlr(this.vlrs);
+		if (!vlr) throw new LasError(ERROR_CODES.BAD_VLR, "this LAZ file has no LASzip VLR (user \"laszip encoded\", record 22204), so its points cannot be decompressed");
+		var decode = createChunkDecoder(vlr, len);
+		var lazList = lazWindows(await readChunks(src, h, vlr), len, size);
+		plan = {
+			list: lazList,
+			bufferSize: lazList.reduce(function (m, w) { return Math.max(m, w.count * len); }, 0),
+			records: async function (win, buf) {
+				var packed = await src.read(win.start, win.end);
+				var view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+				win.chunks.forEach(function (c) { decode(packed, c.start - win.start, c.end - win.start, c.count, view, (c.firstRecord - win.firstRecord) * len, win.start); });
+				return buf.subarray(0, win.count * len);
+			},
+			// The same records, each chunk decoded by a pool worker from its own copy of the bytes
+			parallel: async function (win, pool) {
+				var packed = await src.read(win.start, win.end);
+				var out = new Uint8Array(win.count * len);
+				await Promise.all(win.chunks.map(function (c) {
+					var piece = packed.slice(c.start - win.start, c.end - win.start);
+					return pool.decode({ vlr: vlr, recordLength: len, packed: piece.buffer, chunks: [{ s: 0, e: piece.length, count: c.count }], base: c.start })
+						.then(function (rec) { out.set(rec, (c.firstRecord - win.firstRecord) * len); });
+				}));
+				return out;
+			},
+			chunkCount: lazList.reduce(function (n, w) { return n + w.chunks.length; }, 0)
+		};
+	}
+	this._planned = plan;
+	this._plannedSize = size;
+	return plan;
+};
+
+/**
+ * Iterate the selected points window by window.
+ * @param {object} [opts] - fields, classes, returns, bounds, polygon (crop; with boundary "touching" | "inside" and tolerance), maxPoints, transform ({ m, t } from makeTransform: world coordinates are transformed in Float64 before localOrigin is subtracted; filters apply in file coordinates), localOrigin, float32, onProgress, signal
+ * @returns {AsyncGenerator<object>} PointColumns per window
+ */
+LasReader.prototype.chunks = async function* (opts) {
+	opts = opts || {};
+	if (opts.dedupe) throw new LasError(ERROR_CODES.INVALID_ARGUMENT, "dedupe needs every point at once: use readPoints, not chunks");
+	yield* this._scan(opts, null);
+};
+
+// The window loop behind chunks and readPoints. into(win, n) -> { cols, at }
+// makes decodeRecords write straight into readPoints' result columns.
+LasReader.prototype._scan = async function* (opts, into) {
+	var h = this.header;
+	if (opts.transform) checkTransform(opts.transform, "transform");
+	var plan = await this._plan();
+	var keep = makeKeep(opts, h);
+	var fields = resolveFields(h, opts.fields, this.extraBytes);
+	var list = plan.list;
+	var pool = await this._pool(plan);
+	try {
+		var buf = !pool && plan.bufferSize ? new Uint8Array(plan.bufferSize) : null;
+		var thin = null;
+		if (opts.maxPoints > 0) {
+			// Thin the points that pass the filters; with filters set, count them first (a second read)
+			var passing = keep ? await this._countPassing(plan, pool, buf, keep, opts.signal) : h.pointCount;
+			if (passing > opts.maxPoints) thin = { total: passing, target: opts.maxPoints, acc: 0 };
+		}
+		var kept = 0, w = 0;
+		for await (var bytes of windowBytes(plan, pool, buf, opts.signal)) {
+			var win = list[w];
+			var cols = decodeRecords(bytes, h, { fields: fields, keep: keep, thin: thin, localOrigin: opts.localOrigin, float32: opts.float32, transform: opts.transform, firstIndex: win.firstRecord, into: into ? into(win) : null, extraBytes: this.extraBytes });
+			kept += cols.count;
+			w++;
+			if (typeof opts.onProgress === "function") opts.onProgress(w / list.length, "read " + kept + " points");
+			yield cols;
+		}
+		if (opts.signal && opts.signal.aborted) throw new LasError(ERROR_CODES.ABORTED, "read aborted");
+	} finally {
+		if (pool) pool.close();
+	}
+};
+
+// Every window's raw records, as the tile build reads them (internal): { bytes, firstRecord }.
+// The bytes may be reused once the next window is asked for.
+LasReader.prototype._rawWindows = async function* (signal, windowSize) {
+	var plan = await this._plan(windowSize);
+	var pool = await this._pool(plan);
+	try {
+		var buf = !pool && plan.bufferSize ? new Uint8Array(plan.bufferSize) : null, w = 0;
+		// owned: the window's own buffer (a pool decoded it), free to transfer; else reused by the next window
+		for await (var bytes of windowBytes(plan, pool, buf, signal)) yield { bytes: bytes, firstRecord: plan.list[w++].firstRecord, owned: !!pool };
+	} finally {
+		if (pool) pool.close();
+	}
+};
+
+// Each window's raw records in order. With a pool the windows ahead are already decoding while
+// this one is used: enough of them for two chunks a worker (at most MAX_AHEAD windows); without
+// one, one buffer is reused.
+var MAX_AHEAD = 8;
+async function* windowBytes(plan, pool, buf, signal) {
+	var list = plan.list, ahead = [], next = 0, chunks = 0;
+	function fetch() {
+		var p = plan.parallel(list[next], pool);
+		p.catch(function () {});                 // a prefetch abandoned by an abort must not go unhandled
+		ahead.push({ p: p, chunks: list[next].chunks.length });
+		chunks += list[next++].chunks.length;
+	}
+	for (var w = 0; w < list.length; w++) {
+		if (signal && signal.aborted) throw new LasError(ERROR_CODES.ABORTED, "read aborted");
+		if (!pool) { yield await plan.records(list[w], buf); continue; }
+		while (next < list.length && (next === w || (chunks < 2 * pool.size && ahead.length < MAX_AHEAD))) fetch();
+		var current = ahead.shift();
+		chunks -= current.chunks;
+		yield await current.p;
+	}
+}
+
+// A decode pool for this scan, or null: LAS, threads: 1, one chunk, or no workers available
+LasReader.prototype._pool = async function (plan) {
+	if (!plan.parallel || this._threads === 1) return null;
+	// automatic: only when there is enough to share (starting workers costs about as much as
+	// decoding a few chunks); an explicit thread count is always honoured
+	if (!this._threads && plan.chunkCount < AUTO_MIN_CHUNKS) return null;
+	var n = Math.min(this._threads || await defaultThreads(), plan.chunkCount);
+	return n >= 2 ? createLazPool(n) : null;
+};
+
+LasReader.prototype._countPassing = async function (plan, pool, buf, keep, signal) {
+	var n = 0;
+	for await (var bytes of windowBytes(plan, pool, buf, signal)) n += countKept(bytes, this.header.recordLength, keep);
+	return n;
+};
+
+/**
+ * Read the selected points into one set of columns.
+ * @param {object} [opts] - chunks() options plus dedupe (tolerance) and dedupeZ; dedupe runs on the output coordinates (after transform and localOrigin)
+ * @returns {Promise<object>} PointColumns plus bounds and stats
+ */
+LasReader.prototype.readPoints = async function (opts) {
+	opts = opts || {};
+	var h = this.header;
+	var chunkOpts = Object.assign({}, opts);
+	delete chunkOpts.dedupe;
+	var fields = resolveFields(h, opts.fields, this.extraBytes);
+	var xo = { extraBytes: this.extraBytes, float32: opts.float32, localOrigin: opts.localOrigin };
+	var width = {};
+	fields.forEach(function (f) { width[f] = columnWidth(f, xo); });   // values a point: k for an extra column
+	// Allocate once when the count is known (no filters: every point, or
+	// maxPoints of them; filters + maxPoints: at most maxPoints), so the
+	// peak is the result itself. Filters alone: grow by doubling.
+	var filtered = !!makeKeep(opts, h);
+	var cap = !filtered ? (opts.maxPoints > 0 ? Math.min(opts.maxPoints, h.pointCount) : h.pointCount)
+		: (opts.maxPoints > 0 ? Math.min(opts.maxPoints, h.pointCount) : 0);
+	var acc = {}, n = 0;
+	fields.forEach(function (f) { acc[f] = new (columnType(f, xo, h))((cap || 1024) * width[f]); });
+	var room = cap || 1024;
+	function into(win) {
+		// A known cap is never exceeded, so it never grows; filters alone grow by doubling
+		if (!cap && n + win.count > room) {
+			room = Math.max(n + win.count, room * 2);
+			fields.forEach(function (f) { var g = new acc[f].constructor(room * width[f]); g.set(acc[f].subarray(0, n * width[f])); acc[f] = g; });
+		}
+		return { cols: acc, at: n };
+	}
+	for await (var c of this._scan(chunkOpts, into)) n += c.count;
+	var out = { count: n };
+	fields.forEach(function (f) { out[f] = acc[f].length === n * width[f] ? acc[f] : acc[f].slice(0, n * width[f]); });
+	if (opts.dedupe) out = dedupe(out, opts.dedupe, { z: !!opts.dedupeZ });
+	out.bounds = boundsOf(out, opts.localOrigin);
+	out.stats = statsOf(out);
+	return out;
+};
+
+function emptyBounds() { return { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity }; }
+
+// Grow raw (stored-value) bounds over one set of columns
+function extendBounds(b, c) {
+	for (var i = 0; i < c.count; i++) {
+		var x = c.x[i], y = c.y ? c.y[i] : 0, z = c.z ? c.z[i] : 0;
+		if (x < b.minX) b.minX = x; if (x > b.maxX) b.maxX = x;
+		if (y < b.minY) b.minY = y; if (y > b.maxY) b.maxY = y;
+		if (z < b.minZ) b.minZ = z; if (z > b.maxZ) b.maxZ = z;
+	}
+	return b;
+}
+
+// Raw bounds -> world bounds (origin added back), to the stored precision
+function worldBounds(b, origin) {
+	if (!(b.minX <= b.maxX)) return null;
+	var ox = origin && isFinite(origin.x) ? origin.x : 0;
+	var oy = origin && isFinite(origin.y) ? origin.y : 0;
+	var oz = origin && isFinite(origin.z) ? origin.z : 0;
+	var r = function (v) { return Math.round(v * 1e6) / 1e6; };
+	return { minX: r(b.minX + ox), maxX: r(b.maxX + ox), minY: r(b.minY + oy), maxY: r(b.maxY + oy), minZ: r(b.minZ + oz), maxZ: r(b.maxZ + oz) };
+}
+
+function boundsOf(c, origin) {
+	if (!c.x || !c.count) return null;
+	return worldBounds(extendBounds(emptyBounds(), c), origin);
+}
+
+function statsOf(c) {
+	var s = { count: c.count };
+	if (c.classification) {
+		var counts = {};
+		for (var i = 0; i < c.count; i++) { var k = c.classification[i]; counts[k] = (counts[k] || 0) + 1; }
+		s.classCounts = counts;
+	}
+	return s;
+}
+
+/**
+ * Read the selected points straight into OPFS scratch files — one per
+ * field, raw little-endian typed-array bytes — for selections too big
+ * for memory (browser, in a worker: OPFS sync handles are worker-only).
+ * @param {object} [opts] - chunks() options plus root / dir (OPFS) and prefix (file names)
+ * @returns {Promise<{count:number, fields:Object<string,string>, types:Object<string,string>, bounds:object}>}
+ */
+LasReader.prototype.readPointsToScratch = async function (opts) {
+	opts = opts || {};
+	var fields = resolveFields(this.header, opts.fields, this.extraBytes);
+	var prefix = opts.prefix || ("las-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8));
+	var where = { root: opts.root, dir: opts.dir };
+	var writers = {}, ids = {}, types = {};
+	for (var f = 0; f < fields.length; f++) {
+		ids[fields[f]] = prefix + "-" + fields[f];
+		writers[fields[f]] = await openScratchSyncWriter(ids[fields[f]], where);
+	}
+	var count = 0, b = emptyBounds();
+	try {
+		for await (var c of this.chunks(opts)) {
+			fields.forEach(function (name) {
+				var col = c[name];
+				types[name] = col.constructor.name;
+				writers[name].write(new Uint8Array(col.buffer, col.byteOffset, col.byteLength));
+			});
+			if (c.x) extendBounds(b, c);
+			count += c.count;
+		}
+	} finally {
+		fields.forEach(function (name) { writers[name].close(); });
+	}
+	return { count: count, fields: ids, types: types, bounds: worldBounds(b, opts.localOrigin) };
+};
+
+/**
+ * The bytes of an EVLR — big ones are not read by openLas (bytes: null).
+ * @param {number} index - into reader.evlrs
+ * @returns {Promise<Uint8Array>}
+ */
+LasReader.prototype.readEvlrBytes = async function (index) {
+	var e = this.evlrs[index];
+	if (!e) throw new LasError(ERROR_CODES.INVALID_ARGUMENT, "no EVLR " + index + " (the file has " + this.evlrs.length + ")");
+	if (e.bytes) return e.bytes;
+	return new Uint8Array(await this._src.read(e.start, e.start + e.length));
+};
+
+/** Close the underlying file (Node). */
+LasReader.prototype.close = async function () {
+	if (this._src && typeof this._src.close === "function") await this._src.close();
+};
