@@ -101,7 +101,7 @@ function l3swDraw() {
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: 0x334155 })); e.userData.noHit = true; e.raycast = () => {}; g.add(e);
   });
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.05))), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); line.renderOrder = 12; line.userData.noHit = true; line.raycast = () => {}; g.add(line);
-  l3swHandles(); l3swGizmo(); l3Render();
+  l3PreviewMark(g); l3swHandles(); l3swGizmo(); l3Render();
 }
 /* Flytthandtag (lagesplan-3dmovegz.js): flytta hela muren/pålraden i sidled och höjdled medan den förhandsvisas. */
 function l3swGizmo() {

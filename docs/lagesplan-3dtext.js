@@ -88,7 +88,7 @@ function l3txDraw() {
   const B = l3txBuild(d); l3tx.last = B; l3tx.base = { x: d.x, y: d.y, z: d.z }; if (l3tx.group) l3tx.group.position.set(0, 0, 0); if (l3.gizmoT && !l3.gizmoT.dragging && l3.gizmoT.object) l3txGizmo(true); if (!B.tris.length) { l3Render(); return; }
   const W = l3txWorld(d, B.tris), O = l3.O, P = new Float32Array(W.length * 9); W.forEach((t, i) => t.forEach((p, k) => { P[i * 9 + k * 3] = p[0] - O[0]; P[i * 9 + k * 3 + 1] = p[1] - O[1]; P[i * 9 + k * 3 + 2] = p[2] - O[2]; }));
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(P, 3)); g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: d.color, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })); m.userData.noHit = true; m.raycast = () => {}; m.frustumCulled = false; l3tx.group.add(m); l3Render();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: d.color, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })); m.userData.noHit = true; m.frustumCulled = false; l3tx.group.add(m); l3PreviewMark(l3tx.group); l3Render();
   const info = document.getElementById("v3TxInfo"); if (info) info.textContent = `${B.w.toFixed(2).replace(".", ",")} × ${B.hgt.toFixed(2).replace(".", ",")} m · ${B.tris.length.toLocaleString("sv-SE")} trianglar`;
 }
 /* Flytthandtag (pilar i X, Y och Z) medan texten ligger som förhandsvisning (lagesplan-3dmovegz.js): dra den fritt i sidled och höjdled. */

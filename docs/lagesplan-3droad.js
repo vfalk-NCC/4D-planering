@@ -268,7 +268,7 @@ function l3rDraw() {
   if (typeof l3rsLine === "function") l3rsLine(grp, line);
   l3rMeters(grp, line); l3rwPlace();
   if (c.res) c.res.tight.forEach(t => { const sp = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.5, (Number(c.spec.width) || 5) * 0.15), 12, 8), new THREE.MeshBasicMaterial({ color: 0xd946ef, depthTest: false })); sp.position.set(t.x - O[0], t.y - O[1], t.z - O[2] + 0.5); sp.renderOrder = 13; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp); });
-  l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace();
+  l3PreviewMark(grp); l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace();
 }
 /* Metertal längs linjen (Victor 2026-11-10: "skriv ut på linjen vilka metertal jag är på, så jag ser var jag ska bredda"): ett streck och "20 m" var 5/10/20/50 m,
    start och slut, samt breddningarna som orange stycken med "Bredd. 20–35 m". Samma sträckor som Från/Till och snittets station. */

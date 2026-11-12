@@ -1054,12 +1054,15 @@ function l3Ray(e, targets) {
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);
   // Med rumsligt index räcker närmaste träff per bit (utom med snitt, där den närmaste kan vara bortskuren).
   const cl = l3.renderer.clippingPlanes; ray.firstHitOnly = !(cl && cl.length);
-  return ray.intersectObjects(targets, true).filter(h => (h.object.visible || h.object === l3.planMesh) && !h.object.userData.noHit && h.object.type !== "LineSegments" && h.object.type !== "Line" && (h.object === l3.planMesh || l3VisibleChain(h.object)) && l3NotClipped(h.point))   // marknivån (ritningens plan) går att träffa även när ritningen är släckt;
+  return ray.intersectObjects(targets, true).filter(h => (h.object.visible || h.object === l3.planMesh) && (!h.object.userData.noHit || h.object.userData.previewHit) && h.object.type !== "LineSegments" && h.object.type !== "Line" && (h.object === l3.planMesh || l3VisibleChain(h.object)) && l3NotClipped(h.point))   // marknivån (ritningens plan) går att träffa även när ritningen är släckt;
 }
 /* Bortskuret av ett snittplan (syns inte -> ska inte gå att träffa). */
 function l3NotClipped(p) { const cl = l3 && l3.renderer.clippingPlanes; return !cl || !cl.length || cl.every(pl => pl.distanceToPoint(p) >= -1e-6); }
 const l3VisibleChain = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
-const l3Surfaces = (exceptId) => [l3.planMesh, l3.objMesh, ...l3.groups.bldg.children, ...[...l3.placeMeshes.entries()].filter(([id]) => !(exceptId instanceof Set ? exceptId.has(id) : id === exceptId)).map(([, g]) => g)].filter(o => o && o.visible !== false);
+/* Förhandsvisningar (stödmur/pålar/byggdelar, byggväg, 3D-text) går att fästa mot och vrida runt redan medan de redigeras (Victor 2026-11-12). */
+const l3PreviewObjs = () => [l3.groups.wall, l3.groups.road, typeof l3tx !== "undefined" && l3tx.group].filter(g => g && g.visible !== false && g.children && g.children.length);
+function l3PreviewMark(g) { if (!g) return; g.traverse(m => { if (m.isMesh) { m.userData.previewHit = true; delete m.raycast; } }); }
+const l3Surfaces = (exceptId) => [l3.planMesh, l3.objMesh, ...l3.groups.bldg.children, ...[...l3.placeMeshes.entries()].filter(([id]) => !(exceptId instanceof Set ? exceptId.has(id) : id === exceptId)).map(([, g]) => g), ...l3PreviewObjs()].filter(o => o && o.visible !== false);
 function l3PlaceAt(e) {
   const hit = l3Ray(e, [...l3.placeMeshes.values()])[0];
   let o = hit && hit.object;
