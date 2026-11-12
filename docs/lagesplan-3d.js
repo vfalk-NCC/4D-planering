@@ -738,6 +738,7 @@ function l3Render() {
     if (typeof l3dayPlace === "function") l3dayPlace(); // dagsplaneringens skyltar
     if (typeof l3cPlace === "function") l3cPlace(); // saxarna på snitten
     if (typeof l3kPlace === "function") l3kPlace(); // kommentarerna
+    if (typeof l3gdPlace === "function") l3gdPlace(); // rutnätets cirklar
     if (typeof l3swPlace === "function") l3swPlace(); // stödmurens punkter
     if (typeof l3bqPlace === "function") l3bqPlace(); // snitten när ett objekt delas (lagesplan-3dbpart.js)
     if (typeof l3phPlace === "function") l3phPlace(); // fotot som är öppet
