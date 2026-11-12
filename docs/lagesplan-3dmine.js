@@ -214,10 +214,13 @@ function l3mnBind(el, groups, selMine, order) {
     });
   });
 }
+/* Menyn står stilla när man markerar: rullningen sparas och läggs tillbaka efter varje ommålning (både Objekt-sektionen och hela biblioteket ritas om vid markering). */
+function l3mnScroller() { let e = document.getElementById("v3Lib"); while (e && e !== document.body) { const o = getComputedStyle(e).overflowY; if ((o === "auto" || o === "scroll") && e.scrollHeight > e.clientHeight + 1) return e; e = e.parentElement; } return document.getElementById("v3Pal"); }
+{ const f0 = l3mnRender; l3mnRender = function () { const s = l3mnScroller(), t = s ? s.scrollTop : 0, r = f0.apply(this, arguments); if (s && s.scrollTop !== t) s.scrollTop = t; return r; }; }
 (() => {
   const now = () => { try { l3mnRender(); } catch (e) { console.warn("Objekt", e); } };
   const later = () => { if (l3mn.raf) return; l3mn.raf = requestAnimationFrame(() => { l3mn.raf = 0; try { l3mnRender(); } catch (e) { console.warn("Objekt", e); } }); };
-  const wrap = n => { const f = window[n]; if (typeof f !== "function" || f.__mo) return; const w = function () { const r = f.apply(this, arguments); if (n === "l3RenderLib") now(); else later(); return r; }; w.__mo = true; window[n] = w; };
+  const wrap = n => { const f = window[n]; if (typeof f !== "function" || f.__mo) return; const w = function () { const sc = l3mnScroller(), top = sc ? sc.scrollTop : 0, r = f.apply(this, arguments); if (n === "l3RenderLib") now(); else later(); if (sc) { sc.scrollTop = top; requestAnimationFrame(() => { sc.scrollTop = top; }); } return r; }; w.__mo = true; window[n] = w; };
   const go = () => { ["l3RenderLib", "l3Changed", "l3SelectIds", "l3UpdateHidden", "l3ShowAll"].forEach(wrap); };   // senare skript definierar funktionerna – vänta tills allt är inläst
   if (document.readyState === "complete") go(); else window.addEventListener("load", go);
 })();
