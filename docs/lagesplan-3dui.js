@@ -438,6 +438,7 @@ const L3_ORIG_OPTS = [
   ["actOutline", "Kontur runt aktivitetens objekt", "Linje runt objekten som hör till vald aktivitet", () => !!l3Prefs().actOutline, v => l3SetPref("actOutline", v)],
 ];
 function l3OrigPopToggle() {
+  if (typeof l3gdLoad === "function") l3gdLoad();
   let pop = document.getElementById("v3OrigPop"), open = !pop || pop.classList.contains("hidden"); l3HideMenus();
   if (!pop) { pop = document.createElement("div"); pop.id = "v3OrigPop"; pop.className = "v3-pop v3-orig-pop hidden"; l3ui.canvas.appendChild(pop); pop.onclick = e => e.stopPropagation(); pop.addEventListener("pointerdown", e => e.stopPropagation()); }
   if (open) { l3OrigPopRender(true); pop.classList.remove("hidden"); const b = document.getElementById("v3Original").getBoundingClientRect(), c = l3ui.canvas.getBoundingClientRect(); pop.style.left = Math.max(6, Math.min(c.width - 300, b.left - c.left)) + "px"; pop.style.top = Math.max(6, b.bottom - c.top + 6) + "px"; pop.style.maxHeight = Math.max(160, c.height - Math.max(6, b.bottom - c.top + 6) - 8) + "px"; pop.style.overflowY = "auto"; }   // verktygsraden ligger ovanför bilden: ruta som börjar ovanför kanten klipptes
@@ -445,11 +446,19 @@ function l3OrigPopToggle() {
 function l3OrigPopRender(force) {
   const pop = document.getElementById("v3OrigPop"); if (!pop || (!force && pop.classList.contains("hidden"))) return;
   const S = l3OrigState(), sw = (id, t, d, on) => `<label class="v3-orig-row" title="${escHtml(d)}"><span><b>${escHtml(t)}</b><small>${escHtml(d)}</small></span><span class="v3-lay-sw v3-orig-sw"><input type="checkbox" role="switch" data-os="${id}" ${on ? "checked" : ""} /><i></i></span></label>`;
-  pop.innerHTML = `<div class="v3-orig-h">Visning</div>${sw("orig", "Originalmodell", "Modellerna med egna färger – utan tidplan och filter", S.orig)}${sw("tlOrig", "Tidslinje med originalfärg", "Det som är byggt visas i modellens färg, resten dolt", S.tlOrig)}${sw("tlProg", "Tidslinje med framdrift", "Färgat efter status och framdrift för valt datum", S.tlProg)}<div class="v3-orig-h v3-orig-h2">Fler val</div>${L3_ORIG_OPTS.map(o => sw(o[0], o[1], o[2], o[3](S.C)) + (o[0] === "future" && S.C.future ? `<label class="v3-orig-sl" title="Hur mycket av det kommande som syns"><span>Synlighet</span><input type="range" min="0" max="100" step="5" value="${S.C.futureOp}" data-osl="futureOp" /><output>${S.C.futureOp} %</output></label>` : "")).join("")}`;
+  pop.innerHTML = `<div class="v3-orig-h">Visning</div>${sw("orig", "Originalmodell", "Modellerna med egna färger – utan tidplan och filter", S.orig)}${sw("tlOrig", "Tidslinje med originalfärg", "Det som är byggt visas i modellens färg, resten dolt", S.tlOrig)}${sw("tlProg", "Tidslinje med framdrift", "Färgat efter status och framdrift för valt datum", S.tlProg)}${l3OrigGridHtml(sw)}<div class="v3-orig-h v3-orig-h2">Fler val</div>${L3_ORIG_OPTS.map(o => sw(o[0], o[1], o[2], o[3](S.C)) + (o[0] === "future" && S.C.future ? `<label class="v3-orig-sl" title="Hur mycket av det kommande som syns"><span>Synlighet</span><input type="range" min="0" max="100" step="5" value="${S.C.futureOp}" data-osl="futureOp" /><output>${S.C.futureOp} %</output></label>` : "")).join("")}`;
   pop.querySelectorAll("[data-osl]").forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = r.value + " %"; l3gmSet(r.dataset.osl, Number(r.value)); l3gmApply(false); }; });
   pop.querySelectorAll("[data-os]").forEach(inp => { inp.onchange = () => l3OrigSwitch(inp.dataset.os, inp.checked); });
+  pop.querySelectorAll("[data-osg]").forEach(inp => { inp.onchange = () => { const g = l3gd.list.find(x => x.id === inp.dataset.osg); if (!g) return; g.vis = inp.checked; l3gdDraw(); l3gdSave(g); if (typeof l3gdRenderDlg === "function") l3gdRenderDlg(); }; });
+}
+/* Rutnät i Visning: huvudswitch + en switch per rutnät (lagesplan-3dgrid.js). */
+function l3OrigGridHtml(sw) {
+  if (typeof l3gd === "undefined" || !l3gd.list.length) return "";
+  const all = l3Prefs().gdAll !== false, E = escHtml;
+  return `<div class="v3-orig-h v3-orig-h2">Rutnät</div>${sw("gdAll", "Visa rutnät", "Tänd eller släck alla rutnät (linjer, siffror och bokstäver)", all)}${l3gd.list.map(g => `<label class="v3-orig-row v3-orig-sub" title="Visa/dölj ${E(g.name || "rutnätet")}"><span><b><i class="v3-gd-dot" style="background:${E(g.color)}"></i> ${E(g.name || "Rutnät")}</b></span><span class="v3-lay-sw v3-orig-sw"><input type="checkbox" role="switch" data-osg="${E(g.id)}" ${g.vis ? "checked" : ""} /><i></i></span></label>`).join("")}`;
 }
 function l3OrigSwitch(k, on) {
+  if (k === "gdAll") { l3SetPref("gdAll", on); if (typeof l3gdDraw === "function") l3gdDraw(); l3OrigPopRender(true); return; }
   if (k === "orig") { if (on) l3Original(true); else l3Original(false); }
   else if (k === "tlOrig" || k === "tlProg") {
     if (on) { if (l3b.orig) l3Original(false); l3gmSet("origCol", k === "tlOrig"); if (l3gm.mode !== "time") l3gmSetMode("time", true); else l3gmApply(true); }

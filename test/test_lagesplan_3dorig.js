@@ -59,11 +59,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       out.viewObj = saved && l3.hidden.has(b.id) && !l3.hidden.has(a.id) && l3Prefs().placedOn !== false; l3DelView(i); l3mnVis([b.id], true, 'tänd');
     }
     { const pr = document.getElementById('v3OrigPop').getBoundingClientRect(), cr = document.getElementById('v3Canvas').getBoundingClientRect(); out.inView = pr.top >= cr.top - 0.5 && pr.bottom <= cr.bottom + 0.5; }
+    { // rutnät i Visning-menyn
+      const g = { ...l3gdDef(), name: 'Hus A', x: 6512330, y: 150130, z: 100 }; l3gd.list.push(g); l3gdDraw(); l3OrigPopRender(true);
+      const row = document.querySelector('[data-osg="' + g.id + '"]'), all = document.querySelector('[data-os="gdAll"]'); out.gridRows = !!row && !!all && row.checked && all.checked;
+      row.checked = false; row.dispatchEvent(new Event('change')); out.gridOff = g.vis === false && l3gd.group.children.length === 0;
+      l3OrigPopRender(true); const a2 = document.querySelector('[data-os="gdAll"]'); a2.checked = false; a2.dispatchEvent(new Event('change')); out.allOff = l3Prefs().gdAll === false;
+      l3SetPref('gdAll', true); l3gd.list.length = 0; l3gdDraw(); l3OrigPopRender(true);
+    }
     out.icon = !!document.querySelector('#v3Original svg circle');
     return out;
   });
   console.log(JSON.stringify(r));
-  if (r.rows !== 11 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.inView || !r.viewSave || !r.viewObj || !r.startToday || !r.stOff || !r.stOn || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
+  if (r.rows !== 11 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.gridRows || !r.gridOff || !r.allOff || !r.inView || !r.viewSave || !r.viewObj || !r.startToday || !r.stOff || !r.stOn || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
   if (errors.length) fail('JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK: Visning-dropdown');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

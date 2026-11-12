@@ -153,7 +153,7 @@ function l3gdSnapAt(e, S) {
 async function l3gdLoad() {
   if (!l3gdOk()) { l3gd.loaded = true; return; }
   if (l3gd.pid !== projectId) { l3gd.pid = projectId; l3gd.loaded = false; l3gd.loading = null; l3gd.list = []; }
-  if (l3gd.loaded) return; if (!l3gd.loading) l3gd.loading = ghReadJSON(token, l3gdPath()).then(r => { l3gd.list = r.filter(x => x && x.id).map(x => ({ ...l3gdDef(), ...x })); }, e => console.warn("Kunde inte läsa plan_grids.json", e)).then(() => { l3gd.loaded = true; l3gdDraw(); l3gdRenderDlg(); });
+  if (l3gd.loaded) return; if (!l3gd.loading) l3gd.loading = ghReadJSON(token, l3gdPath()).then(r => { l3gd.list = r.filter(x => x && x.id).map(x => ({ ...l3gdDef(), ...x })); }, e => console.warn("Kunde inte läsa plan_grids.json", e)).then(() => { l3gd.loaded = true; l3gdDraw(); l3gdRenderDlg(); if (typeof l3OrigPopRender === "function") l3OrigPopRender(); });
   return l3gd.loading;
 }
 async function l3gdSave(g, del) {
