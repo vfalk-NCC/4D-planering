@@ -259,7 +259,7 @@ l3swbDef.service = {
 };
 function l3swpBar0(M, A, B, r) { const g = l3swpBar(A, B, r, 12); M.add(g); }
 /* ---- Inkoppling i Stödmur-verktyget ---- */
-Object.keys(l3swbDef).forEach(k => { L3SW_KINDS[k] = l3swbDef[k].name; });
+const l3swb = { last: null };   // byggdelarna har egen sparad inställning och egen mätfunktion (measure = "bygg"), skilda från Stödmur
 const l3swbIs = k => !!l3swbDef[k];
 function l3swbInit(s) {
   const d = l3swbDef[s.kind]; if (!d || s._bk === s.kind) return; const bv = s._bv = s._bv || {};
@@ -314,7 +314,7 @@ function l3swbList(c) {
 /* ---- Biblioteket: "Byggdelar" under Objektbibliotek ---- */
 function l3swbCard(kind) {
   const d = l3swbDef[kind]; if (!d) return; if (typeof l3SetTool === "function" && l3.tool !== "select") l3SetTool("select");
-  l3sw.last = { ...(l3sw.last || {}), kind, _bk: null }; try { l3SetPref("measure", "wall"); l3SetTool("measure"); } catch (e) {}
+  l3swb.last = { ...(l3swb.last || {}), kind, _bk: null }; try { l3SetPref("measure", "bygg"); l3SetTool("measure"); } catch (e) {}
   l3Status(d.input === "poly" ? "Tryck rummets hörn i 3D och Enter när du är klar." : "Tryck ut linjen i 3D (väggens/kantens läge), Enter när du är klar.");
 }
 function l3swbHookLib() {

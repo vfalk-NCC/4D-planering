@@ -187,16 +187,17 @@ function l3swStart() {
   const mp = l3t.mp || []; if (mp.length < 2) { l3Status("Muren behöver minst två punkter (fotlinjen).", true); return; }
   const pts = mp.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000));
   l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); if (typeof l3ClearMeasure === "function") l3ClearMeasure();
-  const spec = { ...L3SW_DEF, ...(l3sw.last || {}) }; if (spec.kind === "L" && !spec.typ) l3swApplyType(spec, l3swType("L:1.6"));
+  const bygg = l3Prefs().measure === "bygg", last = bygg ? (typeof l3swb !== "undefined" && l3swb.last) || { kind: "stud" } : (l3sw.last && !(typeof l3swbIs === "function" && l3swbIs(l3sw.last.kind)) ? l3sw.last : {});
+  const spec = { ...L3SW_DEF, ...last }; if (spec.kind === "L" && !spec.typ) l3swApplyType(spec, l3swType("L:1.6"));
   l3swOpen({ pts, spec, res: null });
 }
 function l3swOpen(cur) {
   l3swClose(true); l3sw.cur = cur;
   if (!l3sw.kbd) { l3sw.kbd = e => { if (e.key === "Escape" && l3sw.cur && !/INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.stopPropagation(); l3swClose(); } }; window.addEventListener("keydown", l3sw.kbd, true); }
-  l3swDraw(); l3swPanel(); l3Status("Stödmur: ställ in murtyp och mått i panelen och tryck Skapa stödmur. Esc stänger.");
+  l3swDraw(); l3swPanel(); l3Status(typeof l3swbIs === "function" && l3swbIs(cur.spec.kind) ? "Byggdel: välj typ och mått i panelen och tryck Skapa. Esc stänger." : "Stödmur: ställ in murtyp och mått i panelen och tryck Skapa stödmur. Esc stänger.");
 }
 function l3swClose(keep) {
-  const el = document.getElementById("v3WallPanel"); if (el) el.remove(); const c = l3sw.cur; if (c) l3sw.last = JSON.parse(JSON.stringify(c.spec));
+  const el = document.getElementById("v3WallPanel"); if (el) el.remove(); const c = l3sw.cur; if (c) { const sp = JSON.parse(JSON.stringify(c.spec)); if (typeof l3swbIs === "function" && l3swbIs(sp.kind)) l3swb.last = sp; else l3sw.last = sp; }
   if (typeof l3mgHide === "function") l3mgHide("wall");
   if (c && c.hidden && !c.committed) { c.hidden.forEach(id => { const g = l3.placeMeshes.get(id); if (g && !(l3.hidden && l3.hidden.has(id))) g.visible = true; }); const ex = c.hidden.filter(id => placements.some(q => q.id === id)); if (ex.length) l3SelectIds(ex); c.hidden = null; }
   l3sw.cur = null; l3swH.rings.forEach(e => e.remove()); l3swH.plus.forEach(e => e.remove()); l3swH.rings = []; l3swH.plus = []; if (l3.groups.wall) l3Clear(l3.groups.wall); if (!keep) { if (l3sw.kbd) { window.removeEventListener("keydown", l3sw.kbd, true); l3sw.kbd = null; } l3Render(); }
@@ -210,18 +211,18 @@ function l3swMake() {
     const r3 = v => Math.round(v * 1000) / 1000, m = { k: "mesh", pts: pt.mesh.pts.map(q => [r3(q[0] - x0), r3(q[1] - y0), r3(q[2] - z0)]), faces: pt.mesh.faces.map(f => [f[0], f[1], f[2]]), closed: true, ifc: pt.ifc || "IFCWALL", ...(pt.pile ? { pile: pt.pile } : {}) };
     const p = modCreate(m, [x0, y0, z0], { name: pt.name, color: pt.color || c.spec.color || "#b8bcc2", snapshot: false }); p.set = set; p.wsrc = { ...wsrc0, org: [x0, y0, z0] }; p.note = `Volym ${l3swFmt(pt.vol, 2)} m³ · ca ${l3swFmt((pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000, 2)} ton · längd ${l3swFmt(pt.len, 2)} m`; ids.push(p.id); vol += pt.vol; tons += (pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000; org = org || [x0, y0, z0];
   });
-  const kd = L3SW_KINDS[c.spec.kind], n = ids.length; c.committed = true; l3swClose(); l3SelectIds(ids); l3Changed();
+  const kd = L3SW_KINDS[c.spec.kind] || (typeof l3swbDef !== "undefined" && l3swbDef[c.spec.kind] && l3swbDef[c.spec.kind].name) || "Byggdel", n = ids.length; c.committed = true; l3swClose(); l3SelectIds(ids); l3Changed();
   l3Toast(`Skapad: ${kd}, ${n} ${n === 1 ? "objekt" : "objekt"}, ${l3swFmt(vol, 2)} m³ (ca ${l3swFmt(tons, 1)} ton). Ctrl+Z ångrar. Redigera, dela och exportera som IFC som vanligt.`);
 }
-function l3swTap() { if (!l3sw.cur || l3.tool !== "measure" || l3Prefs().measure !== "wall") return false; l3Status("Stödmuren är öppen – skapa den eller stäng den (Esc) för att placera en ny.", true); return true; }
+function l3swTap() { if (!l3sw.cur || l3.tool !== "measure" || (l3Prefs().measure !== "wall" && l3Prefs().measure !== "bygg")) return false; l3Status("Stödmuren är öppen – skapa den eller stäng den (Esc) för att placera en ny.", true); return true; }
 
 /* Redigera utförd stödmur/spont/pålning igen: hela uppsättningen (samma set) öppnas i verktyget med samma inställningar och punkter, originalen döljs tills du trycker Uppdatera (Victor 2026-11-12). */
 function l3swEdit(p) {
   const parts = p && p.set ? placements.filter(q => q.set === p.set && q.wsrc) : []; if (!parts.length) { l3Status("Det här objektet saknar sparade verktygsinställningar (skapat före uppdateringen).", true); return; }
   const w = parts[0].wsrc, dx = parts[0].x - w.org[0], dy = parts[0].y - w.org[1], dz = parts[0].z - w.org[2];   // ev. flytt efter att den skapades följer med
   const pts = JSON.parse(JSON.stringify(w.pts)).map(q => { q[0] += dx; q[1] += dy; q[2] += dz; if (q[3] != null) q[3] += dz; return q; }), spec = JSON.parse(JSON.stringify(w.spec));
-  try { l3SetPref("measure", "wall"); l3SetTool("measure"); } catch (e) {}
+  try { l3SetPref("measure", typeof l3swbIs === "function" && l3swbIs(spec.kind) ? "bygg" : "wall"); l3SetTool("measure"); } catch (e) {}
   const ids = parts.map(q => q.id); l3SelectIds([]); ids.forEach(id => { const g = l3.placeMeshes.get(id); if (g) g.visible = false; });
-  l3swOpen({ pts, spec, res: null, editSet: p.set, hidden: ids }); l3Status("Redigerar " + (L3SW_KINDS[spec.kind] || "stödmur") + ": ändra i panelen, flytta punkter eller använd tabellen och tryck Uppdatera. Esc avbryter.");
+  l3swOpen({ pts, spec, res: null, editSet: p.set, hidden: ids }); l3Status("Redigerar " + (L3SW_KINDS[spec.kind] || (typeof l3swbDef !== "undefined" && l3swbDef[spec.kind] && l3swbDef[spec.kind].name) || "stödmur") + ": ändra i panelen, flytta punkter eller använd tabellen och tryck Uppdatera. Esc avbryter.");
 }
 document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-swedit]"); if (!b) return; e.stopPropagation(); const sel = l3SelList(); if (sel.length) l3swEdit(sel[0]); }, true);

@@ -45,7 +45,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     T('room', () => { const x = mk('room', { name: 'Rum 7', H: 2.5 }, [[0, 0, 100], [5, 0, 100], [5, 4, 100], [0, 4, 100]]); return okm(x.r) && /20 m²/.test(x.r.parts[0].name) && /50 m³/.test(x.r.parts[0].name); });
     T('service', () => ['kanal', 'stege', 'rund', 'rorp', 'rorv'].every(t => { const x = mk('service', { typ: t, hang: true }); return okm(x.r); }));
     // panel + skapa + redigera igen
-    l3SetPref('measure', 'wall'); l3SetTool('measure'); await w(200);
+    l3SetPref('measure', 'bygg'); l3SetTool('measure'); await w(200);
     const sp = { ...L3SW_DEF, kind: 'stud' }; l3swOpen({ pts: [[6512330, 150130, 100], [6512336, 150130, 100]], spec: sp }); await w(400);
     const pn = document.getElementById('v3WallPanel'); out.panel = !!pn.querySelector('[data-bkind]') && !!pn.querySelector('[data-bk="dim"]') && !!pn.querySelector('[data-bklist]');
     const ks = pn.querySelector('[data-bkind]'); ks.value = 'sheets'; ks.dispatchEvent(new Event('change')); await w(300); out.switch = l3sw.cur.spec.kind === 'sheets' && l3sw.cur.res.parts.length === 1 && !!document.querySelector('#v3WallPanel [data-bk="fmt"]');
@@ -54,7 +54,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const n0 = placements.length; l3swMake(); await w(300); const made = placements.filter(q => q.wsrc && q.wsrc.spec.kind === 'stud'); out.made = made.length >= 3 && placements.length === n0 + made.length;
     l3SelectIds([made[0].id]); await w(300); const eb = document.querySelector('#v3Side [data-swedit]'); out.eBtn = !!eb; eb.click(); await w(400); out.eOpen = !!l3sw.cur && l3sw.cur.spec.kind === 'stud' && !!document.querySelector('#v3WallPanel [data-bk="dim"]'); l3swClose();
     // förhandsvisningen går att fästa mot och vrida runt: strålen träffar den (stödmur/byggdel och 3D-text)
-    { l3SetPref('measure', 'wall'); l3SetTool('measure'); await w(100); const sp2 = { ...L3SW_DEF, kind: 'stud' }; l3swOpen({ pts: [[6512330, 150130, 100], [6512336, 150130, 100]], spec: sp2 }); await w(300);
+    { l3SetPref('measure', 'bygg'); l3SetTool('measure'); await w(100); const sp2 = { ...L3SW_DEF, kind: 'stud' }; l3swOpen({ pts: [[6512330, 150130, 100], [6512336, 150130, 100]], spec: sp2 }); await w(300);
       const O = l3.O; l3.camera.position.set(6512333 - O[0] + 0.5, 150130 - O[1] - 6, 101.3 - O[2]); l3.orbit.target.set(6512333 - O[0], 150130 - O[1], 101.2 - O[2]); l3.orbit.update(); l3.camera.updateMatrixWorld(); l3Render();
       const R = l3.renderer.domElement.getBoundingClientRect(), v = new THREE.Vector3(6512333 - O[0], 150130 - O[1], 101.2 - O[2]).project(l3.camera), e = { clientX: R.left + (v.x + 1) / 2 * R.width, clientY: R.top + (1 - v.y) / 2 * R.height };
       const hit = l3Ray(e, l3Surfaces())[0]; out.hitPreview = !!hit && l3.groups.wall.children.some(c => { let o = hit.object; while (o) { if (o === c) return true; o = o.parent; } return false; }); const pp = l3PivotPoint(e); out.pivot = Math.abs(pp.y - (150130 - O[1])) < 0.5; l3swClose(); }
@@ -65,8 +65,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // Armera betongdelen: genväg i objektets panel öppnar Armering och genererar
     { const bp = [[0, 0, 0], [6, 0, 0], [6, 4, 0], [0, 4, 0], [0, 0, 0.3], [6, 0, 0.3], [6, 4, 0.3], [0, 4, 0.3]], bf = [[1, 3, 2], [1, 4, 3], [5, 6, 7], [5, 7, 8], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 4, 8], [3, 8, 7], [4, 1, 5], [4, 5, 8]];
       const bpl = modCreate({ k: 'mesh', pts: bp, faces: bf, closed: true }, [6512340, 150130, 100], { name: 'Betongplatta' }); l3SelectIds([bpl.id]); await w(300); const ab = document.querySelector('#v3Side [data-armera]'); out.armBtn = !!ab; if (ab) { ab.click(); await w(1500); out.armSet = l3rb.sets.length >= 1 && /1 set skapade/.test(l3rb.msg || ''); } l3rbToggle(false); }
+    // Stödmur och Byggdelar är skilda verktyg: Murtyp-listan i Stödmur har inga byggdelar, och byggdelarna har egen mätfunktion och egen minnesinställning
+    { l3SetPref('measure', 'wall'); l3SetTool('measure'); await w(150); const spw = { ...L3SW_DEF, kind: 'L' }; l3swOpen({ pts: [[6512330, 150130, 100], [6512336, 150130, 100]], spec: spw }); await w(300);
+      const opts = [...document.querySelectorAll('#v3WallPanel [data-wkkind] option')].map(o => o.value); out.wallKinds = opts.length >= 4 && !opts.includes('stud') && !opts.includes('truss') && !opts.includes('room'); out.wallBar = !document.querySelector('[data-mmode="bygg"]'); l3swClose();
+      out.sep = !(l3sw.last && ['stud', 'truss', 'room'].includes(l3sw.last.kind)); }
+    // flödet: byggdelsläget → punkter → Enter öppnar byggdelen med senast valda typ; stödmursläget öppnar en mur
+    { l3swb.last = { kind: 'joist' }; l3SetPref('measure', 'bygg'); l3SetTool('measure'); await w(150); l3t.mp = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(5, 0, 0)]; l3swStart(); await w(300); out.flowBygg = !!l3sw.cur && l3sw.cur.spec.kind === 'joist' && !!document.querySelector('#v3WallPanel [data-bk="dim"]'); l3swClose();
+      l3SetPref('measure', 'wall'); l3SetTool('measure'); await w(150); l3t.mp = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(5, 0, 0)]; l3swStart(); await w(300); out.flowWall = !!l3sw.cur && !['joist', 'stud'].includes(l3sw.cur.spec.kind) && !document.querySelector('#v3WallPanel [data-bkind]') && !!document.querySelector('#v3WallPanel [data-wkkind]'); l3swClose(); }
     // biblioteket
-    out.errs = errs.join(' | ') || true; l3RenderLib(); await w(100); const dbgLib = [!!document.getElementById('v3Lib'), document.getElementById('v3Lib') && document.getElementById('v3Lib').innerHTML.length, !!document.getElementById('v3Bygg'), typeof l3RenderLib, String(l3RenderLib).slice(0,60)]; out.lib = !!document.querySelector('#v3Bygg [data-bygg="truss"]'); if (!out.lib) return out; document.querySelector('#v3Bygg [data-bygg="truss"]').click(); await w(100); out.card = l3.tool === 'measure' && l3sw.last.kind === 'truss';
+    out.errs = errs.join(' | ') || true; l3RenderLib(); await w(100); const dbgLib = [!!document.getElementById('v3Lib'), document.getElementById('v3Lib') && document.getElementById('v3Lib').innerHTML.length, !!document.getElementById('v3Bygg'), typeof l3RenderLib, String(l3RenderLib).slice(0,60)]; out.lib = !!document.querySelector('#v3Bygg [data-bygg="truss"]'); if (!out.lib) return out; document.querySelector('#v3Bygg [data-bygg="truss"]').click(); await w(100); out.card = l3.tool === 'measure' && l3Prefs().measure === 'bygg' && l3swb.last.kind === 'truss' && !(l3sw.last && l3sw.last.kind === 'truss');
     out.errs = errs.join(' | ') || true; return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 600)); process.exit(1); }
