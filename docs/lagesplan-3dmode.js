@@ -12,7 +12,7 @@
 const L3GM_PRESETS = { gul: ["", "#fff7c2", "Gul (standard)"], rod: ["#e5484d", "#ffd6d6", "Röd ↔ ljusröd"], vit: ["#111827", "#ffffff", "Mörk ↔ vit"], bla: ["#2563eb", "#bfdbfe", "Blå ↔ ljusblå"], gron: ["#16a34a", "#bbf7d0", "Grön ↔ ljusgrön"], orange: ["#f5a623", "#e5484d", "Orange ↔ röd"] };
 const L3GM_PCFG0 = { preset: "gul", a: "", b: "#fff7c2", period: 1.5, style: "mjuk", amp: 85 };
 const l3gm = { scale: null, strict: false, mode: "off", timer: null, pulseIv: null, pulseT0: 0, act: [], next: [], sig: "", selSig: "", selOwn: false, info: "", raf: 0 };
-const l3gmCfg = () => ({ scale: false, scaleBy: "start", scaleA: "#2563eb", scaleB: "#dc2626", strict: false, future: false, doneOp: 30, ops: {}, from: "", to: "", pulse: false, selAct: false, origCol: false, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
+const l3gmCfg = () => ({ scale: false, scaleBy: "start", scaleA: "#2563eb", scaleB: "#dc2626", strict: false, future: false, doneOp: 30, ops: {}, from: "", to: "", pulse: false, selAct: false, origCol: false, futureOp: 25, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
 const l3gmSet = (k, v) => l3plSet("gm", { ...(l3plPrefs().gm || {}), [k]: v });
 const l3gmHex = h => { const n = parseInt(String(h).replace("#", ""), 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
 
@@ -79,7 +79,11 @@ function l3gmRange(rows, at, ctx) {
   if (m === "time" && l3gm.follow && !rows.some(r => l3gm.follow.has(r.id))) return { off: true };
   const C = l3gmCfg(), ph = rows.map(r => l3gmRowPhase(r, at, C.future)).filter(p => p !== "dold");
   if (!ph.length) return { off: true };
-  if (C.origCol && m === "time") return { off: false, rgb: null, alpha: null, phase: "temp", orig: true }; // Tidslinje med originalfärg: byggt = modellens egen färg
+  if (C.origCol && m === "time") { // Tidslinje med originalfärg: byggt = modellens egen färg (kommande som spöke när "Visa kommande" är på)
+    const g0 = l3gmGroup(ph); if (g0 === "pagaende" && ctx) l3gm.next.push(ctx);
+    const fo = g0 === "planerad" && C.future ? Math.max(0, Math.min(100, C.futureOp)) : 100; if (fo <= 0) return { off: true };
+    return { off: false, rgb: null, alpha: fo >= 100 ? null : fo / 100, phase: g0, orig: true };
+  }
   if (rows.every(r => r.temporary === true)) return l3gmTemp(rows) || { off: false, rgb: null, alpha: null, phase: "temp" }; // temporär mellan start och slut: modellens originalfärg, ingen status/puls
   const g = l3gmGroup(ph);
   if (g === "klar") {
@@ -90,7 +94,7 @@ function l3gmRange(rows, at, ctx) {
     return { off: false, rgb: l3gmHex(col).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: g };
   }
   if (g === "pagaende" && ctx) l3gm.next.push(ctx);
-  const op = (C.ops || {})[g] === undefined ? 100 : Number((C.ops || {})[g]); // opacitet per status (0 = osynligt) – som i dashboarden
+  const op = g === "planerad" && C.future ? Math.max(0, Math.min(100, C.futureOp)) : (C.ops || {})[g] === undefined ? 100 : Number((C.ops || {})[g]); // opacitet per status (0 = osynligt) – som i dashboarden
   if (op <= 0) return { off: true };
   return { off: false, rgb: (l3gm.scale && l3gmScaleRgb(rows)) || l3gmHex(phaseColor(g)).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: g };
 }
