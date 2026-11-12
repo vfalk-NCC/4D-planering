@@ -149,6 +149,11 @@ function l3swpAdds(s, X) {
       parts.push({ name: `Injekteringskropp (förankringslängd ${fmt(Lg, 1)} m) – ${na} st`, mesh: { pts: gg.pts, faces: gg.faces }, vol: gg.vol, len: Lg * na, ifc: "IFCBUILDINGELEMENTPROXY", color: "#a8a29e", mass: gg.vol * L3SWP_CONC });
       parts.push({ name: `Ankarplattor – ${na} st`, mesh: { pts: gp.pts, faces: gp.faces }, vol: gp.vol, len: 0.25 * na, ifc: "IFCPLATE", color: "#334155", mass: gp.vol * L3SWP_STEEL }); }
   }
+  if (s.strut && (X.st || []).length) {   // stämpning: stålrör tvärs schaktet från väggens framsida (mot motstående vägg)
+    const every = Math.max(1, Math.round(+s.strut_n || 4)), sw = Math.max(1, +s.strut_w || 8), dzS = s.strut_dz != null && s.strut_dz !== "" ? +s.strut_dz : 1.5, rd = Math.max(0.1, +s.strut_d || 0.4) / 2, MT = l3swpMerge(); let nt = 0;
+    X.st.forEach((q, i) => { if (i % every) return; const z = q.z - dzS, k0 = halfT + 0.03; MT.add(l3swpBar([q.pos[0] - q.n[0] * k0, q.pos[1] - q.n[1] * k0, z], [q.pos[0] - q.n[0] * (k0 + sw), q.pos[1] - q.n[1] * (k0 + sw), z], rd, 12)); nt++; });
+    const g = MT.get(); if (nt) parts.push({ name: `Stämp (stålrör Ø ${fmt(rd * 2000, 0)}) – ${nt} st, ${fmt(sw, 1)} m tvärs schaktet`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: sw * nt, ifc: "IFCMEMBER", color: "#64748b", mass: g.vol * L3SWP_STEEL * 0.12 });
+  }
   if (X.kind === "slits" && +s.panel > 0 && line.length > 1) {   // fogar (stoprör) mellan slitsarna
     const pl = Math.max(1, +s.panel), tt = +s.p_tt || 0.8, MJ = l3swpMerge(); let d = pl, acc = 0, n = 0;
     for (let i = 0; i + 1 < line.length; i++) { const A = line[i], B = line[i + 1], Ls = Math.hypot(B[0] - A[0], B[1] - A[1]); if (Ls < 0.05) continue; const t = [(B[0] - A[0]) / Ls, (B[1] - A[1]) / Ls], nn = [-t[1] * sign, t[0] * sign];
@@ -263,13 +268,54 @@ function l3swpBuild(pts, s) {
   const pos = kind === "sheet" ? sheetPos : stations.map(st => { const f = frame(st); return [f.pos[0], f.pos[1], zTop(f), zBot(f), f.sl || 0, f.name || null, kind === "tube" ? (stations.indexOf(st) + 1 < stations.length ? !!spOK[stations.indexOf(st)] : null) : undefined]; });
   return { parts, L, area: 0, piles: true, pos };
 }
+/* ---- Stödmurar (L-stöd, gjuten, gravitation, enkel): dränering, bärlager och räcke (Victor 2026-11-12) ---- */
+const l3swpBaseKind = k => k === "L" || k === "cast" || k === "grav" || k === "plain";
+function l3swpWallExtras(res, pts, s) {
+  const P = l3swProfile(s), soilSign = s.soil === "R" ? -1 : 1, emb = Math.max(0, +s.embed || 0), H = Math.max(0.1, +s.H || 1), fmt = l3swFmt, parts = res.parts, st = pts.map(q => ({ x: q[0], y: q[1], z: q[2] - emb }));
+  const maxU = v => { let m = -Infinity; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; if ((a[1] - v) * (b[1] - v) <= 0 && Math.abs(a[1] - b[1]) > 1e-9) { const t = (v - a[1]) / (b[1] - a[1]); m = Math.max(m, a[0] + (b[0] - a[0]) * t); } } return m === -Infinity ? Math.max(...P.map(q => q[0])) : m; };
+  const minU = v => { let m = Infinity; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; if ((a[1] - v) * (b[1] - v) <= 0 && Math.abs(a[1] - b[1]) > 1e-9) { const t = (v - a[1]) / (b[1] - a[1]); m = Math.min(m, a[0] + (b[0] - a[0]) * t); } } return m === Infinity ? Math.min(...P.map(q => q[0])) : m; };
+  const add = (poly, name, color, ifc, dens, extra) => { const sw = l3swSweep(poly, st, soilSign, true); parts.push({ name, mesh: { pts: sw.pts, faces: sw.faces }, vol: sw.vol, len: res.L, ifc, color, mass: sw.vol * dens, ...(extra || {}) }); };
+  const bt = s.kind === "L" || s.kind === "cast" ? Math.min(H * 0.6, Math.max(0.05, +s.bt || 0.12)) : 0;
+  if (s.drain) {   // dränering bakom muren: kross, dräneringsrör och fiberduk
+    const dw = Math.max(0.1, +s.dr_w || 0.4), top = s.dr_top != null && s.dr_top !== "" ? +s.dr_top : 0.3, v0 = bt, v1 = Math.max(v0 + 0.2, H - top), a0 = maxU(v0 + 1e-3), a1 = maxU(v1 - 1e-3), ui = Math.min(a0, a1);
+    add([[a0, v0], [a0 + dw, v0], [a1 + dw, v1], [a1, v1]], `Dränerande kross (${fmt(dw * 1000, 0)} mm) bakom muren`, "#9ca3af", "IFCBUILDINGELEMENTPROXY", 1700);
+    const pc = [a0 + Math.min(0.15, dw / 2), v0 + 0.07], pr = 0.055; add(Array.from({ length: 14 }, (_, i) => [pc[0] + pr * Math.cos(2 * Math.PI * i / 14), pc[1] + pr * Math.sin(2 * Math.PI * i / 14)]), `Dräneringsrör Ø 110 – ${fmt(res.L, 1)} m`, "#1f2937", "IFCBUILDINGELEMENTPROXY", 900);
+    const uo = Math.max(a0, a1) + dw, ft = 0.006; add([[uo, v0], [uo + ft, v0], [uo + ft, v1 + ft], [ui, v1 + ft], [ui, v1], [uo, v1]], `Fiberduk (geotextil) runt dräneringen`, "#d4d4d8", "IFCCOVERING", 300);
+  }
+  if (s.bed) {   // bärlager under sulan
+    const bd = Math.max(0.05, +s.bed_t || 0.2), ex = 0.2, u0 = Math.min(...P.map(q => q[0])) - ex, u1 = Math.max(...P.map(q => q[0])) + ex;
+    add([[u0, -bd], [u1, -bd], [u1, 0], [u0, 0]], `Bärlager (krossmaterial) ${fmt(bd * 1000, 0)} mm under sulan`, "#a1a1aa", "IFCBUILDINGELEMENTPROXY", 1900);
+  }
+  if (s.rail) {   // räcke på murens krön (framkant)
+    const rh = Math.max(0.5, +s.rail_h || 1.1), cc = Math.max(0.5, +s.rail_cc || 1.8), u0 = minU(H - 1e-3) + 0.05, MP = l3swpMerge();
+    const rr = (v0, v1) => [[u0 - 0.025, v0], [u0 + 0.025, v0], [u0 + 0.025, v1], [u0 - 0.025, v1]];
+    add(rr(H + rh - 0.05, H + rh), `Räcke – handledare`, "#475569", "IFCRAILING", L3SWP_STEEL * 0.25); add(rr(H + rh / 2 - 0.025, H + rh / 2 + 0.025), `Räcke – mellanreling`, "#475569", "IFCRAILING", L3SWP_STEEL * 0.25);
+    let d = 0, acc = 0, n = 0; const L = res.L;
+    for (let i = 0; i + 1 < st.length; i++) { const A = st[i], B = st[i + 1], Ls = Math.hypot(B.x - A.x, B.y - A.y); if (Ls < 0.05) continue; const t = [(B.x - A.x) / Ls, (B.y - A.y) / Ls], nn = [-t[1] * soilSign, t[0] * soilSign];
+      while (d <= acc + Ls + 1e-6) { const u = Math.min(1, (d - acc) / Ls), z = A.z + (B.z - A.z) * u + H, p = [A.x + (B.x - A.x) * u + nn[0] * u0, A.y + (B.y - A.y) * u + nn[1] * u0]; MP.add(l3swpPrism([[-.03, -.03], [.03, -.03], [.03, .03], [-.03, .03]], null, z, z + rh, p, t, nn)); n++; d += cc; } acc += Ls; }
+    const gp = MP.get(); if (gp.n) parts.push({ name: `Räcke – stolpar (${n} st c/c ${fmt(cc, 1)} m)`, mesh: { pts: gp.pts, faces: gp.faces }, vol: gp.vol, len: res.L, ifc: "IFCRAILING", color: "#475569", mass: gp.vol * L3SWP_STEEL * 0.25 });
+  }
+}
+function l3swpExtrasPanel(c) {
+  const s = c.spec, el = document.getElementById("v3WallPanel"); if (!el || !l3swpBaseKind(s.kind) || el.querySelector("#v3SwXtra")) return; const grid = el.querySelector(".v3-rd-g"); if (!grid) return; const E = escHtml;
+  const chk = (k, label, tip) => `<label class="v3-ga-tg" style="grid-column:1/3" title="${E(tip)}"><input type="checkbox" data-xk="${k}" ${s[k] ? "checked" : ""}><span>${label}</span></label>`;
+  const num = (k, label, tip, unit, st, min, max, d) => `<label class="v3-rd-n" title="${E(tip)}"><span>${label}</span><input type="number" data-xn="${k}" value="${s[k] != null && s[k] !== "" ? s[k] : d}" min="${min}" max="${max}" step="${st}"><em>${unit}</em></label>`;
+  let h = chk("drain", "Dränering bakom muren", "Dränerande kross, dräneringsrör Ø 110 och fiberduk bakom muren");
+  if (s.drain) h += num("dr_w", "Krossbredd", "Dräneringszonens bredd bakom muren", "m", 0.05, 0.1, 2, 0.4) + num("dr_top", "Under krön", "Hur långt under murens överkant dräneringen slutar", "m", 0.05, 0, 3, 0.3);
+  h += chk("bed", "Bärlager under sulan", "Krossmaterial under fundamentet, 0,2 m bredare på varje sida"); if (s.bed) h += num("bed_t", "Lagertjocklek", "Bärlagrets tjocklek", "m", 0.05, 0.05, 1, 0.2);
+  h += chk("rail", "Räcke på krön", "Stolpar, handledare och mellanreling vid murens framkant"); if (s.rail) h += num("rail_h", "Räckeshöjd", "Räckets höjd över krönet", "m", 0.05, 0.5, 2, 1.1) + num("rail_cc", "Stolpar c/c", "Avstånd mellan stolparna", "m", 0.1, 0.5, 4, 1.8);
+  const d = document.createElement("div"); d.id = "v3SwXtra"; d.className = "v3-rd-g"; d.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-top:6px;border-top:1px solid #e2e8f0;padding-top:6px"; d.innerHTML = `<div style="grid-column:1/3;font-size:11px;font-weight:600;color:#475569">Tillägg</div>` + h; grid.after(d);
+  const re = () => { l3swPanel(); l3swDraw(); };
+  d.querySelectorAll("[data-xk]").forEach(i => { i.onchange = () => { s[i.dataset.xk] = i.checked; re(); }; });
+  d.querySelectorAll("[data-xn]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v)) s[i.dataset.xn] = v; re(); }; });
+}
 /* ---- Inkoppling i Stödmur-verktyget ---- */
 const l3swBuildBase = l3swBuild;
-l3swBuild = function (pts, s) { return l3swpIs(s.kind) ? l3swpBuild(pts, s) : l3swBuildBase(pts, s); };
+l3swBuild = function (pts, s) { if (l3swpIs(s.kind)) return l3swpBuild(pts, s); const r = l3swBuildBase(pts, s); if (r.parts && r.parts.length && (s.drain || s.bed || s.rail)) l3swpWallExtras(r, pts, s); return r; };
 const l3swPanelBase = l3swPanel;
 l3swPanel = function () {
   const c = l3sw.cur; if (c && l3swpIs(c.spec.kind)) l3swpInit(c.spec);
-  l3swPanelBase(); const c2 = l3sw.cur; if (c2 && l3swpIs(c2.spec.kind)) l3swpPanelFix(c2);
+  l3swPanelBase(); const c2 = l3sw.cur; if (c2 && !l3swpIs(c2.spec.kind)) l3swpExtrasPanel(c2); if (c2 && l3swpIs(c2.spec.kind)) l3swpPanelFix(c2);
   if (c2 && c2.editSet) { const mk = document.querySelector('#v3WallPanel [data-wb="make"]'); if (mk) { mk.textContent = "Uppdatera"; mk.title = "Ersätter den utförda stödmuren/pålningen med ändringarna"; } }
 };
 function l3swpPanelFix(c) {
@@ -301,6 +347,8 @@ function l3swpPanelFix(c) {
   if (k === "slits") ex += num("panel", "Slitslängd", "Avstånd mellan fogarna (stoprör). 0 = inga fogar", "m", 0.5, 0, 12);
   ex += sel("beam", "Toppbalk", "Kantbalk i betong på pålhuvudena eller fångbalk i stål längs fronten", [["none", "Ingen"], ["conc", "Kantbalk (betong)"], ["steel", "Fångbalk (stål, 2 × UPE)"]]);
   if (s.beam === "conc" || s.beam === "steel") { const st = s.beam === "steel"; def("beam_b", st ? 0.3 : 0.6); def("beam_h", st ? 0.3 : 0.5); ex += num("beam_b", "Balk bredd", "Balkens bredd", "m", 0.05, 0.1, 2) + num("beam_h", "Balk höjd", "Balkens höjd", "m", 0.05, 0.1, 2) + (st ? (def("beam_dz", 0.5), num("beam_dz", "Nivå under ÖK", "Balkens överkant under väggens överkant", "m", 0.1, 0, 10)) : ""); }
+  ex += chk("strut", "Stämpning (tvärs schaktet)", "Stålrörsstämp från väggens framsida mot motstående vägg, ett alternativ/komplement till ankare");
+  if (s.strut) { def("strut_w", 8); def("strut_n", 4); def("strut_dz", 1.5); def("strut_d", 0.4); ex += num("strut_w", "Schaktbredd", "Stämpens längd – avståndet till motstående vägg", "m", 0.5, 1, 40) + num("strut_n", "Var N:e påle", "Stämp i var N:e påle/spontplanka (placera på fångbalken)", "st", 1, 1, 20) + num("strut_dz", "Djup under ÖK", "Stämpens nivå under väggens överkant", "m", 0.1, 0, 20) + num("strut_d", "Rör Ø", "Stämpens ytterdiameter", "m", 0.05, 0.1, 1.2); }
   ex += chk("anch", "Ankare / stag", "Förankring bakåt i jorden: stag med injekteringskropp och ankarplatta");
   if (s.anch) { def("anch_n", 2); def("anch_l", 12); def("anch_a", 15); def("anch_dz", 1); def("anch_g", 5); ex += num("anch_n", "Var N:e påle", "Ankare i var N:e påle/spontplanka", "st", 1, 1, 20) + num("anch_l", "Längd", "Ankarets totala längd", "m", 0.5, 2, 40) + num("anch_a", "Vinkel ned", "Lutning nedåt in i jorden", "°", 1, 0, 60) + num("anch_dz", "Djup under ÖK", "Ankarets läge under väggens överkant", "m", 0.1, 0, 20) + num("anch_g", "Injektering", "Förankringslängd (injekteringskroppens längd i änden)", "m", 0.5, 1, 20); }
   grid.innerHTML = kindSel + stdSel + f + ex + soil;

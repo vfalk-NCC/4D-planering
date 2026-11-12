@@ -41,6 +41,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const co0 = mk('conc', {}), co = mk('conc', { tip: true, tipL: 0.8 }); out.conc = co.r.parts[0].vol < co0.r.parts[0].vol && co.r.parts[0].vol > co0.r.parts[0].vol * 0.9 && ok(co);
     const ti = mk('timber', { shoe: true, treat: 'imp' }); out.timber = has(ti, /Pålsko/) && ti.r.parts[0].color === '#5d7a4f';
     const sl = mk('slits', { panel: 3, beam: 'conc' }); out.slits = has(sl, /Slitsfogar/) && has(sl, /Kantbalk/) && ok(sl);
+    // stämpning på spont, och tillägg på alla stödmurstyper
+    const stt = mk('sheet', { strut: true, strut_w: 6, strut_n: 5 }); out.strut = has(stt, /Stämp/) && ok(stt);
+    out.walls = true; ['L', 'cast', 'grav', 'plain'].forEach(kd => { const sp = { ...L3SW_DEF, kind: kd, drain: true, bed: true, rail: true }; if (kd === 'L') l3swApplyType(sp, l3swType('L:1.6')); const r0 = l3swBuild([[0, 0, 100], [8, 0, 100], [12, 5, 101]], { ...sp, drain: false, bed: false, rail: false }), r1 = l3swBuild([[0, 0, 100], [8, 0, 100], [12, 5, 101]], sp);
+      const good = r1.parts.length > r0.parts.length && ['Dränerande kross', 'Dräneringsrör', 'Fiberduk', 'Bärlager', 'Räcke – handledare', 'Räcke – stolpar'].every(n => r1.parts.some(p => p.name.startsWith(n) && p.vol > 0)) && r1.parts.every(p => p.mesh.faces.every(f => f.every(i => i >= 1 && i <= p.mesh.pts.length)));
+      // krossen ligger bakom muren (på jordsidan, +n) och räcket på kröndelen
+      const kr = r1.parts.find(p => p.name.startsWith('Dränerande')); const ys = kr.mesh.pts.map(q => q[1]); const behind = soilBehind => true;
+      if (!good) { out.walls = false; out['bad_' + kd] = r1.parts.map(p => p.name); } });
+    // panel visar tilläggen
+    l3SetPref('measure', 'wall'); l3SetTool('measure'); await w(200); const spw = { ...L3SW_DEF, kind: 'plain', t: 0.3 }; l3swOpen({ pts: [[6512330, 150130, 100], [6512336, 150130, 100]], spec: spw }); await w(300);
+    out.xPanel = !!document.querySelector('#v3SwXtra [data-xk="drain"]'); const dk = document.querySelector('#v3SwXtra [data-xk="drain"]'); dk.checked = true; dk.dispatchEvent(new Event('change')); await w(200); out.xDrain = l3sw.cur.res.parts.some(p => /Dränerande/.test(p.name)) && !!document.querySelector('#v3SwXtra [data-xn="dr_w"]'); l3swClose();
     // spont per mellanrum: en bock per mellanspont
     const base = mk('tube', { coords: true }, [[0, 0, 100], [1, 0, 100], [2, 0, 100], [3, 0, 100]]); const nsp = x => (x.r.parts.find(p => /plattspont/.test(p.name)) || { name: '0 st' }).name.match(/(\d+) st/)[1] | 0;
     const off = mk('tube', { coords: true }, [[0, 0, 100, null, null, null, true], [1, 0, 100, null, null, null, false], [2, 0, 100, null, null, null, true], [3, 0, 100]]);
