@@ -70,11 +70,18 @@ function l3txBuild(d) {
 }
 /* Lokala → världskoordinater (SWEREF, meter). */
 function l3txWorld(d, tris) {
+  let x0 = Infinity, x1 = -Infinity; tris.forEach(t => t.forEach(p => { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; }));
+  const ox = !isFinite(x0) ? 0 : d.align === "center" ? -(x0 + x1) / 2 : d.align === "right" ? -x1 : 0;   // Vänster/Centrerad/Höger gäller hela texten mot placeringspunkten
+  if (ox) tris = tris.map(t => t.map(p => [p[0] + ox, p[1], p[2]]));
   const th = (Number(d.rot) || 0) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), stand = d.mode === "standing";
   const f = p => stand ? [d.x + p[0] * c + p[2] * s, d.y + p[0] * s - p[2] * c, d.z + p[1]] : [d.x + p[0] * c - p[1] * s, d.y + p[0] * s + p[1] * c, d.z + p[2]];
   return tris.map(t => t.map(f));
 }
 /* ---- Förhandsvisning och skapande ---- */
+function l3txAnchorLine(d) {   // har man tryckt ut en linje (två tryck) hamnar texten på dess början, mitt eller slut efter justeringen
+  if (!d || !d.line) return; const [a, b] = d.line, r = v => Math.round(v * 100) / 100, m = d.align === "center" ? [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2] : d.align === "right" ? [b.x, b.y, b.z] : [a.x, a.y, a.z];
+  d.x = r(m[0]); d.y = r(m[1]); d.z = r(m[2]);
+}
 function l3txDraw() {
   if (!l3 || !l3.scene) return; if (!l3tx.group) { l3tx.group = new THREE.Group(); l3tx.group.name = "text3d"; l3tx.group.userData.noHit = true; l3.scene.add(l3tx.group); }
   l3Clear(l3tx.group); const d = l3tx.d; if (!d) { l3Render(); return; }
@@ -88,7 +95,7 @@ function l3txDraw() {
 function l3txGizmo(on) {
   if (!on || !l3tx.d) { if (typeof l3mgHide === "function") l3mgHide("text"); return; }
   if (typeof l3mgShow !== "function") return;
-  l3mgShow([l3tx.d.x, l3tx.d.y, l3tx.d.z], { owner: "text", move: (dx, dy, dz) => { const d = l3tx.d; if (!d) return; d.x = Math.round((d.x + dx) * 1000) / 1000; d.y = Math.round((d.y + dy) * 1000) / 1000; d.z = Math.round((d.z + dz) * 1000) / 1000; if (l3tx.group && l3tx.base) l3tx.group.position.set(d.x - l3tx.base.x, d.y - l3tx.base.y, d.z - l3tx.base.z);
+  l3mgShow([l3tx.d.x, l3tx.d.y, l3tx.d.z], { owner: "text", move: (dx, dy, dz) => { const d = l3tx.d; if (!d) return; d.line = null; d.x = Math.round((d.x + dx) * 1000) / 1000; d.y = Math.round((d.y + dy) * 1000) / 1000; d.z = Math.round((d.z + dz) * 1000) / 1000; if (l3tx.group && l3tx.base) l3tx.group.position.set(d.x - l3tx.base.x, d.y - l3tx.base.y, d.z - l3tx.base.z);
       const st = document.querySelector("#v3TextDlg .v3-tx-pos"); if (st) st.textContent = `X ${d.x.toFixed(2).replace(".", ",")} · Y ${d.y.toFixed(2).replace(".", ",")} · Z ${d.z.toFixed(2).replace(".", ",")}`; l3Render(); }, end: () => { if (l3tx.d) l3txDraw(); } });
 }
 function l3txSchedule() { clearTimeout(l3tx.timer); l3tx.timer = setTimeout(l3txDraw, 150); }
@@ -127,7 +134,7 @@ function l3txRender() {
 function l3txBind(dlg) {
   const d = l3tx.d, q = s => dlg.querySelector(s);
   dlg.querySelectorAll("[data-txf]").forEach(i => { const ev = i.tagName === "SELECT" || i.type === "checkbox" || i.type === "color" ? "onchange" : "oninput"; i[ev] = () => {
-    const k = i.dataset.txf, v = i.type === "checkbox" ? i.checked : i.type === "number" || i.type === "range" ? Number(i.value) : i.value; d[k] = v;
+    const k = i.dataset.txf, v = i.type === "checkbox" ? i.checked : i.type === "number" || i.type === "range" ? Number(i.value) : i.value; d[k] = v; if (k === "align") { l3txAnchorLine(d); const ps = dlg.querySelector(".v3-tx-pos"); if (ps) ps.textContent = `X ${d.x.toFixed(2).replace(".", ",")} · Y ${d.y.toFixed(2).replace(".", ",")} · Z ${d.z.toFixed(2).replace(".", ",")}`; l3txGizmo(true); }
     if (k === "t" || k === "h") { dlg.querySelectorAll('[data-txf="' + k + '"]').forEach(o => { if (o !== i) o.value = v; }); const o = dlg.querySelector('[data-txo="' + k + '"]'); if (o) o.textContent = k === "t" ? Math.round(v * 1000) + " mm" : String(v).replace(".", ",") + " m"; }
     if (k === "rot") dial(v);
     if (k === "plate" || k === "mode") { l3txRender(); } l3txSchedule(); }; if (i.type === "color") i.oninput = () => { d.color = i.value; l3txSchedule(); }; });
@@ -135,7 +142,7 @@ function l3txBind(dlg) {
   const dial = v => { if (!dialEl) return; const a = (Number(v) || 0) * Math.PI / 180, x = 50 + 36 * Math.cos(a), y = 50 - 36 * Math.sin(a); dialEl.querySelector(".nd").setAttribute("x2", x); dialEl.querySelector(".nd").setAttribute("y2", y); const kn = dialEl.querySelector(".kn"); kn.setAttribute("cx", x); kn.setAttribute("cy", y); const o = q('[data-txo="rot"]'); if (o) o.textContent = norm(v) + "°"; const inp = q('input[data-txf="rot"]'); if (inp && document.activeElement !== inp) inp.value = norm(v); };
   if (dialEl) { dial(d.rot); const setA = e => { const r = dialEl.getBoundingClientRect(); let a = Math.atan2(-(e.clientY - (r.top + r.height / 2)), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI; if (e.shiftKey) a = Math.round(a / 15) * 15; d.rot = norm(a); dial(d.rot); l3txSchedule(); }; dialEl.onpointerdown = e => { e.preventDefault(); dialEl.setPointerCapture(e.pointerId); setA(e); const mv = ev => setA(ev), up = () => { dialEl.removeEventListener("pointermove", mv); dialEl.removeEventListener("pointerup", up); }; dialEl.addEventListener("pointermove", mv); dialEl.addEventListener("pointerup", up); }; }
   q("[data-txfile]").onclick = () => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".ttf,.otf,.woff,.woff2"; inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const name = f.name.replace(/\.[^.]+$/, "").replace(/[^\w -]/g, ""), ff = new FontFace(name, await f.arrayBuffer()); await ff.load(); document.fonts.add(ff); (l3tx.custom = l3tx.custom || []).push(name); l3tx.fonts = null; d.font = name; l3txRender(); l3txDraw(); l3Status(`Typsnittet "${name}" är inläst.`); } catch (e) { l3Status("Kunde inte läsa typsnittet: " + e.message, true); } }; inp.click(); };
-  q("[data-txpick]").onclick = () => l3DlgPick(2, ["Tryck textens startpunkt.", "Tryck en punkt längs textraden."], ([a, b]) => { d.x = Math.round(a.x * 100) / 100; d.y = Math.round(a.y * 100) / 100; d.z = Math.round(a.z * 100) / 100; d.rot = Math.round(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); l3txGizmo(true); l3Status("Texten är placerad – justera och tryck Skapa text."); });
+  q("[data-txpick]").onclick = () => l3DlgPick(2, ["Tryck textens startpunkt.", "Tryck en punkt längs textraden."], ([a, b]) => { d.line = [{ x: a.x, y: a.y, z: a.z }, { x: b.x, y: b.y, z: b.z }]; l3txAnchorLine(d); d.rot = Math.round(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); l3txGizmo(true); l3Status("Texten är placerad – justera och tryck Skapa text."); });
   q("[data-txcam]").onclick = () => { const c = l3.orbit.target, p = l3.camera.position; d.mode = "standing"; d.rot = Math.round(Math.atan2(p.x - c.x, -(p.y - c.y)) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); };
   q("[data-txcancel]").onclick = () => l3txClose();
   q("[data-txgo]").onclick = () => l3txCommit();

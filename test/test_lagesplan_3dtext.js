@@ -39,6 +39,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const O = l3.O; l3.gizmoT.object.position.set(6512403 - O[0], 150102 - O[1], 105 - O[2]); l3.gizmoT.dispatchEvent({ type: 'objectChange' });
       out.moved = Math.abs(dd.x - 6512403) < 0.01 && Math.abs(dd.y - 150102) < 0.01 && Math.abs(dd.z - 105) < 0.01 && /X 6512403/.test(document.querySelector('.v3-tx-pos').textContent.replace(/\s/g, ' ').replace(',00', ''));
       const pp = l3txCommit(); out.atPos = Math.abs(pp.x - 6512403) < 0.6 && Math.abs(pp.y - 150102) < 0.6 && Math.abs(pp.z - 105) < 0.1; out.gone = !l3.gizmoT.object; }
+    // Centrerad: texten hoppar till mitten av utklickad linje
+    { l3SelectIds([]); l3txOpen(); const dd = l3tx.d; dd.text = 'CENTER'; dd.rot = 0; dd.line = [{ x: 6512300, y: 150100, z: 100 }, { x: 6512310, y: 150100, z: 100 }]; dd.align = 'left'; l3txAnchorLine(dd); out.lineL = dd.x === 6512300;
+      const sel = document.querySelector('#v3TextDlg select[data-txf="align"]'); sel.value = 'center'; sel.dispatchEvent(new Event('change', { bubbles: true })); await w(100); out.lineC = dd.x === 6512305 && dd.y === 150100;
+      l3txDraw(); const WW = l3txWorld(dd, l3tx.last.tris); let a0 = Infinity, a1 = -Infinity; WW.forEach(t => t.forEach(q => { a0 = Math.min(a0, q[0]); a1 = Math.max(a1, q[0]); })); out.centered = Math.abs((a0 + a1) / 2 - 6512305) < 0.02;
+      sel.value = 'right'; sel.dispatchEvent(new Event('change', { bubbles: true })); await w(50); out.lineR = dd.x === 6512310; l3txClose(); }
     // redigera efteråt: knapp i panelen, flyttat objekt behåller sitt nya läge, ny storlek, höjd-slider och vridhjul
     { l3SelectIds([p.id]); await w(500); const btn = document.querySelector('#v3Side [data-txedit]'); out.editBtn = !!btn; p.x += 5; placeTouch(p); l3RebuildOne(p); btn.click(); await w(400);
       out.editOpen = !!l3tx.editId && l3tx.d.text === 'F18 (2)' && Math.abs(l3tx.d.x - (6512330 + 5)) < 0.01; out.slider = !!document.querySelector('#v3TextDlg input[type=range][data-txf="h"]');
@@ -62,6 +67,6 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 400)); process.exit(1); }
-  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate || !r.editBtn || !r.editOpen || !r.slider || !r.dial || !r.rot90 || !r.rot270 || !r.edited || !r.resized || !r.shown || !r.gizmo || !r.moved || !r.atPos || !r.gone || !r.editGz || !r.hiddenWhileEdit || !r.editMoved || !r.cancelShown || !r.cancelSel || !r.cancelGz) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
+  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate || !r.editBtn || !r.editOpen || !r.slider || !r.dial || !r.rot90 || !r.rot270 || !r.edited || !r.resized || !r.shown || !r.gizmo || !r.moved || !r.atPos || !r.gone || !r.lineL || !r.lineC || !r.centered || !r.lineR || !r.editGz || !r.hiddenWhileEdit || !r.editMoved || !r.cancelShown || !r.cancelSel || !r.cancelGz) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: 3D-text – slutna kroppar med hål, liggande/stående, bakplatta');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
