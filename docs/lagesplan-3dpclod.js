@@ -51,8 +51,8 @@ async function l3olRead(L, n) {
 function l3olMake(c, n, ch) {
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(n.cx, n.cy, n.cz), n.r);
-  const p = new THREE.Points(g, c.mat); p.userData.n = n.n; p.userData.noHit = true; p.raycast = () => {}; p.visible = false; c.group.add(p);
-  ch.pts = p; n.cd = ch; n.pts = p; n.rgb = ch.rgb; n.inten = ch.inten; n.state = 2; c.lod.res.add(n); c.lod.resPts += n.n;
+  const p = new THREE.Points(g, c.mat); p.userData.n = ch.pos.length / 3; p.userData.noHit = true; p.raycast = () => {}; p.visible = false; c.group.add(p);
+  ch.pts = p; ch.node = n; n.cd = ch; n.pts = p; n.rgb = ch.rgb; n.inten = ch.inten; n.state = 2; c.lod.res.add(n); c.lod.resPts += n.n;
 }
 function l3olDrops(c, n) { if (!n.pts) return; c.group.remove(n.pts); n.pts.geometry.dispose(); n.pts = null; n.cd = null; n.rgb = n.inten = null; n.state = 0; c.lod.res.delete(n); c.lod.resPts -= n.n; }
 function l3olDispose(c) { if (!c.lod) return; [...c.lod.res].forEach(n => l3olDrops(c, n)); c.lod.dead = true; }
@@ -113,7 +113,7 @@ function l3olCloud(c) {
 const H_total = c => c.info.total || c.nTot;
 async function l3olLoadNode(c, n) {
   const L = c.lod;
-  try { const ch = await l3olRead(L, n); if (L.dead) return; l3olMake(c, n, ch); l3olEvict(c); l3Render(); }
+  try { let ch = await l3olRead(L, n); if (L.dead) return; if (c.edits && c.edits.length && typeof l3peFilterData === "function") ch = l3peFilterData(c, ch); l3olMake(c, n, ch); l3olEvict(c); l3Render(); }
   catch (e) { n.state = 0; n.fail = (n.fail || 0) + 1; if (n.fail >= 3) n.state = 3; }   // 3 = ger upp
   finally { L.loading--; if (!L.dead) l3Render(); }
 }

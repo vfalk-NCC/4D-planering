@@ -65,6 +65,15 @@ function l3peFilterRun(c, e, P, keep, n) {
 /* Lägg till ett filter (utan ring) och räkna om. */
 function l3peAddFilter(c, spec) { const before = c.nTot; (c.edits = c.edits || []).push({ ...spec, dz: c.dz || 0 }); const left = l3peApply(c); l3peSave(c); return { before, left, removed: before - left }; }
 /* Läggs på molnets original: alla redigeringar i ordning. Returnerar antal punkter kvar. */
+/* Redigeringarna på en enskild nod/ruta som läses in (detaljnoder i okträdet): ger nya { pos, rgb, inten } utan de borttagna punkterna. */
+function l3peFilterData(c, o) {
+  const ed = c.edits || []; if (!ed.length) return o; const n = o.pos.length / 3, keep = new Uint8Array(n).fill(1); let cnt = n;
+  ed.forEach(e => { cnt -= e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); });
+  if (cnt === n) return o;
+  const P = new Float32Array(cnt * 3), R = o.rgb ? new Uint8Array(cnt * 3) : undefined, I = o.inten ? new Uint8Array(cnt) : undefined; let d = 0;
+  for (let i = 0; i < n; i++) { if (!keep[i]) continue; P[d * 3] = o.pos[i * 3]; P[d * 3 + 1] = o.pos[i * 3 + 1]; P[d * 3 + 2] = o.pos[i * 3 + 2]; if (R) { R[d * 3] = o.rgb[i * 3]; R[d * 3 + 1] = o.rgb[i * 3 + 1]; R[d * 3 + 2] = o.rgb[i * 3 + 2]; } if (I) I[d] = o.inten[i]; d++; }
+  return { pos: P, rgb: R, inten: I };
+}
 function l3peApply(c) {
   if (!c.orig) c.orig = c.chunks.map(ch => ({ pos: ch.pos, rgb: ch.rgb, inten: ch.inten }));
   const ed = c.edits || []; let total = 0;
@@ -81,8 +90,10 @@ function l3peApply(c) {
       ch.pos = P; ch.rgb = R; ch.inten = I;
     }
     ch.cells = null; total += ch.pos.length / 3;
-    const p = c.chunkPts[k]; if (p) { const g = p.geometry; g.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true)); g.setDrawRange(0, ch.pos.length / 3); g.computeBoundingSphere(); p.userData.n = ch.pos.length / 3; }
+    if (ch.node) { ch.node.rgb = ch.rgb; ch.node.inten = ch.inten; }
+    const p = c.chunkPts[k] || ch.pts; if (p) { const g = p.geometry; g.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true)); g.setDrawRange(0, ch.pos.length / 3); g.computeBoundingSphere(); p.userData.n = ch.pos.length / 3; }
   });
+  if (c.lod) { [...c.lod.res].filter(n => !n.pinned).forEach(n => l3olDrops(c, n)); c.lod.sel = 0; }   // detaljnoderna läses in igen med redigeringarna påförda (de ritas annars med de borttagna punkterna)
   c.nTot = total; l3pcIndexIdle(c); if (typeof l3pcLegend === "function") l3pcLegend(); l3Render();
   return total;
 }
@@ -114,7 +125,7 @@ function l3pePanel() {
 function l3peClose() { const pend = l3pe.pts.length >= 3 ? l3pe.pts.slice() : null; if (!pend) return; l3.camera.updateMatrixWorld(); l3pe.pend = { poly: pend }; l3pe.pts = []; l3pe.mouse = null; l3peDraw(); l3pePanel(); }
 function l3peDo(mode) {
   const c = l3pe.c; if (!c || !l3pe.pend) return; const r = l3peAddEdit(c, l3pe.pend.poly, mode); l3pe.pend = null; l3pe.pts = []; l3peDraw(); l3pePanel();
-  l3Status(r.removed ? `${r.removed.toLocaleString("sv-SE")} punkter borttagna – ${r.left.toLocaleString("sv-SE")} kvar. Ångra tar tillbaka dem.` : "Ringen innehöll inga punkter.");
+  l3Status(r.removed ? `${r.removed.toLocaleString("sv-SE")} punkter borttagna – ${r.left.toLocaleString("sv-SE")} kvar${c.lod ? " i översikten (detaljen filtreras när den läses in)" : ""}. Ångra tar tillbaka dem.` : "Ringen innehöll inga punkter.");
 }
 /* Anropas först i l3Key (3D-vyns tangenthantering): true = tangenten är tagen. */
 function l3peKey(e) {
