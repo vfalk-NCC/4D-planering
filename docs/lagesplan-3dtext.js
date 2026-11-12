@@ -161,7 +161,7 @@ function l3txCommit() {
   const m = { k: "mesh", pts, faces, closed: typeof l3bqClosed === "function" ? l3bqClosed(faces.map(f => [f[0], f[1], f[2]])) : true }, label = String(d.text).split("\n")[0].slice(0, 24) || "Text";
   l3SetPref("txLast", { ...d, x: 0, y: 0, z: 0 });
   let p;
-  if (l3tx.editId && (p = placements.find(q => q.id === l3tx.editId))) { const ax = [p.x, p.y, p.z]; modEdit(p, mm => { mm.k = "mesh"; mm.pts = pts.map(q => [q[0] + x0 - ax[0], q[1] + y0 - ax[1], q[2] + z0 - ax[2]]); mm.faces = faces; mm.closed = m.closed; delete mm.loops; delete mm.pl; delete mm.d; }); p.txt3d = { ...d, ax: p.x, ay: p.y, az: p.z }; delete p.rot; p.color = d.color; placeTouch(p); l3Changed(); l3Toast("3D-texten är uppdaterad."); }
+  if (l3tx.editId && (p = placements.find(q => q.id === l3tx.editId))) { const ax = [p.x, p.y, p.z]; p.color = d.color; delete p.rot; modEdit(p, mm => { mm.k = "mesh"; mm.pts = pts.map(q => [q[0] + x0 - ax[0], q[1] + y0 - ax[1], q[2] + z0 - ax[2]]); mm.faces = faces; mm.closed = m.closed; delete mm.loops; delete mm.pl; delete mm.d; }); p.txt3d = { ...d, ax: p.x, ay: p.y, az: p.z }; p.color = d.color; placeTouch(p); l3RebuildOne(p); l3Changed(); l3Toast("3D-texten är uppdaterad."); }
   else { placeSnapshot(); p = modCreate(m, [x0, y0, z0], { name: `Text ${label}`, color: d.color, snapshot: false }); p.txt3d = { ...d, ax: p.x, ay: p.y, az: p.z }; placeTouch(p); l3SelectIds([p.id]); l3Changed(); l3Toast(`3D-text "${label}" skapad (${B.w.toFixed(2).replace(".", ",")} × ${B.hgt.toFixed(2).replace(".", ",")} m). Ctrl+Z ångrar.`); }
   l3txClose(); return p;
 }

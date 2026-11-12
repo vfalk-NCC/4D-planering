@@ -52,7 +52,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       dial.setPointerCapture = () => {}; ptr(r0.left + r0.width / 2, r0.top + 2, 'pointerdown'); out.rot90 = Math.abs(l3tx.d.rot - 90) <= 2; ptr(r0.left + r0.width / 2, r0.top + r0.height - 2, 'pointerdown'); out.rot270 = Math.abs(l3tx.d.rot - 270) <= 2;
       l3tx.d.rot = 0; l3tx.d.text = 'AB'; l3tx.d.h = 1; l3txDraw(); const n1 = placements.length, mp = l3txCommit();
       out.edited = placements.length === n1 && mp.id === p.id && Math.abs(mp.x - (6512330 + 5)) < 0.01 && mp.txt3d.text === 'AB'; let zr = [Infinity, -Infinity], xr = [Infinity, -Infinity]; mp.m.pts.forEach(pp => { zr = [Math.min(zr[0], pp[2]), Math.max(zr[1], pp[2])]; xr = [Math.min(xr[0], pp[0]), Math.max(xr[1], pp[0])]; }); out.resized = xr[1] - xr[0] > 1.2;
-      out.shown = l3.placeMeshes.get(p.id).visible !== false; }
+      out.shown = l3.placeMeshes.get(p.id).visible !== false;
+      // ändra färg i redigeringsläget: modellen ska byta färg direkt och behålla den
+      l3SelectIds([p.id]); await w(200); document.querySelector('#v3Side [data-txedit]').click(); await w(300); l3tx.d.color = '#e11d48'; l3txDraw(); l3txCommit(); await w(50);
+      const colOf = () => { let c = null; l3.placeMeshes.get(p.id).traverse(o => { if (o.isMesh && o.material && o.material.color && !c) c = '#' + o.material.color.getHexString(); }); return c; };
+      out.colNow = colOf() === '#e11d48'; await w(800); out.colKept = colOf() === '#e11d48' && p.color === '#e11d48'; }
     // redigeringsläge: handtaget syns, ✕ återställer originalet och markeringen
     { const pid = p.id; l3SelectIds([pid]); l3txOpen(); out.editGz = !!l3.gizmoT.object && !l3SelList().length; out.hiddenWhileEdit = l3.placeMeshes.get(pid).visible === false;
       const O = l3.O; l3.gizmoT.object.position.set(l3.gizmoT.object.position.x + 2, l3.gizmoT.object.position.y, l3.gizmoT.object.position.z); l3.gizmoT.dispatchEvent({ type: 'objectChange' }); out.editMoved = Math.abs(l3tx.d.x - (p.x + 2)) < 0.01;
@@ -67,6 +71,6 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 400)); process.exit(1); }
-  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate || !r.editBtn || !r.editOpen || !r.slider || !r.dial || !r.rot90 || !r.rot270 || !r.edited || !r.resized || !r.shown || !r.gizmo || !r.moved || !r.atPos || !r.gone || !r.lineL || !r.lineC || !r.centered || !r.lineR || !r.editGz || !r.hiddenWhileEdit || !r.editMoved || !r.cancelShown || !r.cancelSel || !r.cancelGz) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
+  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate || !r.editBtn || !r.editOpen || !r.slider || !r.dial || !r.rot90 || !r.rot270 || !r.edited || !r.resized || !r.shown || !r.gizmo || !r.moved || !r.atPos || !r.gone || !r.colNow || !r.colKept || !r.lineL || !r.lineC || !r.centered || !r.lineR || !r.editGz || !r.hiddenWhileEdit || !r.editMoved || !r.cancelShown || !r.cancelSel || !r.cancelGz) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: 3D-text – slutna kroppar med hål, liggande/stående, bakplatta');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
