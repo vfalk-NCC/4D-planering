@@ -33,7 +33,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const a = l3swpBuild([[0, 0, 10], [20, 0, 10]], spec()), b = l3swpBuild([[0, 0, 10], [10, 0, 10], [20, 0, 10]], spec()), c = l3swpBuild([[0, 0, 10], [10, 0, 10], [10, 10, 10]], spec());
     out.straight = Math.round(lag(a) * 1000) / 1000; out.vertex = Math.round(lag(b) * 1000) / 1000; out.bend = Math.round(lag(c) * 1000) / 1000;
     out.noGap = Math.abs(lag(a) - lag(b)) / lag(a) < 0.03 && lag(c) > lag(a) * 0.85;
-    out.dbg = [a.err, Object.keys(a).join(), (a.pos||[]).length]; out.pos = (a.pos||[]).length === 9 && a.pos[0].length === 6 && a.pos[0][2] === 10;
+    out.dbg = [a.err, Object.keys(a).join(), (a.pos||[]).length]; out.pos = (a.pos||[]).length === 9 && a.pos[0].length === 7 && a.pos[0][2] === 10;
     const P = l3swpParseXYZ('168973.693 7456741.27 430.5\nP2;168975,2;7456741,3;430,5\n1 168976 7456742 431\n\nfel rad'); out.parse = P.pts.length === 3 && P.pts[1][0] === 168975.2 && P.pts[1][2] === 430.5 && P.pts[2][0] === 168976 && P.bad.length === 1;
     { const sp2 = { ...L3SW_DEF, kind: 'tube', coords: true }; l3swpInit(sp2, true); sp2.len = 10; const rr = l3swpBuild([[0, 0, 100, null, 5], [1, 0, 100, null, 5]], sp2);
       const cen = (nm, hi) => { const pt = rr.parts.find(p => p.name.startsWith(nm)); const zs = pt.mesh.pts.map(q => q[2]), zz = hi ? Math.max(...zs) : Math.min(...zs), a = pt.mesh.pts.filter(q => Math.abs(q[2] - zz) < 1e-6); return a.reduce((t, q) => t + q[1], 0) / a.length; };
@@ -46,7 +46,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     out.xy = cur && Math.abs(cur.res.pos[1][0] - 6512332.5) < 1e-6 && cur.res.pos[2][2] === 99.8;
     out.acts = !!document.querySelector('#v3WallPanel [data-swpt]') && !!document.querySelector('#v3WallPanel [data-swpp]');
     document.querySelector('#v3WallPanel [data-swpt]').click(); await w(300); out.tbl = document.querySelectorAll('#v3SwpTbl tbody tr').length === 3;
-    { const inp = document.querySelector('#v3SwpTbl tbody tr:nth-child(2) input[data-k="0"]'); out.tEdit = !!inp && document.querySelectorAll('#v3SwpTbl thead th').length === 8; inp.value = '6512333.5'; inp.dispatchEvent(new Event('change', { bubbles: true })); await w(100);
+    { const inp = document.querySelector('#v3SwpTbl tbody tr:nth-child(2) input[data-k="0"]'); out.tEdit = !!inp && document.querySelectorAll('#v3SwpTbl thead th').length === 9; inp.value = '6512333.5'; inp.dispatchEvent(new Event('change', { bubbles: true })); await w(100);
       out.tX = Math.abs(l3sw.cur.pts[1][0] - 6512333.5) < 1e-6 && Math.abs(l3sw.cur.res.pos[1][0] - 6512333.5) < 1e-6;
       const len = document.querySelector('#v3SwpTbl tbody tr:nth-child(3) input[data-k="L"]'); len.value = '9.5'; len.dispatchEvent(new Event('change', { bubbles: true })); await w(100); { const q = l3sw.cur.res.pos[2]; out.tLen = Math.abs(q[2] - q[3] - 9.5) < 1e-6; }
       const ok = document.querySelector('#v3SwpTbl tbody tr:nth-child(3) input[data-k="2"]'); ok.value = '+432,000'; ok.dispatchEvent(new Event('change', { bubbles: true })); await w(100); { const q = l3sw.cur.res.pos[2]; out.tOk = q[2] === 432 && Math.abs(q[2] - q[3] - 9.5) < 1e-6; }

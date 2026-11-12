@@ -91,7 +91,7 @@ function l3NavDown(e) {
   const ctrl = e.ctrlKey || e.metaKey, tekla = l3IsTekla();
   if (e.button !== 0 || !(tekla || l3.multi || ctrl)) return;
   if (e.target !== l3.renderer.domElement) return; // paneler ovanpå
-  if (l3.tool !== "select" || l3.addType || l3.vPick || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging))) return;
+  if (l3.tool !== "select" || l3.addType || l3.vPick || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging)) || (l3.gizmoT && (l3.gizmoT.axis || l3.gizmoT.dragging))) return;
   if (!tekla && l3.orbit.enabled) { l3.orbit.enabled = false; l3.orbitOffForArea = true; } // OrbitControls panorerar annars med Ctrl
   l3Area = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey, toggle: tekla && ctrl, on: false };
 }
@@ -200,7 +200,7 @@ function l3OrbitPivotStart(e) {
   if (!l3AutoRot() || e.target !== l3.renderer.domElement) return false;
   const tekla = l3IsTekla();
   const want = tekla ? e.button === 1 && (e.ctrlKey || e.shiftKey || e.metaKey) : e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey && !l3.multi;
-  if (!want || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging))) return false;
+  if (!want || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging)) || (l3.gizmoT && (l3.gizmoT.axis || l3.gizmoT.dragging))) return false;
   const P = l3PivotPoint(e);
   // OrbitControls får inte rotera samtidigt: stäng av knappen tills släpp (trycket når ändå
   // duken så att ett vanligt tryck fortfarande markerar).
@@ -222,7 +222,7 @@ function l3TouchDown(e) {
     return;
   }
   if (!l3AutoRot() || e.target !== l3.renderer.domElement || l3.camera.isOrthographicCamera) return;
-  if (l3.tool !== "select" || l3.addType || l3.multi || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging))) return;
+  if (l3.tool !== "select" || l3.addType || l3.multi || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging)) || (l3.gizmoT && (l3.gizmoT.axis || l3.gizmoT.dragging))) return;
   if (l3Piv) l3OrbitPivotEnd();
   l3Piv = { touch: true, id: e.pointerId, button: 0, x: e.clientX, y: e.clientY, P: l3PivotPoint(e), on: false, prevOne: l3.orbit.touches.ONE };
   l3.orbit.touches = { ...l3.orbit.touches, ONE: -1 }; // OrbitControls vrider inte samtidigt (ett tryck markerar fortfarande)
@@ -297,7 +297,7 @@ function l3OrbitPivotMove(e) {
   const v = l3Piv;
   if (v.touch && e.pointerId !== v.id) return; // ett annat finger
   // Fingret tog tag i flytt-/vridhandtaget eller ett mått-/DXF-handtag: det draget gäller, inte vridningen.
-  if (v.touch && (!l3.orbit.enabled || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging))) { l3OrbitPivotEnd(); return; }
+  if (v.touch && (!l3.orbit.enabled || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || (l3.gizmoT && l3.gizmoT.dragging))) { l3OrbitPivotEnd(); return; }
   if (e.buttons === 0) { l3OrbitPivotEnd(); return; } // knappen släpptes utan att vi märkte det
   if (!v.on) {
     if (Math.hypot(e.clientX - v.x, e.clientY - v.y) < (v.touch ? 6 : 3)) return; // ett tryck ska fortfarande markera
