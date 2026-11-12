@@ -100,7 +100,7 @@ function l3plRenderTab() {
   const f = P.film || {}, keys = l3plKeys();
   const range = acts.length ? [acts[0].start, acts.reduce((m, a) => (a.end > m ? a.end : m), acts[0].end)] : [day, day];
   // Som i 4D-dashboarden (Victor 2026-10-14): grå hopfällbara paneler med versalrubrik och ＋/− samt vita kort inuti.
-  const open = { film: false, link: true, other: false, ...(P.secOpen || {}) }; // 4D-koppling först; Film och Övrigt fälls ut vid behov
+  const open = { film: false, link: true, other: false, fil: true, ...(P.secOpen || {}) }; // 4D-koppling först; Film och Övrigt fälls ut vid behov
   const sec = (id, title, body, extra = "") => `<section class="v3-panel ${open[id] ? "" : "shut"}" data-plsec="${id}"><div class="v3-panel-h"><b>${title}</b>${extra}<button type="button" class="v3-panel-t" data-plsect="${id}" aria-expanded="${!!open[id]}" title="${open[id] ? "Fäll ihop" : "Fäll ut"}">${open[id] ? "−" : "+"}</button></div>${open[id] ? `<div class="v3-panel-b">${body}</div>` : ""}</section>`;
   const card = (title, body, cls = "") => `<section class="v3-card ${cls}"><div class="v3-card-h">${title}</div>${body}</section>`;
   const chip = (id, on, label, tip, sub) => `<label class="v3-chip ${sub ? "sub" : ""}" title="${esc(tip)}"><input type="checkbox" id="${id}" ${on ? "checked" : ""} /><span>${label}</span></label>`;
@@ -141,7 +141,8 @@ function l3plRenderTab() {
   const linkBody = open.link ? `<div class="v3-pl-linkh"><span>Planering</span>${linkSel}</div><div id="v3PlLinkHost">${typeof l3gaListHtml === "function" ? l3gaListHtml(linkActs, l3gaP(), linkActs, true) : ""}</div>` : "";
   // Filtren överst i vänstermenyn, alltid synliga (sticky) – gäller listan 4D-koppling.
   const fAll = l3plLinkActs(l3gaP().split);
-  const filterBar = typeof l3gaListHtml === "function" ? `<div class="v3-pl-fbar" id="v3PlFBar">${l3gaListHtml(fAll, l3gaP(), fAll, "only")}</div>` : "";
+  const fCount = `<em class="v3-pl-cnt">${l3gaListFilter(fAll, l3gaP().lf || {}).length} av ${fAll.length}</em>`;
+  const filterBar = open.fil && typeof l3gaListHtml === "function" ? `<div class="v3-pl-fbar" id="v3PlFBar">${l3gaListHtml(fAll, l3gaP(), fAll, "only")}</div>` : "";
   const otherBody = `<div class="v3-card-h">Powerproject-tidplanen</div>
       ${l3pl.err ? `<div class="v3-pal-hint bad">Kunde inte läsa tidplanen: ${esc(l3pl.err)}</div>` : !acts.length ? `<div class="v3-pal-hint">Ingen Powerproject-tidplan i projektet ännu (importeras i 4D-planering).</div>`
         : ""}
@@ -158,14 +159,14 @@ function l3plRenderTab() {
       <label class="v3-pl-crow" title="Det som inte startat visas i kommande-färgen (annars dolt). Gäller 3D-läget Tid – samma val som i tidsraden."><span>Kommande</span><span class="v3-pl-ctl"><input type="checkbox" id="v3PlFuture" ${typeof l3gmCfg === "function" && l3gmCfg().future ? "checked" : ""} /> Visa</span></label>
       <label class="v3-pl-crow" title="Objekt vars aktivitet pågår (eller är försenad) vid valt datum får en tydlig gul kontur – utan att du behöver markera något."><span>Pågående objekt</span><span class="v3-pl-ctl"><input type="checkbox" id="v3PlActive" ${l3Prefs().actOutline ? "checked" : ""} /> Gul kontur</span></label>
     `;
-  host.innerHTML = filterBar + `<div class="v3-pl-top"><button type="button" class="v3-wide v3-pl-ganttbtn ${l3pl.dock ? "on" : ""}" id="v3PlDock"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M7 12h12M4 18h8"/></svg>${l3pl.dock ? "Dölj tavlan och Gantten" : "Visa tavlan och Gantten"}</button>${acts.length ? `<div class="v3-pl-sum"><b>${acts.length}</b> aktiviteter · ${esc(range[0])} – ${esc(range[1])}</div>` : ""}</div>` + sec("link", "4D-koppling", linkBody) + sec("film", "Film", filmBody) + sec("other", "Övrigt", otherBody, `<button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button>`);
+  host.innerHTML = `<div class="v3-pl-top"><div class="v3-lf v3-pill v3-pl-gpill"><button type="button" class="v3-pal-g v3-nochev ${l3pl.dock ? "on" : ""}" id="v3PlDock" title="${l3pl.dock ? "Dölj tavlan och Gantten" : "Visa tavlan och Gantten"}"><span>Tavlan och Gantten</span>${acts.length ? `<em title="${esc(range[0])} – ${esc(range[1])}">${acts.length} aktiviteter</em>` : ""}</button><label class="v3-lay-sw v3-lf-sw" title="${l3pl.dock ? "Dölj" : "Visa"}"><input type="checkbox" role="switch" id="v3PlDockSw" ${l3pl.dock ? "checked" : ""} /><i></i></label></div></div>` + sec("fil", "Filter", filterBar, fCount) + sec("link", "4D-koppling", linkBody) + sec("film", "Film", filmBody) + sec("other", "Övrigt", otherBody, `<button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button>`);
   host.querySelectorAll("[data-plsect]").forEach(b => { b.onclick = () => { const id = b.dataset.plsect; l3plSet("secOpen", { ...open, [id]: !open[id] }); l3plRenderTab(); }; });
   const lh = host.querySelector("#v3PlLinkHost"); if (lh && typeof l3gaBind === "function") l3gaBind(lh, () => { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }, () => l3plLinkActs(l3gaP().split));
   const fb = host.querySelector("#v3PlFBar"); if (fb && typeof l3gaBind === "function") l3gaBind(fb, () => { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }, () => l3plLinkActs(l3gaP().split));
   const ls = host.querySelector("#v3PlLinkSrc"); if (ls) ls.onchange = () => { l3plSet("linkSrc", ls.value); if (ls.value !== "pp") l3plLoadX().then(() => l3plRenderTab()); else l3plRenderTab(); };
   const on = (id, fn, ev = "onclick") => { const el = host.querySelector("#" + id); if (el) el[ev] = fn; };
   on("v3PlReload", () => { l3pl.rows = null; l3pl.xrows = null; l3plLoad(true); l3plRenderTab(); if (typeof l3bRecolor === "function") l3bRecolor(); });
-  on("v3PlDock", () => l3plDockToggle());
+  on("v3PlDock", () => l3plDockToggle()); on("v3PlDockSw", () => l3plDockToggle(), "onchange");
   on("v3PlBub", e => { l3SetPref("bubOn", !!e.target.checked); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   on("v3PlBubScope", e => { l3SetPref("bubScope", e.target.value); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   host.querySelectorAll("[data-bubf]").forEach(c => { c.onchange = () => { l3SetPref("bubFields", { ...(l3Prefs().bubFields || {}), [c.dataset.bubf]: c.checked }); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }; });

@@ -240,7 +240,7 @@ function l3gaListHtml(acts, P, allIn = null, noF = false) {
   return `<div class="v3-ga-list">
     ${noF ? "" : filtersHtml()}
     ${keys.map(k => { const g = groups.get(k), open = l3ga.open.has("l:" + k);
-      return `<div class="v3-ga-grp"><div class="v3-ga-grp-h"><button type="button" data-galopen="${E(k)}">${open ? "▼" : "▶"} ${E(k)} (${g.length})</button><button type="button" class="v3-ga-mark" data-gamark="${E(k)}">Markera gruppen</button></div>${open ? g.map(row).join("") : ""}</div>`; }).join("") || `<div class="v3-pal-hint">Inget matchar filtret.</div>`}
+      return `<div class="v3-ga-grp"><div class="v3-ga-grp-h"><button type="button" class="v3-ga-gn" data-galopen="${E(k)}" aria-expanded="${open}"><i>›</i><span>${E(k)}</span><em>${g.length}</em></button><button type="button" class="v3-ga-mark" data-gamark="${E(k)}" title="Markera gruppen i 3D">▣</button></div>${open ? g.map(row).join("") : ""}</div>`; }).join("") || `<div class="v3-pal-hint">Inget matchar filtret.</div>`}
   </div>`;
 }
 

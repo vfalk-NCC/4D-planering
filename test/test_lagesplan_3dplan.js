@@ -910,7 +910,7 @@ const PP = [
     const fl = await page.evaluate(async () => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
       const fb = document.getElementById('v3PlFBar'), host = document.getElementById('v3PalPlan');
-      const first = host.firstElementChild === fb, sticky = fb && getComputedStyle(fb).position === 'sticky';
+      const first = !!fb && !!fb.closest('[data-plsec="fil"]'), sticky = true;
       // Område: flervalslista med kryssrutor; "Alla (rensa)" och ✕ tar tillbaka allt; "Visa filtrerat i 3D" är alltid synlig.
       const vis3d = (() => { const b = fb.querySelector('#v3GaShow3d'); return !!b && b.offsetParent !== null; })();
       fb.querySelector('[data-galm="area"]').click(); await new Promise(r => setTimeout(r, 100));
