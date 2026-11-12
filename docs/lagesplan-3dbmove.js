@@ -361,7 +361,7 @@ function l3bmGuid() {
   return s;
 }
 /* Klar i kopieringsläget: kopiorna blir en egen bit per modell (markerbar, flyttbar, kan kopieras igen). */
-function l3bmCopyAccept(ents, D, Dg) {
+function l3bmCopyAccept(ents, D, Dg, opt = {}) {
   const byModel = new Map();
   ents.forEach(e => { const m = e.mesh.userData.l3b.model; if (!byModel.has(m)) byModel.set(m, []); byModel.get(m).push(e); });
   const made = [], I = new THREE.Matrix4(), v = new THREE.Vector3();
@@ -384,7 +384,7 @@ function l3bmCopyAccept(ents, D, Dg) {
         for (let a = 0; a < 3; a++) col[o + a] = k8 ? C[k + a] : Math.round(C[k + a] * 255);
       }
       for (let i = 0; i < n; i++) idx[io + i] = u.origIdx[s + i] - r.start + vo;
-      const guid = l3bmGuid();
+      const guid = (opt.guids && opt.guids.shift()) || l3bmGuid();
       ranges.push({ start: vo, count: r.count, idxStart: io, idxCount: n, guid, name: r.name, base: r.base, copyOf: r.copyOf || r.guid });
       // Kopian i förhållande till originalet i filen: denna kopiering · originalets flytt (· tidigare kopiering).
       const was = ed.copies.get(r.guid);
@@ -397,6 +397,7 @@ function l3bmCopyAccept(ents, D, Dg) {
     made.push(m);
   });
   l3bmCopyAttach(made);
+  if (opt.quiet) return made;
   const sel = () => made.flatMap(m => m.userData.l3b.ranges.map((r, ri) => ({ mesh: m, ri })));
   if (typeof l3VPush === "function") l3VPush(() => { l3bsSet([]); l3bmCopyDetach(made); }, () => { l3bmCopyAttach(made); l3bsSet(sel()); }, "kopiering");
   l3bsSet(sel());

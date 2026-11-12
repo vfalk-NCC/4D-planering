@@ -117,7 +117,7 @@ function l3PdfToModel(px, py) {
 // Inställningar (per webbläsare)
 // ---------------------------------------------------------------------
 const L3_PREFS_KEY = "lagesplan-3d-prefs";
-const L3_PREFS_DEFAULT = { anim: true, plan: false, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubScope: "auto", bubMax: 30 };
+const L3_PREFS_DEFAULT = { anim: true, plan: false, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubClick: true, bubScope: "auto", bubMax: 30 };
 if (typeof lowMemDevice !== "undefined" && lowMemDevice) L3_PREFS_DEFAULT.signsOff = true; // iPhone/iPad: skyltarna (en bild per objekt) är släckta från början – tänds med Skyltar i menyn
 function l3Prefs() {
   if (l3 && l3.prefs) return l3.prefs;
@@ -466,7 +466,7 @@ function l3Dom() {
   return box;
 }
 function l3HideMenus() {
-  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help", "v3MorePop", "v3UiPop", "v3SnapPop"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
+  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help", "v3MorePop", "v3UiPop", "v3SnapPop", "v3OrigPop"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
 }
 /* Statusraden med historik (Victor 2026-10-10: "expandera den raden ungefär som i autocad så att jag kan
    se på vad som skett tidigare"). l3Status skriver och sparar i historiken; l3StatusLive skriver bara

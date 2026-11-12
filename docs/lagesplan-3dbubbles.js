@@ -111,11 +111,11 @@ function l3bubHeight(L) { return 8 + Math.min(2, Math.ceil((L.name || "").length
 function l3bubRender() {
   let host = document.getElementById("v3Bubbles");
   if (!l3bo.loaded && !l3bo.loading && !l3bo.tried) { l3bo.tried = true; l3boLoad(); }
-  const auto = l3bubOn(), on = true; // klickade/markerade objekt får alltid en bubbla, även när de automatiska är avstängda
+  const auto = l3bubOn(), on = auto || l3Prefs().bubClick !== false; // klickade/markerade objekt får alltid en bubbla, även när de automatiska är avstängda
   if (!host) { const lab = document.getElementById("v3Labels"); if (!lab) return; host = document.createElement("div"); host.id = "v3Bubbles"; host.className = "v3-bubbles"; lab.parentNode.insertBefore(host, lab.nextSibling); }
   if (on && typeof l3pl !== "undefined" && l3pl.rec && (l3plPrefs().film || {}).fxBubbles === true) { if (host.innerHTML) host.innerHTML = ""; host.dataset.h = ""; return; } // under filmen ritas bubblorna i filmens bild
   if (!on || !l3) { if (host.innerHTML) host.innerHTML = ""; l3bub.sig = ""; return; }
-  const sig = l3bubSig() + "|" + auto; if (sig !== l3bub.sig) { l3bub.sig = sig; l3bubRebuild(auto ? undefined : "marked"); }
+  const sig = l3bubSig() + "|" + auto + "|" + on; if (sig !== l3bub.sig) { l3bub.sig = sig; l3bubRebuild(auto ? undefined : "marked"); }
   const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position, cfg = l3bubCfg(), W = L3BUB_W;
   const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
     .filter(o => o.q.z < 1 && o.q.x > -1.05 && o.q.x < 1.05 && o.q.y > -1.05 && o.q.y < 1.05).sort((x, y) => (x.a.marked ? 0 : 1) - (y.a.marked ? 0 : 1) || x.d - y.d).slice(0, cfg.max);

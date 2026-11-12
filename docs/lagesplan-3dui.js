@@ -20,6 +20,7 @@ const L3UI_ICO = {
   dup: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
   hide: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 5.1A9.6 9.6 0 0 1 12 5c5 0 8.5 4.2 9.5 7a11 11 0 0 1-2.6 3.8M6.5 6.6A11.5 11.5 0 0 0 2.5 12C3.5 14.8 7 19 12 19c1.4 0 2.7-.3 3.8-.8"/></svg>',
   iso: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
+  eyeopt: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   reset: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>',
   boom: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
   lock: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
@@ -62,8 +63,8 @@ function l3UiInit(box) {
   const layBtn = mk("button", "v3UiLayBtn", "v3-ghost", L3UI_ICO.layout + "<span>Layout</span>"); layBtn.type = "button"; layBtn.title = "Arbetsytor och layout";
   const layPop = mk("div", "v3UiPop", "v3-pop v3-ui-pop hidden"); lay.append(layBtn, layPop);
   bar.insertBefore(lay, launch); bar.insertBefore(lockBtn, lay);
-  const orig = mk("button", "v3Original", "v3-ghost v3-ui-orig", L3UI_ICO.reset + "<span>Original</span>"); orig.type = "button"; orig.title = "Återställ – visa alla modeller i original, utan koppling till tidplan, färger eller filter";
-  bar.insertBefore(orig, bar.querySelector("#v3Fit")); orig.onclick = () => l3Original(!(typeof l3b !== "undefined" && l3b.orig));
+  const orig = mk("button", "v3Original", "v3-ghost v3-ui-orig", L3UI_ICO.eyeopt + "<span>Visning</span><i class=\"v3-orig-car\">▾</i>"); orig.type = "button"; orig.title = "Visning – originalmodell, tidslinje med originalfärg eller framdrift, med fler val";
+  bar.insertBefore(orig, bar.querySelector("#v3Fit")); orig.onclick = e => { e.stopPropagation(); l3OrigPopToggle(); };
   lockBtn.onclick = () => l3UiSetLocked(!l3UiGet().locked);
   layBtn.onclick = e => { e.stopPropagation(); const open = layPop.classList.contains("hidden"); l3HideMenus(); if (open) { l3UiPopRender(); layPop.classList.remove("hidden"); } };
   layPop.onclick = e => e.stopPropagation();
@@ -407,7 +408,7 @@ function l3Original(on) {
 function l3UiOrigPill() {
   if (!l3ui) return; let p = l3ui.canvas.querySelector("#v3OrigPill");
   const on = !!(typeof l3b !== "undefined" && l3b.orig);
-  const btn = l3ui.box.querySelector("#v3Original"); if (btn) btn.classList.toggle("on", on);
+  const btn = l3ui.box.querySelector("#v3Original"); if (btn) btn.classList.toggle("on", on || (typeof l3gm !== "undefined" && l3gm.mode === "time")); l3OrigPopRender();
   if (!on) { if (p) p.remove(); return; }
   if (!p) { p = document.createElement("div"); p.id = "v3OrigPill"; p.className = "v3-orig-pill"; l3ui.canvas.appendChild(p); p.addEventListener("pointerdown", e => e.stopPropagation()); p.onclick = e => { if (e.target.closest("[data-orig-off]")) l3Original(false); }; }
   p.innerHTML = `<span class="v3-ui-dot"></span><b>Originalvy</b><span class="v3-ui-sub">modellerna utan tidplan och filter</span><button type="button" data-orig-off="1" aria-label="Tillbaka till 4D-färgerna" title="Tillbaka till 4D-färgerna">✕</button>`;
@@ -422,4 +423,34 @@ function l3PlacedShow(on, quiet) {
   if (typeof l3RenderLabels === "function") l3RenderLabels();
   if (typeof l3Render === "function") l3Render();
   if (!quiet && typeof l3Status === "function") l3Status(on ? "Placerade objekt visas." : "Placerade objekt är släckta – tänd dem igen med switchen i 3D-biblioteket.");
+}
+
+/* Visning-dropdown (Victor 2026-11-12): switchar för Originalmodell / Tidslinje med originalfärg / Tidslinje med framdrift + fler val. De tre lägena utesluter varandra; alla av = vanlig 4D-vy. */
+function l3OrigState() { const C = typeof l3gmCfg === "function" ? l3gmCfg() : {}, tl = typeof l3gm !== "undefined" && l3gm.mode === "time"; return { orig: !!(typeof l3b !== "undefined" && l3b.orig), tlOrig: tl && !!C.origCol, tlProg: tl && !C.origCol, C }; }
+const L3_ORIG_OPTS = [
+  ["pulse", "Pågående aktiviteter pulserar", "Pågående objekt blinkar svagt i tidslinjen", c => !!c.pulse, v => l3gmSet("pulse", v)],
+  ["selAct", "Markera pågående objekt", "De pågående objekten lyses upp i 3D", c => !!c.selAct, v => { l3gmSet("selAct", v); l3gm.selSig = ""; if (typeof l3gmSelSync === "function") l3gmSelSync(); }],
+  ["future", "Visa kommande som spöke", "Det som inte startat visas svagt istället för dolt", c => !!c.future, v => l3gmSet("future", v)],
+  ["bubOn", "Info-bubblor vid alla objekt", "Bubbla med namn, datum och framdrift vid varje aktivitet", () => !!l3Prefs().bubOn, v => { l3SetPref("bubOn", v); if (typeof l3RenderLabels === "function") l3RenderLabels(); }],
+  ["bubClick", "Visa kommentarer vid klick på kopplat objekt", "Av = ingen bubbla/kommentar när du trycker på ett kopplat objekt", () => l3Prefs().bubClick !== false, v => { l3SetPref("bubClick", v); if (typeof l3bub !== "undefined") l3bub.sig = ""; }],
+  ["actOutline", "Kontur runt aktivitetens objekt", "Linje runt objekten som hör till vald aktivitet", () => !!l3Prefs().actOutline, v => l3SetPref("actOutline", v)],
+];
+function l3OrigPopToggle() {
+  let pop = document.getElementById("v3OrigPop"), open = !pop || pop.classList.contains("hidden"); l3HideMenus();
+  if (!pop) { pop = document.createElement("div"); pop.id = "v3OrigPop"; pop.className = "v3-pop v3-orig-pop hidden"; l3ui.canvas.appendChild(pop); pop.onclick = e => e.stopPropagation(); pop.addEventListener("pointerdown", e => e.stopPropagation()); }
+  if (open) { l3OrigPopRender(true); pop.classList.remove("hidden"); const b = document.getElementById("v3Original").getBoundingClientRect(), c = l3ui.canvas.getBoundingClientRect(); pop.style.left = Math.max(6, Math.min(c.width - 300, b.left - c.left)) + "px"; pop.style.top = (b.bottom - c.top + 6) + "px"; }
+}
+function l3OrigPopRender(force) {
+  const pop = document.getElementById("v3OrigPop"); if (!pop || (!force && pop.classList.contains("hidden"))) return;
+  const S = l3OrigState(), sw = (id, t, d, on) => `<label class="v3-orig-row" title="${escHtml(d)}"><span><b>${escHtml(t)}</b><small>${escHtml(d)}</small></span><span class="v3-lay-sw v3-orig-sw"><input type="checkbox" role="switch" data-os="${id}" ${on ? "checked" : ""} /><i></i></span></label>`;
+  pop.innerHTML = `<div class="v3-orig-h">Visning</div>${sw("orig", "Originalmodell", "Modellerna med egna färger – utan tidplan och filter", S.orig)}${sw("tlOrig", "Tidslinje med originalfärg", "Det som är byggt visas i modellens färg, resten dolt", S.tlOrig)}${sw("tlProg", "Tidslinje med framdrift", "Färgat efter status och framdrift för valt datum", S.tlProg)}<div class="v3-orig-h v3-orig-h2">Fler val</div>${L3_ORIG_OPTS.map(o => sw(o[0], o[1], o[2], o[3](S.C))).join("")}`;
+  pop.querySelectorAll("[data-os]").forEach(inp => { inp.onchange = () => l3OrigSwitch(inp.dataset.os, inp.checked); });
+}
+function l3OrigSwitch(k, on) {
+  if (k === "orig") { if (on) l3Original(true); else l3Original(false); }
+  else if (k === "tlOrig" || k === "tlProg") {
+    if (on) { if (l3b.orig) l3Original(false); l3gmSet("origCol", k === "tlOrig"); if (l3gm.mode !== "time") l3gmSetMode("time", true); else l3gmApply(true); }
+    else l3gmSetMode("off", true);
+  } else { const o = L3_ORIG_OPTS.find(x => x[0] === k); if (o) { o[4](on); if (typeof l3bRecolor === "function") l3bRecolor(); l3Render(); } }
+  l3UiOrigPill(); l3OrigPopRender(true);
 }
