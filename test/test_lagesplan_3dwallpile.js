@@ -46,7 +46,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   e('sheetPU', r.sheetPU.n === 1 && r.sheetPU.vol > 0.1, 'PU spont');
   e('bored', r.bored.n === 2 && r.bored.vol > 1, 'sekantpålar primär/sekundär');
   e('tangent', r.tangent.n === 1 && r.tangent.vol > 1, 'tangentpålar');
-  e('tube', r.tube.n === 1 && r.tube.vol > 0.01 && r.tube.mass > 100, 'stålrör');
+  e('tube', r.tube.n === 3 && r.tube.names.some(x => /plattspont/.test(x)) && r.tube.names.some(x => /Kopplingslås/.test(x)) && r.tube.vol > 0.01 && r.tube.mass > 100, 'stålrör');
   e('conc', r.conc.n === 1 && r.conc.vol > 0.5, 'betongpålar');
   e('timber', r.timber.n === 1 && r.timber.vol > 0.1, 'träpålar');
   e('slits', r.slits.n === 1 && r.slits.vol > 5 && r.slits.ifc[0] === 'IFCWALL', 'slitsmur');

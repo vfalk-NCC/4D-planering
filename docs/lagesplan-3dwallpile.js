@@ -168,6 +168,23 @@ function l3swpBuild(pts, s) {
     else { const d0 = +s.p_d0 || 0.18, d1 = +s.p_d1 || 0.12; poly = l3swpCircle(d0 / 2, 16); taper = d1 / d0; nm = `Träpålar topp Ø ${fmt(d0 * 1000, 0)} / spets Ø ${fmt(d1 * 1000, 0)}`; mat = L3SWP_TIMBER; col = L3SWP_COL.timber; }
     stations.forEach(st => { const f = frame(st); M.add(l3swpPrism(poly, holes, zBot(f), zTop(f), f.pos, f.t, f.n, taper || 0)); });
     const g = M.get(); parts.push({ name: `${nm} – ${stations.length} pålar c/c ${fmt(cc, 2)} m, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: ifcc, pile: "DRIVEN", color: col, mass: g.vol * mat });
+    if (kind === "tube" && s.spont !== false && stations.length > 1) {   // mellanspont: plattspont som hakar i kopplingslås påsvetsade på rören (Victor 2026-11-12)
+      const R = (+s.p_D || 0.17) / 2, cl = [[0, -.035], [.06, -.035], [.06, -.008], [.052, -.008], [.052, -.02], [.008, -.02], [.008, .02], [.052, .02], [.052, .008], [.06, .008], [.06, .035], [0, .035]];
+      const MC = l3swpMerge(), MS = l3swpMerge(), tw = Math.max(0.004, +s.p_sw || 0.012) / 2; let ns = 0;
+      for (let k = 0; k + 1 < stations.length; k++) {
+        const A = frame(stations[k]), B = frame(stations[k + 1]), dx = B.pos[0] - A.pos[0], dy = B.pos[1] - A.pos[1], dist = Math.hypot(dx, dy); if (dist - 2 * R < 0.2) continue;
+        const t = [dx / dist, dy / dist], nn = [-t[1] * sign, t[0] * sign], mt = [-t[0], -t[1]], mn = [-nn[0], -nn[1]], zA0 = zBot(A), zA1 = zTop(A), zB0 = zBot(B), zB1 = zTop(B);
+        const weld = [[R - .004, -.045], [R + .03, -.045], [R + .03, .045], [R - .004, .045]], claw = cl.map(q => [R + .03 + q[0], q[1]]);
+        MC.add(l3swpPrism(weld, null, zA0, zA1, A.pos, t, nn)); MC.add(l3swpPrism(claw, null, zA0, zA1, A.pos, t, nn));
+        MC.add(l3swpPrism(weld, null, zB0, zB1, B.pos, mt, mn)); MC.add(l3swpPrism(claw, null, zB0, zB1, B.pos, mt, mn));
+        const a0 = R + .045, a1 = dist - R - .045, bw = Math.min(.016, tw + .006);
+        const web = [[a0, -bw], [a0 + .03, -bw], [a0 + .03, -tw], [a1 - .03, -tw], [a1 - .03, -bw], [a1, -bw], [a1, bw], [a1 - .03, bw], [a1 - .03, tw], [a0 + .03, tw], [a0 + .03, bw], [a0, bw]];
+        MS.add(l3swpPrism(web, null, (zA0 + zB0) / 2 + .05, (zA1 + zB1) / 2 - .05, A.pos, t, nn)); ns++;
+      }
+      const gc = MC.get(), gs = MS.get();
+      if (gc.n) parts.push({ name: `Kopplingslås (påsvetsade på rören) – ${ns * 2} st`, mesh: { pts: gc.pts, faces: gc.faces }, vol: gc.vol, len: L, ifc: "IFCMEMBER", color: "#5f6b78", mass: gc.vol * L3SWP_STEEL });
+      if (gs.n) parts.push({ name: `Mellanspont (plattspont) – ${ns} st, ${fmt(tw * 2000, 0)} mm`, mesh: { pts: gs.pts, faces: gs.faces }, vol: gs.vol, len: L, ifc: "IFCWALL", color: "#9aa4ae", mass: gs.vol * L3SWP_STEEL });
+    }
   }
   const pos = kind === "sheet" ? sheetPos : stations.map(st => { const f = frame(st); return [f.pos[0], f.pos[1], zTop(f), zBot(f)]; });
   return { parts, L, area: 0, piles: true, pos };
@@ -188,7 +205,7 @@ function l3swpPanelFix(c) {
       + `<label class="v3-ga-tg" title="Plankor (trä) mellan pelarna, läggs i takt med schaktet"><input type="checkbox" data-wpchk="lag" ${s.lag !== false ? "checked" : ""}><span>Utfackning (plankor)</span></label>` + (s.lag !== false ? num("tp", "Plankor tjocklek", "Plankornas tjocklek (50–75 mm är vanligt)", "m", 0.005, 0.02, 0.2) + num("lagD", "Plankor till djup", "Hur djupt plankorna går (grävdjupet)", "m", 0.5, 0.3, 30) : ""),
     sheet: num("len", "Spontlängd", "Spontens totala längd", "m", 0.5, 1, 40) + num("top", "Överkant", "Spontens överkant relativt linjens höjd (+ = över)", "m", 0.1, -5, 5),
     bored: num("p_D", "Pålens Ø", "Borrad påles diameter", "m", 0.01, 0.2, 2) + num("p_cc", "c/c", "Mitt–mitt. Mindre än diametern = sekantpålar (överlappande), lika med diametern = tangentpålar", "m", 0.005, 0.2, 3) + num("len", "Pållängd", "Pålens längd", "m", 0.5, 1, 40) + num("top", "Överkant", "Överkant relativt linjens höjd", "m", 0.1, -5, 5),
-    tube: num("p_D", "Ytterdiameter", "Rörets ytterdiameter", "m", 0.001, 0.05, 1.5) + num("p_tt", "Godstjocklek", "Rörets godstjocklek", "m", 0.0005, 0.003, 0.05) + num("p_cc", "c/c", "Mitt–mitt mellan pålarna", "m", 0.05, 0.1, 6) + num("len", "Pållängd", "Pålens längd", "m", 0.5, 1, 60) + num("top", "Överkant", "Överkant relativt linjens höjd", "m", 0.1, -5, 5),
+    tube: num("p_D", "Ytterdiameter", "Rörets ytterdiameter", "m", 0.001, 0.05, 1.5) + num("p_tt", "Godstjocklek", "Rörets godstjocklek", "m", 0.0005, 0.003, 0.05) + num("p_cc", "c/c", "Mitt–mitt mellan pålarna", "m", 0.05, 0.1, 6) + num("len", "Pållängd", "Pålens längd", "m", 0.5, 1, 60) + num("top", "Överkant", "Överkant relativt linjens höjd", "m", 0.1, -5, 5) + `<label class="v3-ga-tg" title="Plattspont mellan rören som hakar i kopplingslås påsvetsade på rören"><input type="checkbox" data-wpchk="spont" ${s.spont !== false ? "checked" : ""}><span>Mellanspont (plattspont + kopplingslås)</span></label>`,
     conc: num("p_a", "Sidmått", "Pålens sida (kvadratisk)", "m", 0.005, 0.15, 0.6) + num("p_cc", "c/c", "Mitt–mitt mellan pålarna (minst ca 3 × sidmått i en pålgrupp)", "m", 0.05, 0.2, 6) + num("len", "Pållängd", "Pålens längd", "m", 0.5, 1, 60) + num("top", "Överkant", "Överkant relativt linjens höjd", "m", 0.1, -5, 5),
     timber: num("p_d0", "Topp Ø", "Toppdiameter", "m", 0.01, 0.1, 0.5) + num("p_d1", "Spets Ø", "Spetsdiameter (pålen smalnar av jämnt)", "m", 0.01, 0.05, 0.4) + num("p_cc", "c/c", "Mitt–mitt mellan pålarna", "m", 0.05, 0.1, 6) + num("len", "Pållängd", "Pålens längd", "m", 0.5, 1, 30) + num("top", "Överkant", "Överkant relativt linjens höjd", "m", 0.1, -5, 5),
     slits: num("p_tt", "Tjocklek", "Väggens tjocklek", "m", 0.05, 0.3, 2) + num("len", "Djup", "Väggens djup under linjen", "m", 0.5, 1, 40) + num("top", "Överkant", "Överkant relativt linjens höjd", "m", 0.1, -5, 5),
