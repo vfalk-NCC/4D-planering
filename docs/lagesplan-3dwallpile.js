@@ -115,9 +115,11 @@ function l3swpMerge() {   // samlar prismor till ett nät (delade punkter)
 }
 /* ---- Bygger delarna ---- */
 function l3swpBuild(pts, s) {
-  if (!pts || pts.length < 2) return { parts: [], err: "Linjen behöver minst två punkter." };
-  l3swpInit(s); const kind = s.kind, sign = s.soil === "R" ? -1 : 1, cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-  const L = cum[cum.length - 1]; if (L < 0.2) return { parts: [], err: "Linjen är för kort." };
+  l3swpInit(s); const kind0 = s.kind;
+  if (s.coords && (kind0 === "sheet" || kind0 === "slits")) return { parts: [], err: "Koordinatplacering gäller pålar (Berlinerspont, borrade, rör-, betong- och träpålar) – inte spont." };
+  const coords = !!s.coords; if (!pts || pts.length < (coords ? 1 : 2)) return { parts: [], err: coords ? "Lägg in minst en koordinat." : "Linjen behöver minst två punkter." };
+  const kind = s.kind, sign = s.soil === "R" ? -1 : 1, cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const L = cum[cum.length - 1]; if (L < 0.2 && !coords) return { parts: [], err: "Linjen är för kort." };
   if (kind === "slits") {   // platsgjuten vägg: samma svepning som en enkel mur
     const r = l3swBuildBase(pts, { ...s, kind: "plain", t: +s.p_tt || 0.8, H: Math.max(0.5, +s.len || 8), embed: Math.max(0.5, +s.len || 8) - (+s.top || 0) });
     (r.parts || []).forEach(p => { p.name = `Slitsmur ${l3swFmt(+s.p_tt || 0.8, 2)} m × ${l3swFmt(+s.len || 8, 1)} m djup`; p.ifc = "IFCWALL"; p.color = L3SWP_COL.conc; p.mass = p.vol * L3SWP_CONC; });
@@ -129,30 +131,32 @@ function l3swpBuild(pts, s) {
   // stationer: jämnt fördelade per sträcka (c/c justeras så att linjens delar går jämnt upp)
   const stations = [], cc = Math.max(0.1, +s.p_cc || +s.cc || 1), bays = [];
   for (let i = 0; i + 1 < pts.length; i++) { const Ls = cum[i + 1] - cum[i]; if (Ls < 0.05) continue; const n = Math.max(1, Math.round(Ls / (kind === "sheet" ? (+s.p_b || 0.7) : cc))), step = Ls / n; for (let k = (stations.length ? 1 : 0); k <= n; k++) stations.push({ i, d: cum[i] + k * step, k, seg: i }); bays.push({ i, n, step }); }
-  const frame = st => { const t = dirAt(st.d, st.i), nn = [-t[1] * sign, t[0] * sign], p = tf(st.i, (st.d - cum[st.i]) / (cum[st.i + 1] - cum[st.i] || 1)); return { pos: [p.x, p.y], t, n: nn, z: zAt(st.d) + top }; };
-  const parts = [], zTop = f => f.z, zBot = f => f.z - len;
+  const cst = () => pts.map((q, k) => { const nb = k + 1 < pts.length ? [pts[k + 1][0] - q[0], pts[k + 1][1] - q[1]] : k > 0 ? [q[0] - pts[k - 1][0], q[1] - pts[k - 1][1]] : [1, 0], l = Math.hypot(nb[0], nb[1]) || 1, t = [nb[0] / l, nb[1] / l]; return { pos: [q[0], q[1]], t, n: [-t[1] * sign, t[0] * sign], z: q[2], k, d: 0, i: 0 }; });   // pålar i inklistrade koordinater: riktningen följer raden
+  if (coords) { stations.length = 0; cst().forEach(x => stations.push(x)); }
+  const frame = st => { if (st.pos) return { pos: st.pos, t: st.t, n: st.n, z: st.z }; const t = dirAt(st.d, st.i), nn = [-t[1] * sign, t[0] * sign], p = tf(st.i, (st.d - cum[st.i]) / (cum[st.i + 1] - cum[st.i] || 1)); return { pos: [p.x, p.y], t, n: nn, z: zAt(st.d) + top }; };
+  const parts = [], sheetPos = [], zTop = f => f.z, zBot = f => f.z - len;
   const fmt = l3swFmt, name = (b, c) => `${b} – ${c}`;
   if (kind === "berlin") {
     const e = { h: +s.p_h, b: +s.p_b, tw: +s.p_tw, tf: +s.p_tf }, poly = l3swpIPoly(e.h, e.b, e.tw, e.tf), M = l3swpMerge();
     stations.forEach(st => { const f = frame(st); M.add(l3swpPrism(poly, null, zBot(f), zTop(f), f.pos, f.t, f.n)); });
     const g = M.get(), mass = (+s.p_kgm || 60) * len * stations.length;
     parts.push({ name: `Berlinerspont ${s.sel} – ${stations.length} pelare c/c ${fmt(cc, 2)} m, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: "IFCPILE", pile: "DRIVEN", color: L3SWP_COL.steel, mass });
-    if (s.lag !== false) {
+    if (s.lag !== false && !coords) {
       const tp = Math.max(0.02, +s.tp || 0.075), D = Math.min(len, Math.max(0.3, +s.lagD || 4)), ML = l3swpMerge(), ov = 0.05;
-      for (let k = 0; k + 1 < stations.length; k++) { const A = stations[k], B = stations[k + 1]; if (A.i !== B.i) continue; const fa = frame(A), fb = frame(B), span = B.d - A.d, a0 = e.b / 2 - ov, a1 = span - e.b / 2 + ov; if (a1 <= a0) continue;
+      for (let k = 0; k + 1 < stations.length; k++) { const A0 = stations[k], B = stations[k + 1], A = A0.i === B.i ? A0 : { ...A0, i: B.i }; /* fack över en brytpunkt: utfackningen fortsätter i nästa riktning (förut föll den bort) */ const fa = frame(A), fb = frame(B), span = B.d - A.d, a0 = e.b / 2 - ov, a1 = span - e.b / 2 + ov; if (a1 <= a0) continue;
         const w0 = -e.h / 2 + e.tf; const poly2 = [[a0, w0], [a1, w0], [a1, w0 + tp], [a0, w0 + tp]]; ML.add(l3swpPrism(poly2, null, Math.max(zBot(fa), fa.z - D), fa.z, fa.pos, fa.t, fa.n)); void fb; }
       const gl = ML.get(); if (gl.n) parts.push({ name: `Berlinerspont – utfackning trä ${fmt(tp * 1000, 0)} mm, ned till ${fmt(D, 1)} m`, mesh: { pts: gl.pts, faces: gl.faces }, vol: gl.vol, len: L, ifc: "IFCPLATE", color: L3SWP_COL.lag, mass: gl.vol * L3SWP_TIMBER });
     }
   } else if (kind === "sheet") {
     const e = { b: +s.p_b, h: +s.p_h, tf: +s.p_tf, tw: +s.p_tw, p_t: s.p_t }, M = l3swpMerge(); let np = 0;
     bays.forEach(bay => { const sg = bay.i, Ls = cum[sg + 1] - cum[sg], n = Math.max(1, Math.round(Ls / e.b)), step = Ls / n, sc = step / e.b;   // pilarnas bredd anpassas något så att segmentet går jämnt upp
-      for (let k = 0; k < n; k++) { const d = cum[sg] + k * step, t = dirAt(d, sg), nn = [-t[1] * sign, t[0] * sign], p = tf(sg, (d - cum[sg]) / (Ls || 1)), z = zAt(d) + top, poly = l3swpSheetPoly(e, k % 2 === 1).map(([a, w]) => [a * sc, w]); M.add(l3swpPrism(poly, null, z - len, z, [p.x, p.y], t, nn)); np++; } });
+      for (let k = 0; k < n; k++) { const d = cum[sg] + k * step, t = dirAt(d, sg), nn = [-t[1] * sign, t[0] * sign], p = tf(sg, (d - cum[sg]) / (Ls || 1)), z = zAt(d) + top, poly = l3swpSheetPoly(e, k % 2 === 1).map(([a, w]) => [a * sc, w]); M.add(l3swpPrism(poly, null, z - len, z, [p.x, p.y], t, nn)); np++; sheetPos.push([p.x, p.y, z, z - len]); } });
     const g = M.get(), mass = (+s.p_kgm2 || 130) * np * e.b * len;
     parts.push({ name: `Stålspont ${s.sel} – ${np} pålar, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: "IFCWALL", color: L3SWP_COL.steel, mass });
   } else if (kind === "bored") {
     const D = +s.p_D || 0.62, c = +s.p_cc || D, sec = c < D - 1e-6, M0 = l3swpMerge(), M1 = l3swpMerge(), poly = l3swpCircle(D / 2);
-    stations.length = 0; bays.length = 0;
-    for (let i = 0; i + 1 < pts.length; i++) { const Ls = cum[i + 1] - cum[i]; if (Ls < 0.05) continue; const n = Math.max(1, Math.round(Ls / c)); for (let k = (stations.length ? 1 : 0); k <= n; k++) stations.push({ i, d: cum[i] + k * (Ls / n) }); }
+    stations.length = 0; bays.length = 0; if (coords) cst().forEach(x => stations.push(x));
+    else for (let i = 0; i + 1 < pts.length; i++) { const Ls = cum[i + 1] - cum[i]; if (Ls < 0.05) continue; const n = Math.max(1, Math.round(Ls / c)); for (let k = (stations.length ? 1 : 0); k <= n; k++) stations.push({ i, d: cum[i] + k * (Ls / n) }); }
     stations.forEach((st, k) => { const f = frame(st); (sec && k % 2 === 1 ? M1 : M0).add(l3swpPrism(poly, null, zBot(f), zTop(f), f.pos, f.t, f.n)); });
     const g0 = M0.get(), g1 = M1.get(), nm = sec ? "Sekantpålevägg" : "Tangentpålevägg";
     parts.push({ name: `${nm} Ø ${fmt(D * 1000, 0)} – ${sec ? "primärpålar (oarmerade)" : stations.length + " pålar"}`, mesh: { pts: g0.pts, faces: g0.faces }, vol: g0.vol, len: L, ifc: "IFCPILE", pile: "BORED", color: L3SWP_COL.conc, mass: g0.vol * L3SWP_CONC });
@@ -165,7 +169,8 @@ function l3swpBuild(pts, s) {
     stations.forEach(st => { const f = frame(st); M.add(l3swpPrism(poly, holes, zBot(f), zTop(f), f.pos, f.t, f.n, taper || 0)); });
     const g = M.get(); parts.push({ name: `${nm} – ${stations.length} pålar c/c ${fmt(cc, 2)} m, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: ifcc, pile: "DRIVEN", color: col, mass: g.vol * mat });
   }
-  return { parts, L, area: 0, piles: true };
+  const pos = kind === "sheet" ? sheetPos : stations.map(st => { const f = frame(st); return [f.pos[0], f.pos[1], zTop(f), zBot(f)]; });
+  return { parts, L, area: 0, piles: true, pos };
 }
 /* ---- Inkoppling i Stödmur-verktyget ---- */
 const l3swBuildBase = l3swBuild;
@@ -204,4 +209,54 @@ function l3swpPanelFix(c) {
   el.querySelector("[data-wpsoil]").onchange = e => { s.soil = e.target.value; re(); };
   el.querySelectorAll("[data-wp]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v)) { s[i.dataset.wp] = v; if (/^p_/.test(i.dataset.wp)) s.sel = ""; } re(); }; });
   el.querySelectorAll("[data-wpchk]").forEach(i => { i.onchange = () => { s[i.dataset.wpchk] = i.checked; re(); }; });
+  l3swpActs(el, c, grid, re);
+}
+/* Tabell över placeringen (X, Y, Z) och inklistrade koordinater (Victor 2026-11-12). */
+function l3swpActs(el, c, grid, re) {
+  const s = c.spec; let bar = el.querySelector(".v3-swp-acts"); if (bar) bar.remove();
+  bar = document.createElement("div"); bar.className = "v3-swp-acts";
+  bar.innerHTML = `<button type="button" data-swpt title="Lista över varje påles/spontpils läge: X, Y, Z (överkant och spets) – kopiera till Excel eller spara som CSV">▤ Tabell X Y Z</button><button type="button" data-swpp title="Skriv eller klistra in koordinater (X Y Z, en per rad) – pålarna placeras där">⎘ Klistra in X Y Z…</button>${s.coords ? `<button type="button" data-swpl title="Gå tillbaka till att placera längs linjen">↩ Längs linjen</button>` : ""}${s.coords ? `<div class="v3-pal-hint" style="width:100%">Pålarna står i de inklistrade koordinaterna (${c.pts.length} st). Dra i ringarna för att flytta en påle.</div>` : ""}`;
+  grid.insertAdjacentHTML("afterend", ""); grid.parentNode.insertBefore(bar, grid.nextSibling);
+  bar.querySelector("[data-swpt]").onclick = () => l3swpTable(c);
+  bar.querySelector("[data-swpp]").onclick = () => l3swpPaste();
+  const bl = bar.querySelector("[data-swpl]"); if (bl) bl.onclick = () => { delete s.coords; re(); };
+}
+const l3swpF = (v, d = 3) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d).replace(".", ",");
+function l3swpTable(c) {
+  const r = c.res || l3swBuild(c.pts, c.spec), pos = (r && r.pos) || []; if (!pos.length) { l3Status("Inga pålar att visa än.", true); return; }
+  const rows = pos.map((q, i) => `<tr><td>${i + 1}</td><td>${l3swpF(q[0])}</td><td>${l3swpF(q[1])}</td><td>${l3swpF(q[2])}</td><td>${l3swpF(q[3])}</td></tr>`).join("");
+  const d = l3Dlg("v3SwpTbl", `Pålar – koordinater (${pos.length})`, `<div class="v3-swp-tw"><table class="v3-swp-t"><thead><tr><th>Nr</th><th>X (E)</th><th>Y (N)</th><th>Z överkant</th><th>Z spets</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="v3-gd-btns"><button type="button" data-tcopy>Kopiera (Excel)</button><button type="button" data-tcsv>Spara CSV</button></div>`);
+  const tsv = (dec) => ["Nr\tX\tY\tZ överkant\tZ spets", ...pos.map((q, i) => [i + 1, ...q].map((v, k) => (k === 0 ? v : l3swpF(v).replace(",", dec))).join("\t"))].join("\n");
+  d.querySelector("[data-tcopy]").onclick = async () => { try { await navigator.clipboard.writeText(tsv(",")); l3Toast("Tabellen är kopierad – klistra in i Excel."); } catch (e) { l3Status("Kunde inte kopiera: " + e.message, true); } };
+  d.querySelector("[data-tcsv]").onclick = () => { const csv = ["Nr;X;Y;Z overkant;Z spets", ...pos.map((q, i) => [i + 1, ...q].map((v, k) => (k === 0 ? v : l3swpF(v))).join(";"))].join("\r\n"), a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" })); a.download = "palar-koordinater.csv"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 20000); };
+}
+/* Läser rader som "X Y Z", "X;Y;Z", "nr X Y Z" eller "X,Y,Z" (komma som decimaltecken går bra när raden delas med tabb, semikolon eller mellanslag). */
+function l3swpParseXYZ(text) {
+  const out = [], bad = [];
+  String(text || "").split(/\r?\n/).forEach((ln, i) => {
+    ln = ln.trim(); if (!ln) return; const sep = /[;\t]/.test(ln) ? /[;\t]+/ : /\s/.test(ln) ? /\s+/ : /,/;
+    let tk = ln.split(sep).map(x => x.trim()).filter(Boolean); if (sep.source === ",") tk = tk.map(x => x.replace(",", "."));
+    const num = x => { const v = Number(String(x).replace(",", ".")); return Number.isFinite(v) && /^[-+]?[\d.,]+(e[-+]?\d+)?$/i.test(x) ? v : null; };
+    let v = tk.map(num); if (v.length && v[0] === null) { v = v.slice(1); }   // namn/nr först på raden
+    else if (v.length === 4 && Number.isInteger(v[0]) && Math.abs(v[0]) < 100000) v = v.slice(1);
+    v = v.filter(x => x !== null);
+    if (v.length >= 2) out.push([v[0], v[1], v.length >= 3 ? v[2] : null]); else bad.push(i + 1);
+  });
+  return { pts: out, bad };
+}
+function l3swpPaste() {
+  const c = l3sw.cur, z0 = c && c.pts.length ? c.pts[0][2] : null;
+  const d = l3Dlg("v3SwpPaste", "Placera pålar i koordinater", `<div class="v3-pal-hint">Skriv eller klistra in en rad per påle: <b>X Y Z</b> (Z = överkant). Nr eller namn först på raden går bra. Komma eller punkt som decimaltecken. Saknas Z används ${z0 != null ? "höjden på första punkten" : "0"}.</div>
+    <textarea id="v3SwpTa" rows="9" spellcheck="false" placeholder="168973.693 7456741.270 430.525&#10;168975.2 7456741.3 430.5"></textarea><div class="v3-pi-sum" id="v3SwpSum">0 pålar</div>
+    <div class="v3-gd-btns end"><button type="button" data-cancel>Avbryt</button><button type="button" class="v3-primary" data-go disabled>Placera pålar</button></div>`);
+  const ta = d.querySelector("#v3SwpTa"), sum = d.querySelector("#v3SwpSum"), go = d.querySelector("[data-go]");
+  const upd = () => { const r = l3swpParseXYZ(ta.value); sum.innerHTML = `<b>${r.pts.length}</b> ${r.pts.length === 1 ? "påle" : "pålar"}${r.bad.length ? ` · <span style="color:#dc2626">rad ${r.bad.slice(0, 5).join(", ")} kunde inte läsas</span>` : ""}`; go.disabled = !r.pts.length; };
+  ta.oninput = upd; d.querySelector("[data-cancel]").onclick = () => l3DlgClose("v3SwpPaste");
+  go.onclick = () => {
+    const r = l3swpParseXYZ(ta.value); if (!r.pts.length) return; const zd = z0 != null ? z0 : 0, pts = r.pts.map(q => [q[0], q[1], q[2] != null ? q[2] : zd]);
+    if (c) { c.pts = pts; c.spec.coords = true; if (!l3swpIs(c.spec.kind) || c.spec.kind === "sheet" || c.spec.kind === "slits") { c.spec.kind = "tube"; l3swpInit(c.spec, true); } l3swDraw(); l3swPanel(); }
+    else { const spec = { ...L3SW_DEF, ...(l3sw.last || {}), coords: true }; if (!l3swpIs(spec.kind) || spec.kind === "sheet" || spec.kind === "slits") { spec.kind = "tube"; l3swpInit(spec, true); } l3swOpen({ pts, spec, res: null }); }
+    l3DlgClose("v3SwpPaste"); l3Status(`${pts.length} ${pts.length === 1 ? "påle" : "pålar"} placerade i koordinaterna – välj pålens typ och tryck Skapa pålar.`);
+  };
 }

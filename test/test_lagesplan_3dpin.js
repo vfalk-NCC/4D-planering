@@ -40,9 +40,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3SelectIds([p.id]); await w(400); const col = side.querySelector('.v3-side-h > .v3-rcol'); out.col = !!col; col.click(); await w(300);
     out.rhide = document.getElementById('view3d').classList.contains('v3-rhide') && getComputedStyle(side).display === 'none' && !document.getElementById('v3RightOpen').classList.contains('hidden') && l3Prefs().rightHide === true;
     document.getElementById('v3RightOpen').click(); await w(300); out.rshow = !document.getElementById('view3d').classList.contains('v3-rhide') && getComputedStyle(side).display !== 'none' && document.getElementById('v3RightOpen').classList.contains('hidden');
+    l3SelectIds([p.id]); await w(500); const det = [...side.querySelectorAll('details.v3-side-fold')]; out.folds = det.map(d => d.dataset.sfold).join(','); out.foldN = det.length >= 3; out.inputsKept = !!side.querySelector('details.v3-side-fold [data-v3f="itemId"]') && !!side.querySelector('#v3Drop') && !side.querySelector('details #v3Drop');
+    const ut = det.find(d => d.dataset.sfold === 'Utseende'); if (ut) { ut.open = true; await w(100); out.saved = l3Prefs().sideFold && l3Prefs().sideFold['Utseende'] === true; }
     return out;
   });
   console.log(JSON.stringify(r));
-  if (!r.hasPin || !r.pinned || !r.stays || !r.back || !r.hidden || !r.col || !r.rhide || !r.rshow) fail('Fäst meny: ' + JSON.stringify(r));
+  if (!r.hasPin || !r.pinned || !r.stays || !r.back || !r.hidden || !r.col || !r.rhide || !r.rshow || !r.foldN || !r.inputsKept || !r.saved) fail('Fäst meny: ' + JSON.stringify(r));
   await browser.close(); server.close(); console.log('OK: fäst högermeny – står kvar utan markering, lossas igen');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

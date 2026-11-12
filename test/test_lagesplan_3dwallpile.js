@@ -56,7 +56,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // IFC till datorn (utan TC): markera de skapade objekten och ladda ner
   await page.evaluate(() => { l3SelectIds(placements.slice(-2).map(p => p.id)); });
   page.on('dialog', d => d.accept('Min pale'));
-  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#v3DlIfc')]);
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.evaluate(() => document.getElementById('v3DlIfc').click())]);
   const txt = require('fs').readFileSync(await dl.path(), 'utf8'); if (!/ISO-10303-21/.test(txt) || !/IFCPILE\(/.test(txt) || !/^Min pale .*\.ifc$/i.test(dl.suggestedFilename())) fail('IFC till datorn: ' + dl.suggestedFilename() + ' ' + txt.slice(0, 80));
   console.log('OK: spont och pålning – Berlinerspont, Larssen AZ/PU, sekant/tangent, stålrör, betong, trä, slitsmur; IFC-klasser och massa');
   if (errors.length) fail('sidfel: ' + errors.join(' | '));

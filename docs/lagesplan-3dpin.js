@@ -25,3 +25,23 @@ function l3pnInit() {
   l3pnEnsure(); if (l3Prefs().rightHide === true) l3RightMenu(false); if (l3Prefs().sidePin && typeof l3RenderSide === "function") l3RenderSide();
 }
 (() => { const t = setInterval(() => { if (document.getElementById("v3Side") && typeof l3Prefs === "function") { clearInterval(t); l3pnInit(); } }, 500); setTimeout(() => clearInterval(t), 180000); })();
+
+/* Fällbara avsnitt i objektpanelen (Victor 2026-11-12: "en collapse på denna meny också … exakt lika snygg som Armering, Formvirke och Betong"): Läge, Mått, Skylt, Redigera, Utseende, 4D
+   får samma rullgardin (details.v3-sm-fold) som alternativgrupperna. Knapparna längst ner (Ställ på ytan, Duplicera …) ligger kvar synliga. Öppet/stängt sparas per avsnitt. Prefix l3sf. */
+const L3SF_OPEN = ["Läge", "Mått", "Redigera"];
+function l3sfFold() {
+  const side = document.getElementById("v3Side"); if (!side) return; const saved = l3Prefs().sideFold || {};
+  const parents = new Set([...side.querySelectorAll(".v3-sec")].filter(h => !h.closest("details")).map(h => h.parentElement));
+  parents.forEach(par => {
+    const kids = [...par.children];
+    kids.forEach((h, i) => {
+      if (!h.classList || !h.classList.contains("v3-sec") || h.closest("details") || h.parentElement !== par) return;
+      const title = h.textContent.trim(), det = document.createElement("details"), sum = document.createElement("summary"), body = document.createElement("div");
+      det.className = "v3-sm-fold v3-side-fold"; det.dataset.sfold = title; det.open = title in saved ? !!saved[title] : L3SF_OPEN.includes(title); sum.textContent = title; body.className = "v3-sm-fold-b"; det.append(sum, body);
+      let n = h.nextElementSibling; const move = []; while (n && !(n.classList && (n.classList.contains("v3-sec") || n.classList.contains("v3-btns") || n.classList.contains("v3-sm-fold") || n.tagName === "DETAILS"))) { move.push(n); n = n.nextElementSibling; }
+      par.insertBefore(det, h); h.remove(); move.forEach(x => body.appendChild(x));
+      det.addEventListener("toggle", () => l3SetPref("sideFold", { ...(l3Prefs().sideFold || {}), [title]: det.open }));
+    });
+  });
+}
+(() => { const t = setInterval(() => { const side = document.getElementById("v3Side"); if (!side) return; clearInterval(t); let raf = 0; new MutationObserver(() => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; if (side.querySelector(".v3-sec")) l3sfFold(); }); }).observe(side, { childList: true, subtree: true }); l3sfFold(); }, 600); setTimeout(() => clearInterval(t), 180000); })();
