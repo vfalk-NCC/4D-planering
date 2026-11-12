@@ -329,7 +329,8 @@ function l3roadOpen(cur) {
 function l3roadClose(keep) {
   l3road.capture = null; if (typeof l3rwClear === "function") l3rwClear();
   const el = document.getElementById("v3RoadPanel"); if (el) el.remove(); if (!keep && typeof l3rsClose === "function") l3rsClose();
-  const c = l3road.cur; if (c) l3road.last = { spec: JSON.parse(JSON.stringify(c.spec, (k, v) => k === "_c" ? undefined : v)) };
+  const c = l3road.cur; if (c && c.hidden && !c.saved) { c.hidden.forEach(id => { const g = l3.placeMeshes.get(id); if (g && !(l3.hidden && l3.hidden.has(id))) g.visible = true; }); const ex = c.hidden.filter(id => placements.some(q => q.id === id)); if (ex.length) l3SelectIds(ex); c.hidden = null; }
+  if (c) l3road.last = { spec: JSON.parse(JSON.stringify(c.spec, (k, v) => k === "_c" ? undefined : v)) };
   clearTimeout(l3road.timer); l3road.seq++; l3road.cur = null; if (!keep) l3rDriveStop(true); else l3rDriveStop(false);
   if (l3.groups.road) l3Clear(l3.groups.road); if (typeof l3rLabelsClear === "function" && l3m) l3rLabelsClear();
   if (!keep) { if (l3road.kbd) { window.removeEventListener("keydown", l3road.kbd, true); l3road.kbd = null; } l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace(); }
@@ -413,12 +414,15 @@ function l3roadMake() {
   const c = l3road.cur; if (!c || !c.geom) return;
   const G = c.geom, r3 = v => Math.round(v * 1000) / 1000, conv = S => { const pts = []; for (let i = 0; i < S.pos.length; i += 3) pts.push([r3(S.pos[i]), r3(S.pos[i + 1]), r3(S.pos[i + 2])]); const faces = []; for (let i = 0; i < S.idx.length; i += 3) faces.push([S.idx[i] + 1, S.idx[i + 1] + 1, S.idx[i + 2] + 1]); return { k: "mesh", pts, faces, closed: false }; };
   placeSnapshot(); const ids = [];
-  const setId = ghNewId().slice(0, 8);   // delarna hör ihop: kan väljas som en helhet i Volym
+  const setId = c.editSet || ghNewId().slice(0, 8);   // delarna hör ihop: kan väljas som en helhet i Volym
+  if (c.editSet) { const old = new Set(placements.filter(q => (q.rset || q.set) === c.editSet && q.rsrc).map(q => q.id)); placements = placements.filter(q => !old.has(q.id)); old.forEach(id => { placeDeleted.add(id); placeDirty.delete(id); const g = l3.placeMeshes.get(id); if (g) { if (l3.gizmo.object === g) l3.gizmo.detach(); l3.groups.places.remove(g); } l3.placeMeshes.delete(id); }); c.hidden = null; }   // redigering: de gamla delarna ersätts
+  const rsrc0 = { spec: JSON.parse(JSON.stringify(c.spec, (k, v) => k === "_c" ? undefined : v)), pts: JSON.parse(JSON.stringify(c.pts)), org: [G.org[0], G.org[1], G.org[2]] };
   const add = (S, name, color) => { if (!S) return; const p = modCreate(conv(S), [G.org[0], G.org[1], G.org[2]], { name, color, snapshot: false }); p.set = setId; ids.push(p.id); };
   if (c.spec.layersOn && (c.spec.layers || []).length) (c.spec.layers).forEach((l, i) => { const M = l3rLayerMesh(c, G, i); if (!M) return; const p = modCreate(M, [G.org[0], G.org[1], G.org[2]], { name: `Skikt ${l.name} ${l3rFmt(Number(l.t) || 0, 2)} m`, color: l.color || "#a8a29e", snapshot: false }); p.layerObj = true; ids.push(p.id); });
   if (l3Prefs().rdIfcMeters !== false && typeof ifcTextGeom === "function") { const M = l3rMetersMesh(c, G); if (M) { const p = modCreate(M, [G.org[0], G.org[1], G.org[2]], { name: `Metertal byggväg ${l3rFmt(c.res.len, 0)} m`, color: "#facc15", snapshot: false }); p.set = setId; p.text = true; ids.push(p.id); } }
   if (c.spec.bodies !== false) [["fill", "Underbyggnad – fyllning (kropp)", "#b59a70", c.res.fill], ["cut", "Schakt – utgrävd volym (kropp)", "#6b8fb5", c.res.cut]].forEach(([kd, nm, colr, vl]) => { const M = l3rBodyMesh(c, kd); if (!M) return; const p = modCreate(M, [G.org[0], G.org[1], G.org[2]], { name: `${nm} ${l3rM3(vl)}`, color: colr, snapshot: false }); p.set = setId; p.bodyObj = kd; ids.push(p.id); });
   add(G.road, `Byggväg ${l3rFmt(c.res.len, 0)} m`, "#9ca3af"); add(G.cut, "Släntyta schakt", "#60a5fa"); add(G.fill, "Släntyta fyllning", "#f87171");
+  ids.forEach(id => { const q = placements.find(x => x.id === id); if (q) { q.rset = setId; q.rsrc = rsrc0; } });   // sparar inställningarna så att vägen går att öppna igen
   c.saved = true; l3roadClose(); l3SelectIds(ids); l3Changed();
   l3Toast(`Byggväg skapad: ${l3rFmt(c.res.len, 0)} m, schakt ${l3rM3(c.res.cut)}, fyllning ${l3rM3(c.res.fill)}. Ctrl+Z ångrar.`);
 }
@@ -570,7 +574,7 @@ function l3rPanel() {
     <div class="v3-rd-tab" data-rtab="kor" ${tab === "kor" ? "" : "hidden"}>
     <div class="v3-rd-drv" title="Lastbilen från Gå-läget kör vägen: nosen följer lutningen, den styr i kurvorna och går långsammare uppför"><button type="button" data-rb="drive" ${r ? "" : "disabled"}>${l3rDrv.on ? "⏸ Pausa" : l3rDrv.s > 0.5 ? "▶ Fortsätt" : "▶ Kör vägen"}</button><button type="button" data-rb="drvreset" title="Tillbaka till start">⏮</button><select data-rv title="Fordon">${typeof L3RT_VEH !== "undefined" ? Object.entries(L3RT_VEH).map(([k, v]) => `<option value="${k}" ${(spec.vehicle || "truck") === k ? "selected" : ""}>${v.label}</option>`).join("") : ""}</select><label title="Fart i km/h på plan väg"><input type="number" data-rk="speed" value="${spec.speed}" min="3" max="60" step="1"> km/h</label><label title="Kameran åker med lastbilen"><input type="checkbox" data-rf ${l3rDrv.follow ? "checked" : ""}> Följ</label><label title="Börja om när lastbilen kommit fram"><input type="checkbox" data-rl ${l3rDrv.loop ? "checked" : ""}> Loop</label><div data-rinfo class="v3-rd-info"></div></div>
     </div>
-    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, slänter, lager och metertal blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="ifc" ${r ? "" : "disabled"} title="Skapar objekten och sparar dem som IFC i Trimble Connect direkt">⤓ IFC till TC</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button>
+    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, slänter, lager och metertal blir vanliga ytor (flytta, ändra, IFC, DXF)">${c.editSet ? "Uppdatera" : "Skapa objekt"}</button><button type="button" data-rb="ifc" ${r ? "" : "disabled"} title="Skapar objekten och sparar dem som IFC i Trimble Connect direkt">⤓ IFC till TC</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button>
       <details class="v3-rd-more"><summary title="Fler val">⋯</summary><div class="v3-rd-moreb"><label class="v3-rd-n" title="Metertalen (0 m, 10 m, 20 m …) bredvid vägen som 3D-text och ett streck över vägen vid varje meterpunkt – följer med när du skapar objekt eller exporterar IFC"><input type="checkbox" data-rim ${l3Prefs().rdIfcMeters !== false ? "checked" : ""} style="width:auto"><span>Metertal som 3D-text i IFC</span></label><button type="button" data-rb="saveroute" ${r ? "" : "disabled"} title="Spara körvägen i projektet (Kommentarer och mått → Körvägar) för att simulera den och koppla den till tidplanen">💾 Spara körväg</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶ Ta bort sista punkten</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om linjen</button><button type="button" data-rb="x">Stäng</button></div></details></div>`;
   l3rXsFold(el);
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
@@ -766,3 +770,14 @@ window.addEventListener("keydown", e => {
   const m = { ArrowLeft: ["x", -1], ArrowRight: ["x", 1], ArrowUp: ["y", 1], ArrowDown: ["y", -1], PageUp: ["z", 1], PageDown: ["z", -1] }[e.key]; if (!m) return;
   e.preventDefault(); e.stopPropagation(); l3rNudge(m[0], m[1], e.shiftKey);
 }, true);
+
+/* Redigera en utförd byggväg igen: hela uppsättningen (samma rset) öppnas med samma punkter och inställningar, originalen döljs tills du trycker Uppdatera (Victor 2026-11-12). */
+function l3roadEdit(p) {
+  const parts = p && p.rset ? placements.filter(q => q.rset === p.rset && q.rsrc) : []; if (!parts.length) { l3Status("Den här vägen saknar sparade inställningar (skapad före uppdateringen).", true); return; }
+  const w = parts[0].rsrc, f = parts.find(q => !q.layerObj) || parts[0], dx = f.x - w.org[0], dy = f.y - w.org[1], dz = f.z - w.org[2];
+  const pts = JSON.parse(JSON.stringify(w.pts)).map(q => [q[0] + dx, q[1] + dy, q[2] + dz]), spec = JSON.parse(JSON.stringify(w.spec));
+  try { l3SetPref("measure", "road"); l3SetTool("measure"); } catch (e) {}
+  const ids = parts.map(q => q.id); l3SelectIds([]); ids.forEach(id => { const g = l3.placeMeshes.get(id); if (g) g.visible = false; });
+  l3roadOpen({ pts, spec, res: null, geom: null, st: null, busy: "", err: "", editSet: p.rset, hidden: ids }); l3Status("Redigerar byggvägen: ändra i panelen eller flytta punkterna och tryck Uppdatera. Esc avbryter.");
+}
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-redit]"); if (!b) return; e.stopPropagation(); const sel = l3SelList(); if (sel.length) l3roadEdit(sel[0]); }, true);

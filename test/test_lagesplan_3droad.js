@@ -55,6 +55,21 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const made = await page.evaluate(async () => { const n0 = placements.length, hadBtn = !!document.querySelector('#v3RoadPanel [data-rb="ifc"]'); l3roadMake(); return { add: placements.length - n0, names: placements.slice(n0).map(p => p.name), closed: !l3road.cur, sel: l3.sel.size, hadBtn, sets: new Set(placements.slice(n0).map(p => p.set)).size }; });
   if (made.add !== 4 || made.sel !== 4 || !/Metertal/.test(made.names[0]) || !made.hadBtn || made.sets !== 1 || !made.closed || !made.names.some(n => /Byggväg/.test(n))) fail('Skapa objekt: ' + JSON.stringify(made));
   console.log('OK: Skapa objekt ger väg + schaktslänt + fyllningsslänt som vanliga ytor', JSON.stringify(made.names));
+  // Redigera byggvägen igen: öppnas med samma punkter, originalen döljs, Uppdatera ersätter dem
+  const ed = await page.evaluate(async () => {
+    const w = ms => new Promise(r => setTimeout(r, ms)), set = placements.find(q => q.rsrc && /Byggväg/.test(q.name)).rset, before = placements.filter(q => q.rset === set), ids = before.map(q => q.id), nAll = placements.length;
+    l3SelectIds([before[0].id]); await w(300); const btn = document.querySelector('#v3Side [data-redit]'); const hasBtn = !!btn; btn.click(); await w(300);
+    const open = !!l3road.cur && l3road.cur.editSet === set && l3road.cur.pts.length >= 2 && ids.every(id => l3.placeMeshes.get(id).visible === false) && !l3SelList().length;
+    for (let i = 0; i < 40 && !(l3road.cur && l3road.cur.geom); i++) await w(300);
+    const label = document.querySelector('#v3RoadPanel [data-rb="make"]').textContent; l3roadMake(); await w(300);
+    const after = placements.filter(q => q.rset === set);
+    const upd = after.length === before.length && placements.length === nAll && !before.some(q => placements.includes(q));
+    // avbryta: öppna igen och stäng – originalen syns och är markerade
+    l3SelectIds([after[0].id]); await w(200); l3roadEdit(after[0]); await w(200); const hid = l3road.cur.hidden.slice(); l3roadClose(); const cancel = hid.every(id => l3.placeMeshes.get(id).visible !== false) && l3SelList().length > 0;
+    return { hasBtn, open, label, upd, cancel, n: [before.length, after.length] };
+  });
+  if (!ed.hasBtn || !ed.open || ed.label !== 'Uppdatera' || !ed.upd || !ed.cancel) fail('Redigera byggväg: ' + JSON.stringify(ed));
+  console.log('OK: byggvägen går att öppna igen (✎ Redigera), Uppdatera ersätter delarna och Esc återställer', JSON.stringify(ed.n));
   // Metertalen som 3D-text: ett nät med text och streck (tillval) – av = bara de tre ytorna.
   const mt = await page.evaluate(async () => {
     const mk = async on => { l3SetPref('rdIfcMeters', on); const pts = window.__pts; l3roadOpen({ pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 5 }, res: null, geom: null, st: null, busy: '', err: '' }); const c = l3road.cur; for (let i = 0; i < 80 && !(c.res || c.err); i++) await new Promise(r => setTimeout(r, 150)); const n0 = placements.length; l3roadMake(); return placements.slice(n0); };
