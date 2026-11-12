@@ -144,6 +144,7 @@ function l3plRenderTab() {
   const fCount = `<em class="v3-pl-cnt">${l3gaListFilter(fAll, l3gaP().lf || {}).length} av ${fAll.length}</em>`;
   const filterBar = open.fil && typeof l3gaListHtml === "function" ? `<div class="v3-pl-fbar" id="v3PlFBar">${l3gaListHtml(fAll, l3gaP(), fAll, "only")}</div>` : "";
   const otherBody = `<div class="v3-card-h">Powerproject-tidplanen</div>
+      <button type="button" class="v3-wide" id="v3PlPpImp" title="Läs en Powerproject-fil (.pp) från datorn och uppdatera tidplanen – kopplingar och kommentarer behålls, inget tas bort">⬆ Importera Powerproject-fil…</button>
       ${l3pl.err ? `<div class="v3-pal-hint bad">Kunde inte läsa tidplanen: ${esc(l3pl.err)}</div>` : !acts.length ? `<div class="v3-pal-hint">Ingen Powerproject-tidplan i projektet ännu (importeras i 4D-planering).</div>`
         : ""}
       ${typeof planSource !== "undefined" && planSource !== "pp" ? `<div class="v3-pal-hint">3D-färgerna följer Excel-planeringen (vald i 4D-planering). Öppna lägesplanen med Powerproject vald för att färga efter den här tidplanen.</div>`
@@ -166,7 +167,7 @@ function l3plRenderTab() {
   const ls = host.querySelector("#v3PlLinkSrc"); if (ls) ls.onchange = () => { l3plSet("linkSrc", ls.value); if (ls.value !== "pp") l3plLoadX().then(() => l3plRenderTab()); else l3plRenderTab(); };
   const on = (id, fn, ev = "onclick") => { const el = host.querySelector("#" + id); if (el) el[ev] = fn; };
   on("v3PlReload", () => { l3pl.rows = null; l3pl.xrows = null; l3plLoad(true); l3plRenderTab(); if (typeof l3bRecolor === "function") l3bRecolor(); });
-  on("v3PlDock", () => l3plDockToggle()); on("v3PlDockSw", () => l3plDockToggle(), "onchange");
+  on("v3PlDock", () => l3plDockToggle()); on("v3PlPpImp", () => { if (typeof l3piPick === "function") l3piPick(); }); on("v3PlDockSw", () => l3plDockToggle(), "onchange");
   on("v3PlBub", e => { l3SetPref("bubOn", !!e.target.checked); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   on("v3PlBubScope", e => { l3SetPref("bubScope", e.target.value); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   host.querySelectorAll("[data-bubf]").forEach(c => { c.onchange = () => { l3SetPref("bubFields", { ...(l3Prefs().bubFields || {}), [c.dataset.bubf]: c.checked }); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }; });
