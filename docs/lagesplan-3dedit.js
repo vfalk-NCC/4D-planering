@@ -102,5 +102,9 @@ async function l3edSave() {
 }
 
 /* Knappen i objektets egenskapspanel. */
-function l3edSideHtml(p) { return l3edEditable(p) && !l3ed.on ? `<div class="v3-sec">Redigera</div><button type="button" class="v3-wide" data-ed="start" title="Dela upp objektet i delar, redigera dem och spara som ett nytt objekt i 3D-biblioteket">✎ Redigera objektet…</button>` : ""; }
+function l3edSideHtml(p) {
+  const tx = p && p.txt3d ? `<button type="button" class="v3-wide v3-primary" data-txedit title="Ändra text, typsnitt, storlek, tjocklek och vridning – objektet uppdateras">Aa Redigera 3D-texten…</button>` : "";
+  const ed = l3edEditable(p) && !l3ed.on ? `<button type="button" class="v3-wide" data-ed="start" title="Dela upp objektet i delar, redigera dem och spara som ett nytt objekt i 3D-biblioteket">✎ Redigera objektet…</button>` : "";
+  return tx || ed ? `<div class="v3-sec">Redigera</div>${tx}${ed}` : "";
+}
 function l3edSideBind(side, p) { const b = side.querySelector('[data-ed="start"]'); if (b) b.onclick = () => l3edStart(p); }

@@ -34,6 +34,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const B = l3tx.last; out.tris = B.tris.length; out.size = [Math.round(B.w * 100) / 100, Math.round(B.hgt * 100) / 100];
     const n0 = placements.length; const p = l3txCommit(); out.made = !!p && placements.length === n0 + 1 && !!p.txt3d;
     const st = modMeshStats(p.m.pts, p.m.faces.map(f => [f[0], f[1], f[2]])); out.vol = Math.round(Math.abs(st.volume) * 1000) / 1000; out.closed = p.m.closed === true;
+    // redigera efteråt: knapp i panelen, flyttat objekt behåller sitt nya läge, ny storlek, höjd-slider och vridhjul
+    { l3SelectIds([p.id]); await w(500); const btn = document.querySelector('#v3Side [data-txedit]'); out.editBtn = !!btn; p.x += 5; placeTouch(p); l3RebuildOne(p); btn.click(); await w(400);
+      out.editOpen = !!l3tx.editId && l3tx.d.text === 'F18 (2)' && Math.abs(l3tx.d.x - (6512330 + 5)) < 0.01; out.slider = !!document.querySelector('#v3TextDlg input[type=range][data-txf="h"]');
+      const dial = document.querySelector('#v3TextDlg .v3-tx-dial'), r0 = dial.getBoundingClientRect(); out.dial = !!dial;
+      const ptr = (x, y, t) => dial.dispatchEvent(new PointerEvent(t, { clientX: x, clientY: y, bubbles: true, pointerId: 1, buttons: 1 }));
+      dial.setPointerCapture = () => {}; ptr(r0.left + r0.width / 2, r0.top + 2, 'pointerdown'); out.rot90 = Math.abs(l3tx.d.rot - 90) <= 2; ptr(r0.left + r0.width / 2, r0.top + r0.height - 2, 'pointerdown'); out.rot270 = Math.abs(l3tx.d.rot - 270) <= 2;
+      l3tx.d.rot = 0; l3tx.d.text = 'AB'; l3tx.d.h = 1; l3txDraw(); const n1 = placements.length, mp = l3txCommit();
+      out.edited = placements.length === n1 && mp.id === p.id && Math.abs(mp.x - (6512330 + 5)) < 0.01 && mp.txt3d.text === 'AB'; let zr = [Infinity, -Infinity], xr = [Infinity, -Infinity]; mp.m.pts.forEach(pp => { zr = [Math.min(zr[0], pp[2]), Math.max(zr[1], pp[2])]; xr = [Math.min(xr[0], pp[0]), Math.max(xr[1], pp[0])]; }); out.resized = xr[1] - xr[0] > 1.2;
+      out.shown = l3.placeMeshes.get(p.id).visible !== false; }
     // hål: "O" är en ring, inte en skiva
     l3txOpen(); const d2 = l3tx.d; d2.text = 'O'; d2.font = 'Arial'; d2.bold = true; d2.h = 1; d2.t = 0.1; d2.x = 6512340; d2.y = 150130; d2.z = 100; l3txDraw(); const C = l3tx.last; const q = l3txCommit();
     const st2 = modMeshStats(q.m.pts, q.m.faces.map(f => [f[0], f[1], f[2]])), bb = C.w * C.hgt * 0.1; out.ring = Math.abs(st2.volume) < bb * 0.75 && Math.abs(st2.volume) > bb * 0.2; out.ringClosed = q.m.closed === true;
@@ -44,6 +53,6 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 400)); process.exit(1); }
-  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
+  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate || !r.editBtn || !r.editOpen || !r.slider || !r.dial || !r.rot90 || !r.rot270 || !r.edited || !r.resized || !r.shown) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: 3D-text – slutna kroppar med hål, liggande/stående, bakplatta');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

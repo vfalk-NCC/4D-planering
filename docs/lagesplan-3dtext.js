@@ -87,9 +87,14 @@ function l3txDraw() {
 function l3txSchedule() { clearTimeout(l3tx.timer); l3tx.timer = setTimeout(l3txDraw, 150); }
 function l3txOpen() {
   const sel = typeof l3SelList === "function" ? l3SelList()[0] : null;
-  if (sel && sel.txt3d) { l3tx.d = { ...l3txDef(), ...sel.txt3d }; l3tx.editId = sel.id; }
+  if (sel && sel.txt3d) {   // redigera en text som redan ligger i modellen: läget följer med om objektet flyttats
+    const t = sel.txt3d; l3tx.d = { ...l3txDef(), ...t }; l3tx.editId = sel.id;
+    if (Number.isFinite(t.ax)) { l3tx.d.x = (t.x || 0) + (sel.x - t.ax); l3tx.d.y = (t.y || 0) + (sel.y - t.ay); l3tx.d.z = (t.z || 0) + (sel.z - t.az); }
+    if (sel.rot) l3tx.d.rot = (((Number(t.rot) || 0) + Number(sel.rot)) % 360 + 360) % 360;
+    const g = l3.placeMeshes && l3.placeMeshes.get(sel.id); if (g) { g.visible = false; l3tx.hidden = sel.id; }   // originalet döljs medan förhandsvisningen visar ändringarna
+  }
   else { const prev = l3Prefs().txLast; l3tx.d = { ...l3txDef(), ...(prev || {}) }; l3tx.editId = null; const c = l3.orbit && l3.orbit.target; if (c) { l3tx.d.x = Math.round((c.x + l3.O[0]) * 10) / 10; l3tx.d.y = Math.round((c.y + l3.O[1]) * 10) / 10; l3tx.d.z = Math.round((c.z + l3.O[2]) * 100) / 100; } }
-  l3txRender(); l3txDraw();
+  l3tx.d.rot = (((Number(l3tx.d.rot) || 0) % 360) + 360) % 360; l3txRender(); l3txDraw();
 }
 function l3txRender() {
   const d = l3tx.d, E = escHtml, fonts = l3txFontList(); if (!fonts.some(f => f[0] === d.font)) fonts.unshift([d.font, d.font]);
@@ -98,10 +103,12 @@ function l3txRender() {
     <div class="v3-gd-g2"><label class="v3-field"><span>Typsnitt</span>${sel("font", fonts)}</label><div class="v3-gd-btns" style="align-self:end"><button type="button" data-txfile title="Läs in en typsnittsfil (.ttf, .otf, .woff) och använd den">＋ Egen fil…</button></div></div>
     <div class="v3-tx-st"><label class="v3-chk"><input type="checkbox" data-txf="bold" ${d.bold ? "checked" : ""} /> <b>Fet</b></label><label class="v3-chk"><input type="checkbox" data-txf="italic" ${d.italic ? "checked" : ""} /> <i>Kursiv</i></label>${sel("align", [["left", "Vänster"], ["center", "Centrerad"], ["right", "Höger"]])}</div>
     <div class="v3-gd-g2">${num("h", "Teckenhöjd (m)", 0.05, 0.02)}${num("t", "Tjocklek (m)", 0.01, 0.005)}</div>
-    <label class="v3-gd-sl"><span>Tjocklek</span><input type="range" min="0.005" max="1" step="0.005" data-txf="t" value="${d.t}" /><output>${Math.round(d.t * 1000)} mm</output></label>
+    <label class="v3-gd-sl"><span>Teckenhöjd</span><input type="range" min="0.05" max="5" step="0.05" data-txf="h" value="${d.h}" /><output data-txo="h">${String(d.h).replace(".", ",")} m</output></label>
+    <label class="v3-gd-sl"><span>Tjocklek</span><input type="range" min="0.005" max="1" step="0.005" data-txf="t" value="${d.t}" /><output data-txo="t">${Math.round(d.t * 1000)} mm</output></label>
     <div class="v3-gd-g2">${num("space", "Radavstånd (×)", 0.05, 0.8)}<label class="v3-field"><span>Färg</span><input type="color" data-txf="color" value="${E(d.color)}" /></label></div>
     <div class="v3-gd-sec">Placering</div>
-    <div class="v3-gd-g2"><label class="v3-field"><span>Läge</span>${sel("mode", [["lying", "Liggande på marken"], ["standing", "Stående (som skylt)"]])}</label>${num("rot", "Vridning °", 1, -360)}</div>
+    <div class="v3-gd-g2"><label class="v3-field"><span>Läge</span>${sel("mode", [["lying", "Liggande på marken"], ["standing", "Stående (som skylt)"]])}</label>${num("rot", "Vridning °", 1, 0)}</div>
+    <div class="v3-tx-dialw"><svg class="v3-tx-dial" viewBox="0 0 100 100" width="84" height="84" title="Dra för att vrida (Skift = 15°-steg)"><circle cx="50" cy="50" r="44" class="r"/>${Array.from({ length: 24 }, (_, i) => { const a = i * 15 * Math.PI / 180, big = i % 6 === 0, r0 = big ? 34 : 39; return `<line x1="${50 + r0 * Math.cos(a)}" y1="${50 - r0 * Math.sin(a)}" x2="${50 + 44 * Math.cos(a)}" y2="${50 - 44 * Math.sin(a)}" class="${big ? "tk b" : "tk"}"/>`; }).join("")}<line class="nd" x1="50" y1="50" x2="50" y2="50"/><circle class="kn" r="6" cx="50" cy="50"/></svg><div class="v3-tx-dialr"><b data-txo="rot">0°</b><small>0° = längs X (öster), moturs</small></div></div>
     <div class="v3-gd-btns"><button type="button" data-txpick title="Tryck textens början och sedan en punkt längs raden">⌖ Två tryck</button><button type="button" data-txcam title="Vänd stående text mot kameran">⟲ Mot kameran</button></div>
     <label class="v3-chk"><input type="checkbox" data-txf="plate" ${d.plate ? "checked" : ""} /> Bakplatta (Contour plate)</label>${d.plate ? num("margin", "Marginal runt texten (m)", 0.05, 0) : ""}
     <div class="v3-pi-sum" id="v3TxInfo">&nbsp;</div>
@@ -112,15 +119,19 @@ function l3txBind(dlg) {
   const d = l3tx.d, q = s => dlg.querySelector(s);
   dlg.querySelectorAll("[data-txf]").forEach(i => { const ev = i.tagName === "SELECT" || i.type === "checkbox" || i.type === "color" ? "onchange" : "oninput"; i[ev] = () => {
     const k = i.dataset.txf, v = i.type === "checkbox" ? i.checked : i.type === "number" || i.type === "range" ? Number(i.value) : i.value; d[k] = v;
-    if (k === "t") { dlg.querySelectorAll('[data-txf="t"]').forEach(o => { if (o !== i) o.value = v; }); const o = dlg.querySelector(".v3-gd-sl output"); if (o) o.textContent = Math.round(v * 1000) + " mm"; }
+    if (k === "t" || k === "h") { dlg.querySelectorAll('[data-txf="' + k + '"]').forEach(o => { if (o !== i) o.value = v; }); const o = dlg.querySelector('[data-txo="' + k + '"]'); if (o) o.textContent = k === "t" ? Math.round(v * 1000) + " mm" : String(v).replace(".", ",") + " m"; }
+    if (k === "rot") dial(v);
     if (k === "plate" || k === "mode") { l3txRender(); } l3txSchedule(); }; if (i.type === "color") i.oninput = () => { d.color = i.value; l3txSchedule(); }; });
+  const dialEl = q(".v3-tx-dial"), norm = a => ((Math.round(a) % 360) + 360) % 360;   // vridhjul 0–360°
+  const dial = v => { if (!dialEl) return; const a = (Number(v) || 0) * Math.PI / 180, x = 50 + 36 * Math.cos(a), y = 50 - 36 * Math.sin(a); dialEl.querySelector(".nd").setAttribute("x2", x); dialEl.querySelector(".nd").setAttribute("y2", y); const kn = dialEl.querySelector(".kn"); kn.setAttribute("cx", x); kn.setAttribute("cy", y); const o = q('[data-txo="rot"]'); if (o) o.textContent = norm(v) + "°"; const inp = q('input[data-txf="rot"]'); if (inp && document.activeElement !== inp) inp.value = norm(v); };
+  if (dialEl) { dial(d.rot); const setA = e => { const r = dialEl.getBoundingClientRect(); let a = Math.atan2(-(e.clientY - (r.top + r.height / 2)), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI; if (e.shiftKey) a = Math.round(a / 15) * 15; d.rot = norm(a); dial(d.rot); l3txSchedule(); }; dialEl.onpointerdown = e => { e.preventDefault(); dialEl.setPointerCapture(e.pointerId); setA(e); const mv = ev => setA(ev), up = () => { dialEl.removeEventListener("pointermove", mv); dialEl.removeEventListener("pointerup", up); }; dialEl.addEventListener("pointermove", mv); dialEl.addEventListener("pointerup", up); }; }
   q("[data-txfile]").onclick = () => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".ttf,.otf,.woff,.woff2"; inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const name = f.name.replace(/\.[^.]+$/, "").replace(/[^\w -]/g, ""), ff = new FontFace(name, await f.arrayBuffer()); await ff.load(); document.fonts.add(ff); (l3tx.custom = l3tx.custom || []).push(name); l3tx.fonts = null; d.font = name; l3txRender(); l3txDraw(); l3Status(`Typsnittet "${name}" är inläst.`); } catch (e) { l3Status("Kunde inte läsa typsnittet: " + e.message, true); } }; inp.click(); };
   q("[data-txpick]").onclick = () => l3DlgPick(2, ["Tryck textens startpunkt.", "Tryck en punkt längs textraden."], ([a, b]) => { d.x = Math.round(a.x * 100) / 100; d.y = Math.round(a.y * 100) / 100; d.z = Math.round(a.z * 100) / 100; d.rot = Math.round(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); l3Status("Texten är placerad – justera och tryck Skapa text."); });
   q("[data-txcam]").onclick = () => { const c = l3.orbit.target, p = l3.camera.position; d.mode = "standing"; d.rot = Math.round(Math.atan2(p.x - c.x, -(p.y - c.y)) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); };
   q("[data-txcancel]").onclick = () => l3txClose();
   q("[data-txgo]").onclick = () => l3txCommit();
 }
-function l3txClose() { l3tx.d = null; l3tx.editId = null; if (l3tx.group) l3Clear(l3tx.group); l3DlgClose("v3TextDlg"); l3Render(); }
+function l3txClose() { if (l3tx.hidden) { const g = l3.placeMeshes && l3.placeMeshes.get(l3tx.hidden); if (g && !(l3.hidden && l3.hidden.has(l3tx.hidden))) g.visible = true; l3tx.hidden = null; } l3tx.d = null; l3tx.editId = null; if (l3tx.group) l3Clear(l3tx.group); l3DlgClose("v3TextDlg"); l3Render(); }
 function l3txCommit() {
   const d = l3tx.d, B = l3tx.last || l3txBuild(d); if (!B.tris.length) { l3Status("Skriv en text först.", true); return null; }
   const W = l3txWorld(d, B.tris); let x0 = Infinity, y0 = Infinity, z0 = Infinity; W.forEach(t => t.forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); z0 = Math.min(z0, p[2]); }));
@@ -129,8 +140,8 @@ function l3txCommit() {
   const m = { k: "mesh", pts, faces, closed: typeof l3bqClosed === "function" ? l3bqClosed(faces.map(f => [f[0], f[1], f[2]])) : true }, label = String(d.text).split("\n")[0].slice(0, 24) || "Text";
   l3SetPref("txLast", { ...d, x: 0, y: 0, z: 0 });
   let p;
-  if (l3tx.editId && (p = placements.find(q => q.id === l3tx.editId))) { const ax = [p.x, p.y, p.z]; modEdit(p, mm => { mm.k = "mesh"; mm.pts = pts.map(q => [q[0] + x0 - ax[0], q[1] + y0 - ax[1], q[2] + z0 - ax[2]]); mm.faces = faces; mm.closed = m.closed; delete mm.loops; delete mm.pl; delete mm.d; }); p.txt3d = { ...d }; p.color = d.color; placeTouch(p); l3Changed(); l3Toast("3D-texten är uppdaterad."); }
-  else { placeSnapshot(); p = modCreate(m, [x0, y0, z0], { name: `Text ${label}`, color: d.color, snapshot: false }); p.txt3d = { ...d }; placeTouch(p); l3SelectIds([p.id]); l3Changed(); l3Toast(`3D-text "${label}" skapad (${B.w.toFixed(2).replace(".", ",")} × ${B.hgt.toFixed(2).replace(".", ",")} m). Ctrl+Z ångrar.`); }
+  if (l3tx.editId && (p = placements.find(q => q.id === l3tx.editId))) { const ax = [p.x, p.y, p.z]; modEdit(p, mm => { mm.k = "mesh"; mm.pts = pts.map(q => [q[0] + x0 - ax[0], q[1] + y0 - ax[1], q[2] + z0 - ax[2]]); mm.faces = faces; mm.closed = m.closed; delete mm.loops; delete mm.pl; delete mm.d; }); p.txt3d = { ...d, ax: p.x, ay: p.y, az: p.z }; delete p.rot; p.color = d.color; placeTouch(p); l3Changed(); l3Toast("3D-texten är uppdaterad."); }
+  else { placeSnapshot(); p = modCreate(m, [x0, y0, z0], { name: `Text ${label}`, color: d.color, snapshot: false }); p.txt3d = { ...d, ax: p.x, ay: p.y, az: p.z }; placeTouch(p); l3SelectIds([p.id]); l3Changed(); l3Toast(`3D-text "${label}" skapad (${B.w.toFixed(2).replace(".", ",")} × ${B.hgt.toFixed(2).replace(".", ",")} m). Ctrl+Z ångrar.`); }
   l3txClose(); return p;
 }
 (() => {
@@ -139,3 +150,5 @@ function l3txCommit() {
     b.onclick = () => { const d = document.getElementById("v3TextDlg"); if (d && !d.classList.contains("hidden")) l3txClose(); else l3txOpen(); }; clearInterval(t); }, 500);
   setTimeout(() => clearInterval(t), 180000);
 })();
+
+document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-txedit]"); if (b) { e.stopPropagation(); l3txOpen(); } }, true);
