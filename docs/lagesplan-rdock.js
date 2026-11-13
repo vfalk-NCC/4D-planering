@@ -60,3 +60,40 @@ document.addEventListener("DOMContentLoaded", () => {
   new MutationObserver(() => rdockSiteSync()).observe(pop, { childList: true });
   window.addEventListener("resize", () => { if (rdock.el && !rdockAllowed()) { [...rdock.panels.keys()].forEach(p => { if (p.id === "sitePop") rdockRemove(p, document.querySelector("main")); }); } });
 });
+
+
+/* ---- Prickens/etikettens meny (#labelMenu: status, framdrift, datum, färg, kommentarer, släck …) – 📌 i rubrikraden öppnar den i dockan (Victor 2026-11-13: "alla dialogrutor ska gå att öppna där") ----
+   Dockad ligger den kvar när du klickar på kartan (stängs med ✕ eller 📌) och byts ut när du högerklickar på nästa prick. */
+const RDOCK_LM_KEY = "lagesplan-rdock-labelmenu";
+const rdockLm = { outside: false, closing: false, busy: false };
+function rdockLmDocked() { try { return localStorage.getItem(RDOCK_LM_KEY) === "1"; } catch (e) { return false; } }
+function rdockLmSync() {
+  const m = document.getElementById("labelMenu"); if (!m || rdockLm.busy) return; rdockLm.busy = true;
+  try {
+    const open = !m.classList.contains("hidden"), want = rdockAllowed() && rdockLmDocked(), is = m.classList.contains("rd-docked");
+    if (open && !m.querySelector(":scope > .rd-lmbar")) {
+      const bar = document.createElement("div"); bar.className = "rd-lmbar";
+      bar.innerHTML = `<span>Prick / etikett</span><button type="button" class="rd-lmpin" title="Docka till höger (samma ram som egenskapsrutan)">📌</button><button type="button" class="rd-lmx" title="Stäng">✕</button>`;
+      bar.querySelector(".rd-lmpin").onclick = e => { e.stopPropagation(); const on = !rdockLmDocked(); try { localStorage.setItem(RDOCK_LM_KEY, on ? "1" : "0"); } catch (err) { /* privat läge */ } rdockLm.busy = false; rdockLmSync(); };
+      bar.querySelector(".rd-lmx").onclick = e => { e.stopPropagation(); rdockLm.closing = true; m.classList.add("hidden"); };
+      m.prepend(bar);
+    }
+    if (open && want && !is) { rdockEnsure(); rdock.panels.set(m, { home: document.body }); rdockAdd(m, 3); }
+    else if (is && (!want || !rdockAllowed())) rdockRemove(m, document.body);
+    const pin = m.querySelector(".rd-lmpin"); if (pin) { const d = m.classList.contains("rd-docked"); pin.classList.toggle("on", d); pin.title = d ? "Lösgör från dockan" : "Docka till höger (samma ram som egenskapsrutan)"; }
+  } finally { rdockLm.busy = false; }
+}
+function rdockLmInit() {
+  const m = document.getElementById("labelMenu"); if (!m || m.__rdLm) return; m.__rdLm = true;
+  new MutationObserver(() => {
+    if (m.classList.contains("hidden") && m.classList.contains("rd-docked") && rdockLm.outside && !rdockLm.closing) { m.classList.remove("hidden"); return; }   // klick på kartan stänger inte den dockade menyn
+    if (m.classList.contains("hidden")) rdockLm.closing = false;
+    rdockLmSync();
+  }).observe(m, { childList: true, attributes: true, attributeFilter: ["class"] });
+  rdockLmSync();
+}
+document.addEventListener("mousedown", e => { rdockLm.outside = !(e.target.closest && e.target.closest("#labelMenu")); setTimeout(() => { rdockLm.outside = false; }, 0); }, true);
+document.addEventListener("DOMContentLoaded", () => {
+  rdockLmInit();
+  new MutationObserver(() => rdockLmInit()).observe(document.body, { childList: true });   // menyn skapas första gången den öppnas
+});

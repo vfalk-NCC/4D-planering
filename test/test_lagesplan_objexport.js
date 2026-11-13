@@ -119,6 +119,28 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   { // Att docka/lösgöra paneler får inte zooma ut till hela planen
     const r = await page.evaluate(async () => { view.scale = 2.37; view.tx = -123; view.ty = -77; applyView(); const b = { s: view.scale, x: view.tx, y: view.ty }; rdockResizeView(); adjResizeView(); await new Promise(r => setTimeout(r, 150)); return { before: b, after: { s: view.scale, x: view.tx, y: view.ty } }; });
     if (r.after.s !== r.before.s || r.after.x !== r.before.x || r.after.y !== r.before.y) fail('Dockning ska inte ändra zoom/läge: ' + JSON.stringify(r)); }
+  { // Prickens meny (#labelMenu) går att öppna i högerdockan; ligger kvar vid klick på kartan; stängs med ✕
+    await page.evaluate(() => { localStorage.setItem('lagesplan-rdock-labelmenu', '0'); view.scale = 1.9; view.tx = -50; view.ty = -40; applyView(); openLabelMenu({ ids: [], text: '', act: '', box: {} }, { clientX: 400, clientY: 300 }); const m = document.getElementById('labelMenu'); m.innerHTML = '<div class="om-st">Status</div><button type="button" data-o="x">Släck X</button>'; m.classList.remove('hidden'); });
+    await page.waitForTimeout(200);
+    const a = await page.evaluate(() => { const m = document.getElementById('labelMenu'); return { bar: !!m.querySelector('.rd-lmbar'), pin: !!m.querySelector('.rd-lmpin'), floating: !m.closest('#rdock') }; });
+    if (!a.bar || !a.pin || !a.floating) fail('Menyn ska ha en 📌-rad och ligga fritt från början: ' + JSON.stringify(a));
+    await page.click('#labelMenu .rd-lmpin'); await page.waitForTimeout(250);
+    const b = await page.evaluate(() => { const m = document.getElementById('labelMenu'), r = document.getElementById('rdock'); return { docked: !!m.closest('#rdock .rd-body'), dockVisible: !r.hidden, scale: view.scale, st: getComputedStyle(m).position, pref: localStorage.getItem('lagesplan-rdock-labelmenu') }; });
+    if (!b.docked || !b.dockVisible || b.scale !== 1.9 || b.st !== 'static' || b.pref !== '1') fail('📌 ska docka menyn i högerdockan utan att zooma om: ' + JSON.stringify(b));
+    await page.mouse.click(200, 400); await page.waitForTimeout(200);
+    const c = await page.evaluate(() => !document.getElementById('labelMenu').classList.contains('hidden'));
+    if (!c) fail('Den dockade menyn ska ligga kvar när man klickar på kartan');
+    await page.evaluate(() => { const m = document.getElementById('labelMenu'); m.innerHTML = '<button type="button">Nästa prick</button>'; });   // ny prick: innehållet byts, raden kommer tillbaka
+    await page.waitForTimeout(150);
+    if (!await page.evaluate(() => !!document.querySelector('#rdock #labelMenu .rd-lmbar'))) fail('Raden ska finnas även när innehållet byts');
+    await page.click('#labelMenu .rd-lmx'); await page.waitForTimeout(200);
+    const d = await page.evaluate(() => ({ hidden: document.getElementById('labelMenu').classList.contains('hidden'), dockHidden: document.getElementById('rdock').hidden || ![...document.querySelectorAll('#rdock .rd-body > *')].some(e => !e.classList.contains('hidden') && !e.hidden) }));
+    if (!d.hidden) fail('✕ ska stänga menyn: ' + JSON.stringify(d));
+    await page.evaluate(() => { const m = document.getElementById('labelMenu'); m.classList.remove('hidden'); });
+    await page.waitForTimeout(150); await page.click('#labelMenu .rd-lmpin'); await page.waitForTimeout(250);
+    const e2 = await page.evaluate(() => ({ back: document.getElementById('labelMenu').parentNode.tagName, pref: localStorage.getItem('lagesplan-rdock-labelmenu') }));
+    if (e2.back !== 'BODY' || e2.pref !== '0') fail('📌 igen ska lösgöra menyn: ' + JSON.stringify(e2));
+    await page.evaluate(() => document.getElementById('labelMenu').classList.add('hidden')); }
   console.log('OK: panelen – dockad, varningar med förslag, sortering, kolumnbredd, tryck på namn, dra prick på kartan, flerval, flytande, 0,0 utelämnas ur filerna', JSON.stringify({ PN: PN.rows, FX, w1 }));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_objexport');
