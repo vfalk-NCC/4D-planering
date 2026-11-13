@@ -139,12 +139,18 @@ function objLabelLayout(marks, { h, r, gap, widthOf }) {
   });
 }
 
+/* Text som linjer (streckfont ur ifc-writer.js) på höjden z – följer höjden även i visare som lägger TEXT-objekt platt. Läsriktning rr (radianer), nedre vänstra hörnet i (x, y). */
+function dxfTextLines(ents, layer, text, x, y, z, h, rr) {
+  const T = typeof ifcTextStrokes === "function" ? ifcTextStrokes(text) : null; if (!T) { ents.push({ t: "TEXT", layer, x, y, z, h, rot: rr * 180 / Math.PI, s: text }); return; }
+  const k = h / 6, c = Math.cos(rr), sn = Math.sin(rr), P = ([u, v]) => [x + (u * c - v * sn) * k, y + (u * sn + v * c) * k];
+  T.strokes.forEach(pl => { for (let i = 1; i < pl.length; i++) { const a = P(pl[i - 1]), b = P(pl[i]); ents.push({ t: "LINE", layer, x: a[0], y: a[1], z, x2: b[0], y2: b[1], z2: z }); } });
+}
 /* Bygger DXF-texten. Returnerar { text, n } eller null om inga objekt syns. */
 function buildObjectsDxf() {
   const marks = objExportFileMarkers();
   if (!marks.length) return null;
   const ents = [], used = new Set(["4D-NAMN"]), layerAciX = {};
-  const rot = dxfTextRotation(), rr = rot * Math.PI / 180;
+  const rot = dxfTextRotation(), rr = rot * Math.PI / 180, asLines = !$("cadTextLines") || $("cadTextLines").checked;   // texten som linjer på plushöjden (TEXT följer inte höjden i alla visare)
   // Namnen placeras fritt från varandra (objLabelLayout) – i läsriktningen.
   const along = (dx, dy) => [dx * Math.cos(rr) - dy * Math.sin(rr), dx * Math.sin(rr) + dy * Math.cos(rr)];
   const lay = objLabelLayout(marks, { h: DXF_TEXT_H, r: 0.4, gap: 0.25, widthOf: n => 1.0 * DXF_TEXT_H * n.length });
@@ -153,13 +159,13 @@ function buildObjectsDxf() {
     used.add(layer); if (mk.color) layerAciX[layer] = exportAciOf(mk.color);
     const z = Number.isFinite(mk.zTop) ? mk.zTop : 0; // på plushöjden (objektets högsta punkt, eller din egna höjd) – prickarna hamnade på nollnivån när modellen ligger på +400 (Victor 2026-11-13)
     ents.push({ t: "POINT", layer, x, y, z, rgb: mk.color });
-    ents.push({ t: "DOT", layer, x, y, z, r: 0.4, rgb: mk.color });       // fylld prick i statusfärg (som i Lägesplan)
+    ents.push({ t: "DISC", layer, x, y, z, r: 0.4, rgb: mk.color });       // fylld ring av 3DFACE-trianglar (visas fylld i alla visare, även de som inte ritar bredd på polylinjer)       // fylld prick i statusfärg (som i Lägesplan)
     ents.push({ t: "CIRCLE", layer: "4D-NAMN", x, y, z, r: 0.4 }); // tunn ring runt (syns mot mörka underlag)
     // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
     const [ox, oy] = along(lay[i].da, lay[i].dc);
-    if (mk.name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: mk.name });
-    if (mk.adj && mk.adj.comment) { const [cx, cy] = along(lay[i].da, lay[i].dc - DXF_TEXT_H * 1.2); ents.push({ t: "TEXT", layer: "4D-KOMMENTAR", x: x + cx, y: y + cy, z, h: DXF_TEXT_H * 0.8, rot, s: dxfText(mk.adj.comment) }); used.add("4D-KOMMENTAR"); }
+    if (mk.name) { if (asLines) dxfTextLines(ents, "4D-NAMN", mk.name, x + ox, y + oy, z, DXF_TEXT_H, rr); else ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: mk.name }); }
+    if (mk.adj && mk.adj.comment) { const [cx, cy] = along(lay[i].da, lay[i].dc - DXF_TEXT_H * 1.2); if (asLines) dxfTextLines(ents, "4D-KOMMENTAR", dxfText(mk.adj.comment), x + cx, y + cy, z, DXF_TEXT_H * 0.8, rr); else ents.push({ t: "TEXT", layer: "4D-KOMMENTAR", x: x + cx, y: y + cy, z, h: DXF_TEXT_H * 0.8, rot, s: dxfText(mk.adj.comment) }); used.add("4D-KOMMENTAR"); }
   });
   if (!ents.length) return null;
   const layerAci = { "4D-NAMN": exportAciOf(EXPORT_TEXT_COL), "4D-KOMMENTAR": 30, ...layerAciX };
@@ -226,6 +232,10 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
       if (e.mid) { g(72, 4); g(11, dxfNum(e.x)); g(21, dxfNum(e.y)); g(31, dxfNum(e.z || 0)); } // centrerad (Middle)
       else if (e.ha || e.va) { if (e.ha) g(72, e.ha); g(11, dxfNum(e.x)); g(21, dxfNum(e.y)); g(31, dxfNum(e.z || 0)); if (e.va) g(73, e.va); } // justering (DXF-redigeringen)
     }
+    else if (e.t === "LINE") { g(0, "LINE"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z || 0)); g(11, dxfNum(e.x2)); g(21, dxfNum(e.y2)); g(31, dxfNum(e.z2 || 0)); }
+    else if (e.t === "DISC") {   // fylld skiva: solfjäder av 3DFACE
+      const N = 16; for (let i = 0; i < N; i++) { const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2, p = [[e.x, e.y], [e.x + Math.cos(a0) * e.r, e.y + Math.sin(a0) * e.r], [e.x + Math.cos(a1) * e.r, e.y + Math.sin(a1) * e.r]];
+        g(0, "3DFACE"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); p.forEach(([px, py], j) => { g(10 + j, dxfNum(px)); g(20 + j, dxfNum(py)); g(30 + j, dxfNum(e.z || 0)); }); g(13, dxfNum(p[2][0])); g(23, dxfNum(p[2][1])); g(33, dxfNum(e.z || 0)); } }
     else if (e.t === "DOT") {
       // Fylld prick: sluten polylinje av två halvcirklar med bredd = radien.
       g(0, "POLYLINE"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, dxfNum(e.z || 0)); g(70, 1); g(40, dxfNum(e.r)); g(41, dxfNum(e.r));

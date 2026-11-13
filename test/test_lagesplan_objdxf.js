@@ -29,6 +29,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
   await page.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));
   await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
+  await page.evaluate(() => { const c = document.getElementById('cadTextLines'); if (c) c.checked = false; });   // TEXT-objekt i dessa tester (linjetexten testas separat)
   const r = await page.evaluate(async () => {
     const cal = { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] };
     plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: cal, zones: [] }];
@@ -64,7 +65,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!t['K10'] || Math.abs(t['K10'][0] - 6512346.15) > 0.001 || Math.abs(t['K10'][1] - 150122.75) > 0.001) fail('Namnet ska stå vid objektet i modellens koordinater (meter): ' + JSON.stringify(r.geo));
   if (!r.text.includes('\r\n10\r\n6512345.500\r\n20\r\n150123.250\r\n30\r\n14.000')) fail('Punkten ska ligga exakt i modellens koordinater på plushöjden (inte nollnivån): ' + r.text.slice(0, 2000));
   if (!r.geo.some(([s]) => s === 'M30 (2)')) fail('Två objekt i samma aktivitet blir en markering med antalet, å/ä/ö kvar: ' + JSON.stringify(r.geo));
-  if (r.ents.some(e => /^POLYLINE:4D-(FOTAVTRYCK|NAMN)/.test(e)) || r.ents.filter(e => /^POLYLINE:4D-(KLAR|PAGAENDE)/.test(e)).length !== 2) fail('En fylld prick per markering, inga fotavtryck (raka lådor blir fel vridna): ' + JSON.stringify(r.ents));
+  if (r.ents.some(e => /^(POLYLINE|3DFACE):4D-(FOTAVTRYCK|NAMN)/.test(e)) || r.ents.filter(e => /^3DFACE:4D-(KLAR|PAGAENDE)/.test(e)).length !== 2 * 16) fail('En fylld skiva (16 trianglar) per markering, inga fotavtryck (raka lådor blir fel vridna): ' + JSON.stringify(r.ents));
   if (JSON.stringify(r.aci) !== JSON.stringify({ klar: 3, pagaende: 30, forsenad: 1, planerad: 8, pausad: 8 })) fail('Statusfärgerna som CAD-färger: ' + JSON.stringify(r.aci));
   if (JSON.stringify(r.cp) !== JSON.stringify([0xe5, 0xe4, 0xf6, 0x96])) fail('å/ä/ö ska kodas i Windows-1252: ' + r.cp);
   if (!/\$EXTMIN/.test(r.text) || !/\r\nSTYLE\r\n2\r\nSTANDARD/.test(r.text) || !/\r\n2\r\n\*ACTIVE/.test(r.text)) fail('Utbredning, textstil och vy ska finnas så att filen öppnas på objekten med synliga namn');

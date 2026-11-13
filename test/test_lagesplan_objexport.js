@@ -30,6 +30,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
   await page.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));
   await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
+  await page.evaluate(() => { const c = document.getElementById('cadTextLines'); if (c) c.checked = false; });   // TEXT-objekt i dessa tester (linjetexten testas separat)
   const r = await page.evaluate(async () => {
     const cal = { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] };
     plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: cal, level: { z0: 0, z1: 10 }, zones: [] }]; plan = plans[0]; planSource = 'pp';
@@ -54,9 +55,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { names, p1: names.filter(n => n === 'p1').length, l12: names.filter(n => n === 'L12').length, srcP1: ms.find(m => m.name === 'p1').src, gold: /IFCCOLOURRGB\(\$,0\.902,0\.702,0\.165\)/.test(ifc), black: /IFCCOLOURRGB\(\$,0\.067,0\.094,0\.153\)/.test(ifc), dxfAci: /4D-NAMN/.test(dxf.text) }; });
   if (DU.p1 !== 1 || DU.l12 !== 1 || DU.srcP1 !== 'Powerproject' || !DU.gold) fail('Inga dubbletter och namn i mörkgult: ' + JSON.stringify(DU));
   console.log('OK: dubbletter (samma objekt i PP och Excel) exporteras en gång, namnen i mörkgult', JSON.stringify({ p1: DU.p1, l12: DU.l12 }));
+  // DXF: texten som linjer på plushöjden och fyllda skivor (3DFACE) i stället för bred polylinje
+  const LN = await page.evaluate(() => { document.getElementById('cadTextLines').checked = true; const t = buildObjectsDxf().text; const lines = [...t.matchAll(/\r\nLINE\r\n8\r\n4D-NAMN\r\n10\r\n[-\d.]+\r\n20\r\n[-\d.]+\r\n30\r\n([-\d.]+)\r\n/g)].map(m => Number(m[1])), faces = (t.match(/\r\n3DFACE\r\n8\r\n4D-/g) || []).length, texts = (t.match(/\r\nTEXT\r\n/g) || []).length, dots = (t.match(/\r\nPOLYLINE\r\n/g) || []).length;
+    document.getElementById('cadTextLines').checked = false; return { lines: lines.length, zs: [...new Set(lines)], faces, texts, dots }; });
+  if (LN.lines < 20 || LN.texts !== 0 || LN.faces < 16 * 3 || LN.zs.length < 2 || !LN.zs.includes(4.5)) fail('DXF: text som linjer på plushöjd + fyllda skivor: ' + JSON.stringify(LN));
+  console.log('OK: DXF-texten som linjer på plushöjden och prickarna som fyllda skivor', JSON.stringify(LN));
   // Egen färg (plan.dotColors) går alltid före statusfärgen – exporten följer färgerna som syns i vyn
   const C = await page.evaluate(() => { plan.dotColors = { p1: '#ff00aa', x2: '#00cc44' }; const ms = objExportMarkers(), dxf = buildObjectsDxf().text, ifc = buildObjectsIfc().text; const col = k => (ms.find(m => m.key === k) || {}).color;
-    const dxfLayers = [...dxf.matchAll(/\r\n8\r\n(4D-[A-Z0-9-]+)\r\n10/g)].map(m => m[1]); delete plan.dotColors;
+    const dxfLayers = [...dxf.matchAll(/\r\n8\r\n(4D-[A-Z0-9-]+)\r\n/g)].map(m => m[1]); delete plan.dotColors;
     return { pp: col('pp:i:p1'), x2: col('xl:x2'), x1: col('xl:x1'), lay: [...new Set(dxfLayers)], ifcPink: /IFCCOLOURRGB\(\$,1\.,0\.,0\.667\)/.test(ifc), ifcGreen: /IFCCOLOURRGB\(\$,0\.,0\.8,0\.267\)/.test(ifc), tc: /420\r\n16711850\r\n/.test(dxf) };
   });
   if (C.pp !== '#ff00aa' || C.x2 !== '#00cc44' || C.x1 || !C.lay.includes('4D-EGEN-FF00AA') || !C.lay.includes('4D-EGEN-00CC44') || !C.lay.some(l => /^4D-(PAGAENDE|PLANERAD|KLAR|FORSENAD|INGEN)/.test(l)) || !C.ifcPink || !C.ifcGreen || !C.tc) fail('Egen färg före statusfärg i DXF/IFC: ' + JSON.stringify(C));
