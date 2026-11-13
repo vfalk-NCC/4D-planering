@@ -43,7 +43,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     });
     // 1. Uppdelningen i zoner
     const A = await page.evaluate(async () => {
-      const c = l3pc.clouds.find(x => x.id === 'pc:slice'), r = await l3pcsRun(c, { level: 'zone', rest: true }, null);
+      const c = l3pc.clouds.find(x => x.id === 'pc:slice'), r = await l3pcsRun(c, { level: 'zone', rest: true, format: 'las' }, null);
       const parse = f => { const dv = new DataView(f.bytes.buffer, f.bytes.byteOffset, f.bytes.byteLength), g = o => dv.getFloat64(o, true); const n = dv.getUint32(107, true), ox = g(155), oy = g(163), sx = g(131); let ok = 0, bad = 0, rgbOk = 0;
         const x0 = g(187), x1 = g(179), y0 = g(203), y1 = g(195); for (let i = 0; i < n; i++) { const o = 227 + i * 26, x = dv.getInt32(o, true) * sx + ox, y = dv.getInt32(o + 4, true) * sx + oy; if (x >= x0 - 1e-6 && x <= x1 + 1e-6 && y >= y0 - 1e-6 && y <= y1 + 1e-6) ok++; else bad++; if (dv.getUint16(o + 24, true) === 77 * 257) rgbOk++; }
         return { sig: String.fromCharCode(...f.bytes.slice(0, 4)), n, ok, bad, rgbOk, x: [x0, x1], y: [y0, y1], size: f.bytes.length, ver: dv.getUint8(24) + '.' + dv.getUint8(25), fmt: dv.getUint8(104) }; };
@@ -66,9 +66,26 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click('#pcsGo')]);
     const p = await dl.path(); const zbytes = fs.readFileSync(p);
     const names = await page.evaluate(b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return Object.keys(fflate.unzipSync(u)); }, zbytes.toString('base64'));
-    if (names.length !== 4 || !names.every(n => /\.las$/.test(n))) fail('ZIP med fyra LAS-filer: ' + JSON.stringify({ n: dl.suggestedFilename(), names }));
+    if (names.length !== 4 || !names.every(n => /\.laz$/.test(n))) fail('ZIP med fyra LAZ-filer: ' + JSON.stringify({ n: dl.suggestedFilename(), names }));
     await page.waitForFunction(() => /filer/.test(document.getElementById('pcsOut').textContent), null, { timeout: 5000 });
     console.log('OK: Lager → ⋯ → ✂ Dela upp efter WBS-zoner hämtar en ZIP med LAS-filerna', JSON.stringify(names));
+    // 4. Dela jämnt i bitar (streck): resultat, panel, ＋/−, streck i 3D, ZIP med LAZ
+    await page.evaluate(() => { const d = document.getElementById('l3pcsDlg'); if (d) d.remove(); });
+    const T = await page.evaluate(async () => { const c = l3pc.clouds.find(x => x.id === 'pc:slice'), r = await l3pcsRun(c, { format: 'las', strips: { axis: 'x', x0: 637000, y0: 849000, cuts: [25, 50, 75] } }, null); return r.files.map(f => [f.group, f.n, f.name]); });
+    if (T.length !== 4 || T.some(x => x[1] !== 1000) || !/\.las$/.test(T[0][2])) fail('Fyra lika bitar om 1000 punkter: ' + JSON.stringify(T));
+    await page.evaluate(() => l3pcsStripsOpen('pc:slice'));
+    const P1 = await page.evaluate(() => ({ n: document.getElementById('pcsN').textContent, cuts: JSON.stringify(l3pcsS.cuts), planes: l3pcsS.grp.children.length }));
+    if (P1.n !== '4' || P1.planes !== 3 || P1.cuts !== '[24.75,49.5,74.25]') fail('Panelen börjar med fyra jämna bitar (X, 99 m): ' + JSON.stringify(P1));
+    await page.click('#pcsPlus'); const P2 = await page.evaluate(() => ({ n: document.getElementById('pcsN').textContent, planes: l3pcsS.grp.children.length, cuts: l3pcsS.cuts.join() }));
+    if (P2.n !== '5' || P2.planes !== 4 || P2.cuts !== '19.8,39.6,59.4,79.2') fail('＋ ger fem jämna bitar: ' + JSON.stringify(P2));
+    await page.click('[data-split="0"]'); const P3 = await page.evaluate(() => l3pcsS.cuts.join()); if (P3 !== '9.9,19.8,39.6,59.4,79.2') fail('＋ vid en bit delar den på mitten: ' + P3);
+    await page.click('[data-del="0"]'); await page.click('#pcsEven');
+    const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.click('#pcsSGo')]);
+    const nm2 = await page.evaluate(b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); const z = fflate.unzipSync(u); return Object.keys(z).map(k => [k, String.fromCharCode(...z[k].slice(0, 4)), z[k].length, new DataView(z[k].buffer, z[k].byteOffset).getUint32(107, true)]); }, fs.readFileSync(await dl2.path()).toString('base64'));
+    if (nm2.reduce((a, x) => a + x[3], 0) !== 4000) fail('Alla 4000 punkter i LAZ-filerna: ' + JSON.stringify(nm2));
+    if (nm2.length !== 5 || !nm2.every(x => /\.laz$/.test(x[0]) && x[1] === 'LASF')) fail('ZIP med fem LAZ-filer: ' + JSON.stringify(nm2));
+    await page.click('#pcsSX'); if (await page.evaluate(() => !!document.getElementById('l3pcsStrips') || !!l3pcsS.grp)) fail('Stäng tar bort panel och streck');
+    console.log('OK: Dela jämnt i bitar – streck i 3D, ＋/−/Jämnt, delning på mitten, ZIP med LAZ', JSON.stringify(nm2.map(x => x[0])));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK test_lagesplan_pcslice');
   } catch (e) { console.error('FEL:', e.message); process.exitCode = 1; }
