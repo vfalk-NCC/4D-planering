@@ -95,8 +95,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const [d1] = await Promise.all([page.waitForEvent('download'), page.click('#pmDxf')]); const dxf = fs.readFileSync(await d1.path(), 'utf8');
     const nf = (dxf.match(/\n3DFACE\n/g) || []).length; if (nf < 1500 || !/\n420\n\d+\n/.test(dxf)) fail('DXF med 3DFACE och färg: ' + nf + ' ' + d1.suggestedFilename());
     const [d2] = await Promise.all([page.waitForEvent('download'), page.click('#pmIfc')]); const ifc = fs.readFileSync(await d2.path(), 'utf8');
-    if (!/IFCTRIANGULATEDFACESET/.test(ifc) || !/IFCINDEXEDCOLOURMAP/.test(ifc) || !/IFCCOLOURRGBLIST/.test(ifc) || !/IFCBUILDINGELEMENTPROXY/.test(ifc)) fail('IFC med färgtabell');
-    const nIdx = ifc.match(/IFCINDEXEDCOLOURMAP\(#\d+,\$,#\d+,\(([\d,]+)\)\)/); if (!nIdx || nIdx[1].split(',').length !== nf) fail('En färg per triangel i IFC: ' + (nIdx && nIdx[1].split(',').length) + ' / ' + nf);
+    if (!/IFCTRIANGULATEDFACESET/.test(ifc) || !/IFCBUILDINGELEMENTPROXY/.test(ifc)) fail('IFC med trianglar');
+    { const sets = (ifc.match(/IFCTRIANGULATEDFACESET\(/g) || []).length, styled = (ifc.match(/IFCSTYLEDITEM\(/g) || []).length, cols = new Set([...ifc.matchAll(/IFCCOLOURRGB\(\$,([\d.]+),([\d.]+),([\d.]+)\)/g)].map(m => m[1] + m[2] + m[3])).size, grey = /IFCCOLOURRGB\(\$,0\.639,0\.659,0\.706\)/.test(ifc);
+      const nTri = ifc.match(/IFCTRIANGULATEDFACESET\(#\d+,\$,\.F\.,\(((?:\(\d+,\d+,\d+\),?)+)\)/g).reduce((a, m) => a + (m.match(/\(\d+,\d+,\d+\)/g) || []).length, 0);
+      if (sets < 5 || styled !== sets || cols < 5 || grey || nTri !== nf) fail('IFC: en färgad delmängd per färg, alla trianglar med, ingen grå standard: ' + JSON.stringify({ sets, styled, cols, grey, nTri, nf })); }
+    // IFC läses av appens egen IFC-läsare (web-ifc): flera färgade delar, inte grått
+    { const R2 = await page.evaluate(async txt => { const m = await ifcToMesh(txt); return { tris: m.tris, cols: m.mesh.parts.map(p => p.c) }; }, ifc).catch(e => ({ err: String(e.message || e) }));
+      if (R2.err || R2.tris !== nf || new Set(R2.cols).size < 5 || R2.cols.every(c => /^#(a3a8b4|bfbfbf)$/i.test(c))) fail('IFC visar färg i web-ifc: ' + JSON.stringify(R2)); console.log('OK: IFC:en läses av web-ifc med färgade delar', JSON.stringify({ tris: R2.tris, colors: new Set(R2.cols).size })); }
     const before = await page.evaluate(() => placements.length); await page.click('#pmMod'); const after = await page.evaluate(() => ({ n: placements.length, k: placements[placements.length - 1].m && placements[placements.length - 1].m.k, name: placements[placements.length - 1].name }));
     if (after.n !== before + 1 || after.k !== 'mesh') fail('Meshen i modellen: ' + JSON.stringify(after));
     if (await page.evaluate(() => !!l3pmPrev.grp || !l3pc.clouds[0].group.visible)) fail('Förhandsvisningen försvinner och molnet visas när meshen läggs i modellen');

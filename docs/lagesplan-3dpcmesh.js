@@ -119,7 +119,7 @@ async function l3pmExportTiles(c, o, fmts, base, onP) {
     const r = await l3pmBuild(c, Object.assign({}, o, { tile: plan.tiles[k] }), (t, f) => onP && onP(`modell ${k + 1} av ${plan.tiles.length}: ${t}`, (k + f) / plan.tiles.length)); await l3pcsYield();
     if (!r) continue; const nm = `${base} ${String(k + 1).padStart(2, "0")}`;
     if (fmts.includes("dxf")) await sink.add(nm + ".dxf", enc.encode(l3pmDxf(r, "Mesh")));
-    if (fmts.includes("ifc")) await sink.add(nm + ".ifc", enc.encode(l3pmIfc(r, nm, o.color !== "none")));
+    if (fmts.includes("ifc")) await sink.add(nm + ".ifc", enc.encode(l3pmIfc(r, nm, o.color !== "none", o.ifcCols)));
     made++; tri += r.F.length / 3;
   }
   const blob = await sink.finish(); return { made, tri, blob, streaming: sink.streaming, tiles: plan.tiles.length };
@@ -131,16 +131,31 @@ function l3pmDxf(r, layer) {
     out.push("0", "3DFACE", "8", layer, "420", String(k[0] << 16 | k[1] << 8 | k[2]), "10", num(a[0]), "20", num(a[1]), "30", num(a[2]), "11", num(b[0]), "21", num(b[1]), "31", num(b[2]), "12", num(c[0]), "22", num(c[1]), "32", num(c[2]), "13", num(c[0]), "23", num(c[1]), "33", num(c[2])); }
   out.push("0", "ENDSEC", "0", "EOF"); return out.join("\n");
 }
-function l3pmIfc(r, name, colored) {
-  const doc = ifcDoc("4D-planering – " + name, "Mesh från punktmoln"), E = doc.E, org = [Math.floor(r.bb.min[0]), Math.floor(r.bb.min[1]), Math.floor(l3pmMinZ(r))];
-  const pl = E(`IFCCARTESIANPOINTLIST3D((${r.V.map(v => ifcPt([v[0] - org[0], v[1] - org[1], v[2] - org[2]])).join(",")}))`), fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${Array.from({ length: r.F.length / 3 }, (_, i) => `(${r.F[i * 3] + 1},${r.F[i * 3 + 1] + 1},${r.F[i * 3 + 2] + 1})`).join(",")}),$)`);
-  E(`IFCSTYLEDITEM(${fs},(${doc.style("mesh", "#a3a8b4", "Mesh")}),$)`);
-  if (colored) {   // färg per triangel: IfcIndexedColourMap mot en färgtabell (5 bitar per kanal)
-    const pal = new Map(), list = [], idx = r.FC.map(k => { const q = k.map(v => Math.min(255, (v >> 3 << 3) + 4)), key = q.join(","); if (!pal.has(key)) { pal.set(key, list.length + 1); list.push(q); } return pal.get(key); });
-    const cl = E(`IFCCOLOURRGBLIST((${list.map(q => `(${q.map(v => (v / 255).toFixed(3)).join(",")})`).join(",")}))`); E(`IFCINDEXEDCOLOURMAP(${fs},$,${cl},(${idx.join(",")}))`);
+/* Färgpalett för IFC: medianskärning av triangelfärgerna (5 bitar per kanal som underlag) till högst n färger. Returnerar { pal: [[r,g,b]…], idx: Uint16Array (palettindex per triangel) }. */
+function l3pmPalette(FC, n) {
+  const hist = new Map(); for (let i = 0; i < FC.length; i++) { const c = FC[i], k = (c[0] >> 3 << 10) | (c[1] >> 3 << 5) | (c[2] >> 3); hist.set(k, (hist.get(k) || 0) + 1); }
+  const items = [...hist].map(([k, w]) => ({ k, w, c: [(k >> 10 & 31) * 8 + 4, (k >> 5 & 31) * 8 + 4, (k & 31) * 8 + 4] })); let boxes = [items];
+  while (boxes.length < n) {
+    let bi = -1, bs = 0, bch = 0; boxes.forEach((bx, i) => { if (bx.length < 2) return; for (let ch = 0; ch < 3; ch++) { let lo = 255, hi = 0, w = 0; bx.forEach(it => { lo = Math.min(lo, it.c[ch]); hi = Math.max(hi, it.c[ch]); w += it.w; }); const sc = (hi - lo) * Math.sqrt(w); if (sc > bs) { bs = sc; bi = i; bch = ch; } } });
+    if (bi < 0) break; const bx = boxes[bi].slice().sort((p, q) => p.c[bch] - q.c[bch]), tot = bx.reduce((a, it) => a + it.w, 0); let acc = 0, cut = 1; for (let i = 0; i < bx.length - 1; i++) { acc += bx[i].w; cut = i + 1; if (acc >= tot / 2) break; }
+    boxes.splice(bi, 1, bx.slice(0, cut), bx.slice(cut));
   }
-  const el = doc.proxy(name, "Mesh från punktmoln", "Punktmolnsmesh", doc.place(org), doc.shape(fs, "Tessellation"), "pcmesh");
-  doc.props(el, [["Källa", "Punktmoln"], ["Trianglar", r.F.length / 3], ["Hörn", r.V.length], ["Yta m²", Math.round(r.area * 10) / 10]], "Punktmolnsmesh");
+  const pal = [], map = new Map(); boxes.forEach((bx, i) => { let w = 0, r = 0, g = 0, b = 0; bx.forEach(it => { w += it.w; r += it.c[0] * it.w; g += it.c[1] * it.w; b += it.c[2] * it.w; map.set(it.k, i); }); pal.push([Math.round(r / w), Math.round(g / w), Math.round(b / w)]); });
+  const idx = new Uint16Array(FC.length); for (let i = 0; i < FC.length; i++) { const c = FC[i]; idx[i] = map.get((c[0] >> 3 << 10) | (c[1] >> 3 << 5) | (c[2] >> 3)); }
+  return { pal, idx };
+}
+/* IFC: en IfcTriangulatedFaceSet per färg i paletten (alla delar samma punktlista), var och en med egen ytstil. Det visas med färg i Trimble Connect och andra läsare;
+   IfcIndexedColourMap (färg per triangel) ignoreras av många läsare, och en grå standardstil över den gjorde att meshen blev grå. */
+function l3pmIfc(r, name, colored, ncol) {
+  const doc = ifcDoc("4D-planering – " + name, "Mesh från punktmoln"), E = doc.E, org = [Math.floor(r.bb.min[0]), Math.floor(r.bb.min[1]), Math.floor(l3pmMinZ(r))];
+  const pl = E(`IFCCARTESIANPOINTLIST3D((${r.V.map(v => ifcPt([v[0] - org[0], v[1] - org[1], v[2] - org[2]])).join(",")}))`), nT = r.F.length / 3, items = [];
+  const tri = i => `(${r.F[i * 3] + 1},${r.F[i * 3 + 1] + 1},${r.F[i * 3 + 2] + 1})`;
+  if (colored) {
+    const { pal, idx } = l3pmPalette(r.FC, Math.max(2, Math.min(512, ncol || 128))), groups = pal.map(() => []); for (let i = 0; i < nT; i++) groups[idx[i]].push(tri(i));
+    groups.forEach((g, k) => { if (!g.length) return; const fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${g.join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${doc.style("mesh" + k, l3pmHex(pal[k]), "Mesh " + (k + 1))}),$)`); items.push(fs); });
+  } else { const fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${Array.from({ length: nT }, (_, i) => tri(i)).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${doc.style("mesh", "#a3a8b4", "Mesh")}),$)`); items.push(fs); }
+  const el = doc.proxy(name, "Mesh från punktmoln", "Punktmolnsmesh", doc.place(org), doc.shape(items.join(","), "Tessellation"), "pcmesh");
+  doc.props(el, [["Källa", "Punktmoln"], ["Trianglar", nT], ["Hörn", r.V.length], ["Yta m²", Math.round(r.area * 10) / 10], ["Färger", colored ? items.length : 0]], "Punktmolnsmesh");
   return doc.finish([el], name + ".ifc");
 }
 function l3pmSave(text, name, type) { const u = URL.createObjectURL(new Blob([text], { type })), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); }
@@ -177,6 +192,7 @@ function l3pmDialog(id) {
     ${row("Höjd per ruta", `<select id="pmZ"><option value="mean">Medel</option><option value="min">Lägst (mark)</option><option value="max">Högst (tak)</option></select>`)}
     ${row("Största kantlängd (m, 0 = ingen)", `<input type="number" id="pmEdge" min="0" step="0.5" value="${Math.round(cell0 * 3 * 10) / 10}" style="width:80px">`)}
     ${row("Ta bort spikar (m, 0 = av)", `<input type="number" id="pmSpike" min="0" step="0.1" value="1" title="Rutor vars höjd avviker mer än så från grannrutorna tas bort (punkter som sticker iväg, flygande brus)" style="width:80px">`)}
+    ${row("Färger i IFC", `<select id="pmIfcCols" title="IFC får en färgad yta per färg i paletten (mer färger = mer exakt men tyngre fil)"><option value="32">32</option><option value="64">64</option><option value="128" selected>128</option><option value="256">256</option><option value="512">512</option></select>`)}
     ${row("Färg", `<select id="pmCol">${modes.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
     <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj, ner till 0,1 m. För så fin ruta: välj en zon under Område (eller ett bortklippt lager) så att meshen blir hanterbar. Förhandsvisningen i 3D uppdateras direkt när du ändrar något. Varje triangel får medelfärgen av sina hörn. Spikfilter tar bort rutor som sticker iväg från grannarna så att inga taggar uppstår.</div>
     <div id="pmOut" style="color:#334155"></div>
@@ -197,7 +213,7 @@ function l3pmDialog(id) {
   q("#pmGo").onclick = async () => {
     if (l3pm.busy) return; l3pm.busy = true; q("#pmGo").disabled = true; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
     try {
-      const o = { type: q("#pmType").value, cell: Math.max(0.1, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0), area: areaSel() };
+      const o = { type: q("#pmType").value, cell: Math.max(0.1, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0), area: areaSel(), ifcCols: Number(q("#pmIfcCols").value) || 128 };
       const ti = tiledInfo(); let oo = o;
       if (ti.tiled) { const [aw, ah] = areaWH(); oo = Object.assign({}, o, { cell: Math.max(o.cell, Math.round(Math.sqrt(aw * ah / 250000) * 20) / 20) }); }   // förhandsvisningen är grövre när meshen delas i flera modeller
       const r = await l3pmBuild(c, oo, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = oo; if (ti.tiled) r.tiled = { opts: o, tiles: ti.tiles, previewCell: oo.cell }; l3pm.res = r; l3pmPreview(r, q("#pmWire").checked); if (typeof l3Zoom === "function") { /* behåll vyn */ }
@@ -216,6 +232,6 @@ function l3pmDialog(id) {
     l3pm.busy = false; ["#pmGo", "#pmDxf", "#pmIfc"].forEach(s => { q(s).disabled = false; });
   };
   q("#pmDxf").onclick = () => { const r = l3pm.res; if (!r) return; if (r.tiled) return tiledGo("dxf"); l3pmSave(l3pmDxf(r, "Mesh"), base() + ".dxf", "application/dxf"); out.textContent = "DXF hämtad: " + base() + ".dxf"; };
-  q("#pmIfc").onclick = () => { const r = l3pm.res; if (!r) return; if (r.tiled) return tiledGo("ifc"); l3pmSave(l3pmIfc(r, base(), r.opts.color !== "none"), base() + ".ifc", "application/x-step"); out.textContent = "IFC hämtad: " + base() + ".ifc"; };
+  q("#pmIfc").onclick = () => { const r = l3pm.res; if (!r) return; if (r.tiled) return tiledGo("ifc"); l3pmSave(l3pmIfc(r, base(), r.opts.color !== "none", r.opts.ifcCols), base() + ".ifc", "application/x-step"); out.textContent = "IFC hämtad: " + base() + ".ifc"; };
   q("#pmMod").onclick = () => { const r = l3pm.res; if (r && r.tiled) { out.textContent = "Meshen är för stor för att läggas i modellen som ett objekt – exportera den som DXF eller IFC (flera modeller) eller välj en zon."; return; } if (r) try { l3pmToModel(r, base()); l3pmPreviewClear(); l3pmCloudHide(false); q("#pmHide").checked = false; out.textContent = "Meshen ligger nu i modellen som ett ritat objekt (förhandsvisningen är borttagen) (en medelfärg – färg per triangel finns i DXF och IFC)."; } catch (e) { out.textContent = "⚠ " + e.message; } };
 }
