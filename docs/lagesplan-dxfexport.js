@@ -60,6 +60,9 @@ function dxfTextRotation() {
 /* Markeringarna som exporteras (DXF och IFC): det som syns i Lägesplan – en per objekt, eller
    en per aktivitet när objekten slås ihop. x/y = mitten (eller den flyttade markeringen), zTop =
    objektens högsta punkt, ph = status för valt datum, name = "L12" (+ antal). */
+/* Egen färg på pricken (plan.dotColors, "byta färg manuellt") går alltid före statusfärgen – exporten följer exakt färgen som syns i vyn. */
+const exportDotColor = c => (/^#[0-9a-f]{6}$/i.test(c || "") ? String(c).toLowerCase() : null);
+const exportAciOf = hex => (typeof l3pmAci === "function" ? l3pmAci([1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))) : dxfAci(hex));
 function objExportMarkers() {
   const objs = (typeof objectShapesInPdf === "function" ? objectShapesInPdf() : null) || [];   // Excel-planeringens punkter tas med även när inga Powerproject-objekt syns
   const at = $("dateInput").value || todayIso();
@@ -75,14 +78,14 @@ function objExportMarkers() {
     if (o.moved && typeof objMarkPos === "function") { const m = objMarkPos(o.fam); if (m) [x, y] = m; } // flyttad markering
     const zTop = Math.max(...ps.map(p => Number.isFinite(p.z1) ? p.z1 : p.z0 || 0));
     const nm = exportVisNames() ? exportVisibleName(o.it) : dxfItemName(o.it);
-    out.push({ x, y, zTop, zAuto: zTop, ph, members, it: o.it, key: "pp:" + (o.fam || o.it.id), src: "Powerproject", name: nm && members.length > 1 ? `${nm} (${members.length})` : nm });
+    out.push({ x, y, zTop, zAuto: zTop, ph, color: exportDotColor(typeof objDotColor === "function" ? objDotColor(o) : null), members, it: o.it, key: "pp:" + (o.fam || o.it.id), src: "Powerproject", name: nm && members.length > 1 ? `${nm} (${members.length})` : nm });
   });
   // Excel-planeringens punkter (ringarna i PP-lägesplanen) som syns i vyn tas med (Victor 2026-11-13: "Den ska ta med alla texter och punkter som är synliga i vyn just nu").
   if (typeof xlsActive === "function" && xlsActive() && typeof layerVisible === "function" && layerVisible("xls") && typeof xlsShown === "function" && xls.items && xls.positions) {
     const xp = new Map(xls.positions.map(p => [p.id, p]));
     xlsShown().forEach(o => {
       const p = xp.get(o.it.id); if (!p) return; const zTop = Number.isFinite(p.z1) ? p.z1 : p.z0 || 0, nm = exportVisNames() ? exportVisibleName(o.it) : dxfItemName(o.it);
-      out.push({ x: p.x, y: p.y, zTop, zAuto: zTop, ph: xlsPhase(o.it), members: [o.it], it: o.it, key: "xl:" + o.it.id, src: "Excel-planeringen", name: nm });
+      out.push({ x: p.x, y: p.y, zTop, zAuto: zTop, ph: xlsPhase(o.it), color: exportDotColor(plan && plan.dotColors && plan.dotColors[o.it.id]), members: [o.it], it: o.it, key: "xl:" + o.it.id, src: "Excel-planeringen", name: nm });
     });
   }
   // Manuella justeringar (plushöjd och kommentar, lagesplan-exportadj.js) läggs på sist.
@@ -125,17 +128,17 @@ function objLabelLayout(marks, { h, r, gap, widthOf }) {
 function buildObjectsDxf() {
   const marks = objExportMarkers();
   if (!marks.length) return null;
-  const ents = [], used = new Set(["4D-NAMN"]);
+  const ents = [], used = new Set(["4D-NAMN"]), layerAciX = {};
   const rot = dxfTextRotation(), rr = rot * Math.PI / 180;
   // Namnen placeras fritt från varandra (objLabelLayout) – i läsriktningen.
   const along = (dx, dy) => [dx * Math.cos(rr) - dy * Math.sin(rr), dx * Math.sin(rr) + dy * Math.cos(rr)];
   const lay = objLabelLayout(marks, { h: DXF_TEXT_H, r: 0.4, gap: 0.25, widthOf: n => 1.0 * DXF_TEXT_H * n.length });
   marks.forEach((mk, i) => {
-    const layer = DXF_PHASE_LAYER[mk.ph] || "4D-INGEN", x = mk.x, y = mk.y;
-    used.add(layer);
+    const layer = mk.color ? `4D-EGEN-${mk.color.slice(1).toUpperCase()}` : DXF_PHASE_LAYER[mk.ph] || "4D-INGEN", x = mk.x, y = mk.y;
+    used.add(layer); if (mk.color) layerAciX[layer] = exportAciOf(mk.color);
     const z = mk.zManual ? mk.zTop : 0; // planritning (höjden skulle göra ritningen rörig i plan) – utom där du satt en egen plushöjd
-    ents.push({ t: "POINT", layer, x, y, z });
-    ents.push({ t: "DOT", layer, x, y, r: 0.4 });       // fylld prick i statusfärg (som i Lägesplan)
+    ents.push({ t: "POINT", layer, x, y, z, rgb: mk.color });
+    ents.push({ t: "DOT", layer, x, y, r: 0.4, rgb: mk.color });       // fylld prick i statusfärg (som i Lägesplan)
     ents.push({ t: "CIRCLE", layer: "4D-NAMN", x, y, z, r: 0.4 }); // tunn ring runt (syns mot mörka underlag)
     // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
@@ -144,7 +147,7 @@ function buildObjectsDxf() {
     if (mk.adj && mk.adj.comment) { const [cx, cy] = along(lay[i].da, lay[i].dc - DXF_TEXT_H * 1.2); ents.push({ t: "TEXT", layer: "4D-KOMMENTAR", x: x + cx, y: y + cy, z, h: DXF_TEXT_H * 0.8, rot, s: dxfText(mk.adj.comment) }); used.add("4D-KOMMENTAR"); }
   });
   if (!ents.length) return null;
-  const layerAci = { "4D-NAMN": 7, "4D-KOMMENTAR": 30 };
+  const layerAci = { "4D-NAMN": 7, "4D-KOMMENTAR": 30, ...layerAciX };
   Object.entries(DXF_PHASE_LAYER).forEach(([ph, l]) => { layerAci[l] = dxfAci(phaseColor(ph)); });
   return { text: dxfWrite(ents, [...used], layerAci), n: marks.length };
 }
@@ -199,7 +202,7 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
   // ENTITIES
   g(0, "SECTION"); g(2, "ENTITIES");
   ents.forEach(e => {
-    if (e.t === "POINT") { g(0, "POINT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); }
+    if (e.t === "POINT") { g(0, "POINT"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); }
     else if (e.t === "CIRCLE") { g(0, "CIRCLE"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.r)); }
     else if (e.t === "TEXT") {
       g(0, "TEXT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z || 0)); g(40, dxfNum(e.h)); g(1, e.s);
@@ -210,7 +213,7 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
     }
     else if (e.t === "DOT") {
       // Fylld prick: sluten polylinje av två halvcirklar med bredd = radien.
-      g(0, "POLYLINE"); g(8, e.layer); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, 1); g(40, dxfNum(e.r)); g(41, dxfNum(e.r));
+      g(0, "POLYLINE"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, 1); g(40, dxfNum(e.r)); g(41, dxfNum(e.r));
       [[e.x - e.r / 2, e.y], [e.x + e.r / 2, e.y]].forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, "0.0"); g(42, "1.0"); });
       g(0, "SEQEND"); g(8, e.layer);
     }

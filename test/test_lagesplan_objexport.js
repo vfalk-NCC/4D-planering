@@ -47,6 +47,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (r.keys.length !== 3 || !r.keys.includes('xl:x1') || !r.keys.includes('xl:x2') || !r.srcs.includes('Excel-planeringen') || r.n !== 3 || r.nIfc !== 3 || !r.txtL12 || !r.ifcL12) fail('Excel-punkterna tas med i DXF och IFC: ' + JSON.stringify(r));
   if (r.z0 !== 4.5 || r.zManual !== 7.5 || !r.flag || r.cmt !== 'Kolla höjden' || !r.dxfZ || !r.dxfCmt || !r.ifcCmt || r.backZ !== 4.5 || r.backFlag) fail('Manuell plushöjd och kommentar: ' + JSON.stringify(r));
   console.log('OK: Excel-punkterna följer med i 3D-objekt-exporten, manuell plushöjd/kommentar läggs på och kan återställas', JSON.stringify(r.keys));
+  // Egen färg (plan.dotColors) går alltid före statusfärgen – exporten följer färgerna som syns i vyn
+  const C = await page.evaluate(() => { plan.dotColors = { p1: '#ff00aa', x2: '#00cc44' }; const ms = objExportMarkers(), dxf = buildObjectsDxf().text, ifc = buildObjectsIfc().text; const col = k => (ms.find(m => m.key === k) || {}).color;
+    const dxfLayers = [...dxf.matchAll(/\r\n8\r\n(4D-[A-Z0-9-]+)\r\n10/g)].map(m => m[1]); delete plan.dotColors;
+    return { pp: col('pp:i:p1'), x2: col('xl:x2'), x1: col('xl:x1'), lay: [...new Set(dxfLayers)], ifcPink: /IFCCOLOURRGB\(\$,1\.,0\.,0\.667\)/.test(ifc), ifcGreen: /IFCCOLOURRGB\(\$,0\.,0\.8,0\.267\)/.test(ifc), tc: /420\r\n16711850\r\n/.test(dxf) };
+  });
+  if (C.pp !== '#ff00aa' || C.x2 !== '#00cc44' || C.x1 || !C.lay.includes('4D-EGEN-FF00AA') || !C.lay.includes('4D-EGEN-00CC44') || !C.lay.some(l => /^4D-(PAGAENDE|PLANERAD|KLAR|FORSENAD|INGEN)/.test(l)) || !C.ifcPink || !C.ifcGreen || !C.tc) fail('Egen färg före statusfärg i DXF/IFC: ' + JSON.stringify(C));
+  console.log('OK: egen färg på punkten går före statusfärgen i DXF (eget lager + äkta färg) och IFC', JSON.stringify(C.lay));
   // Dialogen: flera markerade ändras samtidigt
   await page.evaluate(() => exportAdjOpen()); await page.waitForSelector('#exportAdjDlg');
   await page.click('#eaAll'); await page.fill('#eaZ', '9'); await page.click('#eaZSet');
