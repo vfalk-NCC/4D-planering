@@ -34,13 +34,13 @@ function buildObjectsIfc(opts = {}) {
     // Cylindern i statusfärg.
     const cyl = E(`IFCEXTRUDEDAREASOLID(${prof},$,${zDir},${ifcNum(IFC_CYL_H)})`);
     E(`IFCSTYLEDITEM(${cyl},(${doc.style(mk.ph, phaseColor(mk.ph), PHASE_LABELS[mk.ph] || mk.ph)}),$)`);
-    const it = mk.it, cm = cmts ? mk.members.flatMap(m => cmts[m.id] || []).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)) : [], prog = it.status === "klar" ? 100 : (Number(it.progress) || 0);
+    const it = mk.it, cm = (cmts ? mk.members.flatMap(m => cmts[m.id] || []).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)) : []).concat(mk.adj && mk.adj.comment ? [{ author: "manuell", body: mk.adj.comment, created_at: "9999-12-31" }] : []), prog = it.status === "klar" ? 100 : (Number(it.progress) || 0);
     const marker = doc.proxy(mk.name || it.object_name || "Objekt", PHASE_LABELS[mk.ph] || mk.ph, "4D-markering", pl, doc.shape(cyl, "SweptSolid"), it.id);
     elems.push(marker);
     // Egenskaperna (syns när man klickar på cylindern).
     doc.props(marker, [["Objekt", it.object_name || ""], ["Aktivitet", it.activity || ""], ["Status", PHASE_LABELS[mk.ph] || mk.ph],
       ["Framdrift %", prog], ["Start", it.start_date || ""], ["Slut", it.end_date || ""], ["Område", it.area || ""],
-      ["Entreprenör", it.contractor || ""], ["Zon", zoneOf(it)], ["Antal objekt", mk.members.length], ["Status per", at], ["4D-ID", it.id],
+      ["Entreprenör", it.contractor || ""], ["Zon", zoneOf(it)], ["Källa", mk.src || ""], ["Plushöjd (m ö.h.)", Math.round(mk.zTop * 100) / 100], ["Plushöjd", mk.zManual ? "manuell" : "automatisk"], ["Antal objekt", mk.members.length], ["Status per", at], ["4D-ID", it.id],
       ...(opts.tag ? [["Veckobild", opts.tag]] : []), ...cm.slice(0, 8).map((c, k) => [`Kommentar ${k + 1}`, `${(c.created_at || "").slice(0, 10)} ${c.author || ""}: ${c.body || ""}`.trim()]), ...(cm.length ? [["Antal kommentarer", cm.length]] : [])]);
     // 3D-texten (Victors önskemål 2026-10-05): liggande så att den läses uppifrån i planvyn, vänd som
     // Lägesplans vy, bredvid cylindern (täcker den inte uppifrån), 0,5 m tjocka bokstäver uppåt

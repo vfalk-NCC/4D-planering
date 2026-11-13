@@ -61,8 +61,7 @@ function dxfTextRotation() {
    en per aktivitet när objekten slås ihop. x/y = mitten (eller den flyttade markeringen), zTop =
    objektens högsta punkt, ph = status för valt datum, name = "L12" (+ antal). */
 function objExportMarkers() {
-  const objs = typeof objectShapesInPdf === "function" ? objectShapesInPdf() : null;
-  if (!objs || !objs.length) return [];
+  const objs = (typeof objectShapesInPdf === "function" ? objectShapesInPdf() : null) || [];   // Excel-planeringens punkter tas med även när inga Powerproject-objekt syns
   const at = $("dateInput").value || todayIso();
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const byId = new Map(positions.map(p => [p.id, p]));
@@ -76,8 +75,18 @@ function objExportMarkers() {
     if (o.moved && typeof objMarkPos === "function") { const m = objMarkPos(o.fam); if (m) [x, y] = m; } // flyttad markering
     const zTop = Math.max(...ps.map(p => Number.isFinite(p.z1) ? p.z1 : p.z0 || 0));
     const nm = exportVisNames() ? exportVisibleName(o.it) : dxfItemName(o.it);
-    out.push({ x, y, zTop, ph, members, it: o.it, name: nm && members.length > 1 ? `${nm} (${members.length})` : nm });
+    out.push({ x, y, zTop, zAuto: zTop, ph, members, it: o.it, key: "pp:" + (o.fam || o.it.id), src: "Powerproject", name: nm && members.length > 1 ? `${nm} (${members.length})` : nm });
   });
+  // Excel-planeringens punkter (ringarna i PP-lägesplanen) som syns i vyn tas med (Victor 2026-11-13: "Den ska ta med alla texter och punkter som är synliga i vyn just nu").
+  if (typeof xlsActive === "function" && xlsActive() && typeof layerVisible === "function" && layerVisible("xls") && typeof xlsShown === "function" && xls.items && xls.positions) {
+    const xp = new Map(xls.positions.map(p => [p.id, p]));
+    xlsShown().forEach(o => {
+      const p = xp.get(o.it.id); if (!p) return; const zTop = Number.isFinite(p.z1) ? p.z1 : p.z0 || 0, nm = exportVisNames() ? exportVisibleName(o.it) : dxfItemName(o.it);
+      out.push({ x: p.x, y: p.y, zTop, zAuto: zTop, ph: xlsPhase(o.it), members: [o.it], it: o.it, key: "xl:" + o.it.id, src: "Excel-planeringen", name: nm });
+    });
+  }
+  // Manuella justeringar (plushöjd och kommentar, lagesplan-exportadj.js) läggs på sist.
+  if (typeof exportAdjApply === "function") exportAdjApply(out);
   return out;
 }
 
@@ -124,7 +133,7 @@ function buildObjectsDxf() {
   marks.forEach((mk, i) => {
     const layer = DXF_PHASE_LAYER[mk.ph] || "4D-INGEN", x = mk.x, y = mk.y;
     used.add(layer);
-    const z = 0; // planritning (höjden skulle göra ritningen rörig i plan)
+    const z = mk.zManual ? mk.zTop : 0; // planritning (höjden skulle göra ritningen rörig i plan) – utom där du satt en egen plushöjd
     ents.push({ t: "POINT", layer, x, y, z });
     ents.push({ t: "DOT", layer, x, y, r: 0.4 });       // fylld prick i statusfärg (som i Lägesplan)
     ents.push({ t: "CIRCLE", layer: "4D-NAMN", x, y, z, r: 0.4 }); // tunn ring runt (syns mot mörka underlag)
@@ -132,9 +141,10 @@ function buildObjectsDxf() {
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
     const [ox, oy] = along(lay[i].da, lay[i].dc);
     if (mk.name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: mk.name });
+    if (mk.adj && mk.adj.comment) { const [cx, cy] = along(lay[i].da, lay[i].dc - DXF_TEXT_H * 1.2); ents.push({ t: "TEXT", layer: "4D-KOMMENTAR", x: x + cx, y: y + cy, z, h: DXF_TEXT_H * 0.8, rot, s: dxfText(mk.adj.comment) }); used.add("4D-KOMMENTAR"); }
   });
   if (!ents.length) return null;
-  const layerAci = { "4D-NAMN": 7 };
+  const layerAci = { "4D-NAMN": 7, "4D-KOMMENTAR": 30 };
   Object.entries(DXF_PHASE_LAYER).forEach(([ph, l]) => { layerAci[l] = dxfAci(phaseColor(ph)); });
   return { text: dxfWrite(ents, [...used], layerAci), n: marks.length };
 }
