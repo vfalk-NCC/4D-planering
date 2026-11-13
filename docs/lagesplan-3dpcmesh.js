@@ -109,13 +109,25 @@ function l3pmToModel(r, name) {
   const m = { k: "mesh", pts: r.V.map(v => [q(v[0] - org[0]), q(v[1] - org[1]), q(v[2] - org[2])]), faces: Array.from({ length: r.F.length / 3 }, (_, i) => [r.F[i * 3] + 1, r.F[i * 3 + 1] + 1, r.F[i * 3 + 2] + 1]), closed: false };
   const p = modCreate(m, org, { name, color: l3pmHex(avg) }); if (typeof l3Changed === "function") l3Changed(); return p;
 }
+/* Förhandsvisning i 3D-editorn: meshen med trianglarnas färger (och valfritt nätet) ovanpå molnet; tas bort när dialogen stängs. Ingen plockning/markering av den. */
+const l3pmPrev = { grp: null, cloud: null, hid: false };
+function l3pmPreviewClear() { if (l3pmPrev.grp) { l3.scene.remove(l3pmPrev.grp); l3pmPrev.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3pmPrev.grp = null; } }
+function l3pmCloudHide(hide) { const c = l3pc.clouds.find(x => x.id === l3pmPrev.cloud); if (c && c.group) c.group.visible = !hide; l3pmPrev.hid = !!hide; if (typeof l3Render === "function") l3Render(); }
+function l3pmPreview(r, wire) {
+  l3pmPreviewClear(); const O = l3.O, nT = r.F.length / 3, pos = new Float32Array(nT * 9), col = new Float32Array(nT * 9);
+  for (let t = 0; t < nT; t++) { const k = r.FC[t]; for (let j = 0; j < 3; j++) { const v = r.V[r.F[t * 3 + j]], o = t * 9 + j * 3; pos[o] = v[0] - O[0]; pos[o + 1] = v[1] - O[1]; pos[o + 2] = v[2] - O[2] + 0.02; col[o] = k[0] / 255; col[o + 1] = k[1] / 255; col[o + 2] = k[2] / 255; } }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })), grp = new THREE.Group(); grp.name = "pcMeshPreview"; m.raycast = () => {}; m.frustumCulled = false; grp.add(m);
+  if (wire) { const w = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x0f172a, wireframe: true, transparent: true, opacity: 0.35 })); w.raycast = () => {}; w.frustumCulled = false; grp.add(w); }
+  l3pmPrev.grp = grp; l3.scene.add(grp); l3Render();
+}
 function l3pmDialog(id) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c || l3pm.busy) return; l3pm.res = null;
   const bb = c.lod ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), w = bb.max[0] - bb.min[0], h = bb.max[1] - bb.min[1], cell0 = Math.max(0.1, Math.round(Math.sqrt(w * h / 100000) * 20) / 20);
   const modes = [["auto", "Automatiskt"], ["rgb", "Skanningens färger"], ["int", "Intensitet (grå)"], ["z", "Höjd – färgskala"], ["solid", "Enfärgad (molnets färg)"], ["diff", "Skillnad (differentialanalys)"], ["none", "Ingen färg (grå mesh)"]], cur = typeof l3pcMode === "function" ? l3pcMode() : "auto";
-  const ov = document.createElement("div"); ov.id = "l3pmDlg"; ov.style.cssText = "position:fixed;inset:0;z-index:9500;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px";
+  const ov = document.createElement("div"); ov.id = "l3pmDlg"; ov.style.cssText = "position:fixed;inset:0;z-index:9500;pointer-events:none;display:flex;align-items:flex-start;justify-content:flex-end;padding:80px 16px 16px";l3pmPrev.cloud = id; l3pmPreviewClear();
   const row = (l, ctl) => `<label style="display:flex;gap:8px;align-items:center;justify-content:space-between"><span>${l}</span>${ctl}</label>`;
-  ov.innerHTML = `<div style="background:#fff;color:#0f172a;border-radius:14px;max-width:480px;width:100%;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.4);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:9px">
+  ov.innerHTML = `<div style="pointer-events:auto;max-height:calc(100vh - 100px);overflow:auto;background:#fff;color:#0f172a;border-radius:14px;max-width:400px;width:100%;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.4);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:9px">
     <b style="font-size:16px">Skapa mesh av punktmolnet</b><div style="color:#475569">${escHtml(c.name)} · ${w.toFixed(0)} × ${h.toFixed(0)} m</div>
     ${row("Typ", `<select id="pmType"><option value="tin">TIN (triangulerat nät, Delaunay)</option><option value="grid">Rutnät (regelbundna rutor, ej TIN)</option></select>`)}
     ${row("Rutstorlek (m)", `<span><input type="number" id="pmCell" min="0.05" step="0.05" value="${cell0}" style="width:80px"> <span id="pmEst" style="color:#64748b"></span></span>`)}
@@ -125,22 +137,24 @@ function l3pmDialog(id) {
     ${row("Färg", `<select id="pmCol">${modes.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
     <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj. Varje triangel får medelfärgen av sina hörn. Spikfilter tar bort rutor som sticker iväg från grannarna så att inga taggar uppstår.</div>
     <div id="pmOut" style="color:#334155"></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap"><label><input type="checkbox" id="pmHide"> Dölj punktmolnet</label><label><input type="checkbox" id="pmWire"> Visa nät</label></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" id="pmX">Stäng</button><button type="button" id="pmGo" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:6px 14px">Skapa mesh</button>
     <button type="button" id="pmDxf" disabled>⤓ DXF</button><button type="button" id="pmIfc" disabled>⤓ IFC</button><button type="button" id="pmMod" disabled>＋ Lägg i modellen</button></div></div>`;
   document.body.appendChild(ov); const q = s => ov.querySelector(s), out = q("#pmOut");
   const est = () => { const v = Number(q("#pmCell").value); q("#pmEst").textContent = v > 0 ? `≈ ${Math.round(w * h / (v * v)).toLocaleString("sv-SE")} rutor` : ""; }; let edgeTouched = false; q("#pmEdge").oninput = () => { edgeTouched = true; }; q("#pmCell").oninput = () => { est(); const v = Number(q("#pmCell").value); if (!edgeTouched && v > 0) q("#pmEdge").value = Math.round(v * 3 * 10) / 10; }; est();
-  q("#pmX").onclick = () => { if (!l3pm.busy) ov.remove(); };
+  const closeAll = () => { l3pmPreviewClear(); l3pmCloudHide(false); ov.remove(); l3Render(); }; q("#pmX").onclick = () => { if (!l3pm.busy) closeAll(); };
+  q("#pmHide").onchange = () => l3pmCloudHide(q("#pmHide").checked); q("#pmWire").onchange = () => { if (l3pm.res) l3pmPreview(l3pm.res, q("#pmWire").checked); };
   const base = () => `${l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""))} – mesh`;
   q("#pmGo").onclick = async () => {
     if (l3pm.busy) return; l3pm.busy = true; q("#pmGo").disabled = true; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
     try {
       const o = { type: q("#pmType").value, cell: Math.max(0.05, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0) };
-      const r = await l3pmBuild(c, o, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = o; l3pm.res = r;
+      const r = await l3pmBuild(c, o, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = o; l3pm.res = r; l3pmPreview(r, q("#pmWire").checked); if (typeof l3Zoom === "function") { /* behåll vyn */ }
       out.innerHTML = `<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta.${r.spikes ? ` ${r.spikes.toLocaleString("sv-SE")} spikar/brus-rutor togs bort.` : ""}`; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
     } catch (e) { out.textContent = "⚠ " + e.message; }
     l3pm.busy = false; q("#pmGo").disabled = false;
   };
   q("#pmDxf").onclick = () => { const r = l3pm.res; if (r) { l3pmSave(l3pmDxf(r, "Mesh"), base() + ".dxf", "application/dxf"); out.textContent = "DXF hämtad: " + base() + ".dxf"; } };
   q("#pmIfc").onclick = () => { const r = l3pm.res; if (r) { l3pmSave(l3pmIfc(r, base(), r.opts.color !== "none"), base() + ".ifc", "application/x-step"); out.textContent = "IFC hämtad: " + base() + ".ifc"; } };
-  q("#pmMod").onclick = () => { const r = l3pm.res; if (r) try { l3pmToModel(r, base()); out.textContent = "Meshen ligger nu i modellen som ett ritat objekt (en medelfärg – färg per triangel finns i DXF och IFC)."; } catch (e) { out.textContent = "⚠ " + e.message; } };
+  q("#pmMod").onclick = () => { const r = l3pm.res; if (r) try { l3pmToModel(r, base()); l3pmPreviewClear(); l3pmCloudHide(false); q("#pmHide").checked = false; out.textContent = "Meshen ligger nu i modellen som ett ritat objekt (förhandsvisningen är borttagen) (en medelfärg – färg per triangel finns i DXF och IFC)."; } catch (e) { out.textContent = "⚠ " + e.message; } };
 }

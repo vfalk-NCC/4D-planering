@@ -67,6 +67,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');
     await page.selectOption('#pmType', 'tin'); await page.fill('#pmCell', '2'); await page.selectOption('#pmCol', 'rgb'); await page.click('#pmGo'); await page.waitForFunction(() => !document.getElementById('pmDxf').disabled || /⚠/.test(document.getElementById('pmOut').textContent), null, { timeout: 30000 }); { const t = await page.textContent('#pmOut'); if (/⚠/.test(t)) fail('Dialog: ' + t); }
+    const PV = await page.evaluate(() => ({ g: !!l3pmPrev.grp, n: l3pmPrev.grp && l3pmPrev.grp.children[0].geometry.getAttribute('position').count, inScene: l3.scene.children.includes(l3pmPrev.grp) })); if (!PV.g || !PV.inScene || PV.n !== 1862 * 3) fail('Förhandsvisning i 3D: ' + JSON.stringify(PV));
+    await page.check('#pmHide'); await page.check('#pmWire'); const PV2 = await page.evaluate(() => ({ hid: !l3pc.clouds[0].group.visible, kids: l3pmPrev.grp.children.length })); if (!PV2.hid || PV2.kids !== 2) fail('Dölj moln + nät: ' + JSON.stringify(PV2));
+    console.log('OK: förhandsvisning av meshen i 3D, dölj molnet, visa nät');
     const [d1] = await Promise.all([page.waitForEvent('download'), page.click('#pmDxf')]); const dxf = fs.readFileSync(await d1.path(), 'utf8');
     const nf = (dxf.match(/\n3DFACE\n/g) || []).length; if (nf < 1500 || !/\n420\n\d+\n/.test(dxf)) fail('DXF med 3DFACE och färg: ' + nf + ' ' + d1.suggestedFilename());
     const [d2] = await Promise.all([page.waitForEvent('download'), page.click('#pmIfc')]); const ifc = fs.readFileSync(await d2.path(), 'utf8');
@@ -74,6 +77,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const nIdx = ifc.match(/IFCINDEXEDCOLOURMAP\(#\d+,\$,#\d+,\(([\d,]+)\)\)/); if (!nIdx || nIdx[1].split(',').length !== nf) fail('En färg per triangel i IFC: ' + (nIdx && nIdx[1].split(',').length) + ' / ' + nf);
     const before = await page.evaluate(() => placements.length); await page.click('#pmMod'); const after = await page.evaluate(() => ({ n: placements.length, k: placements[placements.length - 1].m && placements[placements.length - 1].m.k, name: placements[placements.length - 1].name }));
     if (after.n !== before + 1 || after.k !== 'mesh') fail('Meshen i modellen: ' + JSON.stringify(after));
+    if (await page.evaluate(() => !!l3pmPrev.grp || !l3pc.clouds[0].group.visible)) fail('Förhandsvisningen försvinner och molnet visas när meshen läggs i modellen');
     console.log('OK: dialogen ger DXF (3DFACE + färg), IFC (färgtabell) och ett ritat objekt', JSON.stringify({ nf, name: d1.suggestedFilename() }));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK test_lagesplan_pcmesh');
