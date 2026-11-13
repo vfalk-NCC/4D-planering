@@ -66,7 +66,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // 3. Dialogen: skapa, DXF, IFC, i modellen
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');
-    await page.selectOption('#pmType', 'tin'); await page.fill('#pmCell', '2'); await page.selectOption('#pmCol', 'rgb'); await page.click('#pmGo'); await page.waitForFunction(() => !document.getElementById('pmDxf').disabled || /⚠/.test(document.getElementById('pmOut').textContent), null, { timeout: 30000 }); { const t = await page.textContent('#pmOut'); if (/⚠/.test(t)) fail('Dialog: ' + t); }
+    await page.selectOption('#pmType', 'tin'); await page.fill('#pmCell', '2'); await page.selectOption('#pmCol', 'rgb');
+    // live: ändringarna bygger om förhandsvisningen utan att man trycker på något
+    await page.waitForFunction(() => /1862trianglar/.test(document.getElementById('pmOut').textContent.replace(/\s/g, '')) && !document.getElementById('pmDxf').disabled, null, { timeout: 30000 });
+    console.log('OK: förhandsvisningen uppdateras direkt när valen ändras');
     const PV = await page.evaluate(() => ({ g: !!l3pmPrev.grp, n: l3pmPrev.grp && l3pmPrev.grp.children[0].geometry.getAttribute('position').count, inScene: l3.scene.children.includes(l3pmPrev.grp) })); if (!PV.g || !PV.inScene || PV.n !== 1862 * 3) fail('Förhandsvisning i 3D: ' + JSON.stringify(PV));
     await page.check('#pmHide'); await page.check('#pmWire'); const PV2 = await page.evaluate(() => ({ hid: !l3pc.clouds[0].group.visible, kids: l3pmPrev.grp.children.length })); if (!PV2.hid || PV2.kids !== 2) fail('Dölj moln + nät: ' + JSON.stringify(PV2));
     console.log('OK: förhandsvisning av meshen i 3D, dölj molnet, visa nät');
