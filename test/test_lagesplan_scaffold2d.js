@@ -179,6 +179,47 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const bad = Object.entries(r).filter(([k, v]) => v === 'unsupported' || v === 0); if (bad.length || !('fence' in r) || !('route' in r)) fail('Alla etableringstyper som skrivs som vektorer ska gå att spela in: ' + JSON.stringify(r)); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
+  { // Grundverktyg: ⊕ med enkelklick, breddning med plattform, kopiera/klistra in
+    const scr = (id, kind, idx) => page.evaluate(({ id, kind, idx }) => { const x = siteItems.find(q => q.id === id), hs = siteHandles(x, 14, pxPerMeter()).filter(z => z.kind === kind), h = hs[idx || 0]; { const s0 = stageToScreen(mToPx(h.m)); view.tx += 450 - s0[0]; view.ty += 400 - s0[1]; applyView(); renderZones(); } const s = stageToScreen(mToPx(h.m)), r = document.getElementById('viewport').getBoundingClientRect(); return { x: r.left + s[0], y: r.top + s[1] }; }, { id, kind, idx });
+    const prep = await page.evaluate(() => { closeSitePop(); const x = siteItems.find(q => q.type === 'scaffold'); delete x.lbl; delete x.lblAt; x.wid = []; x.sCallout = false; selectedSiteId = x.id; view.scale = 1; view.tx = 0; view.ty = 0; applyView(); const Q = mToPx(x.pts[1]), v = document.getElementById('viewport').getBoundingClientRect(); const s0 = stageToScreen(Q); view.tx += v.width / 2 - s0[0]; view.ty += v.height / 2 - s0[1]; applyView(); renderZones(); return { id: x.id, n: x.pts.length }; });
+    await page.waitForTimeout(300);
+    // 1) enkelklick på ⊕ lägger in en punkt
+    const pl = await scr(prep.id, 'insert', 0); await page.mouse.move(pl.x, pl.y); await page.mouse.down(); await page.mouse.up(); await page.waitForTimeout(300);
+    const n1 = await page.evaluate(id => siteItems.find(q => q.id === id).pts.length, prep.id);
+    if (n1 !== prep.n + 1) fail('Klick på ⊕ ska lägga in en punkt: ' + prep.n + ' -> ' + n1);
+    // 2) rita en breddning: två klick längs ställningen
+    const a = await page.evaluate(id => { const x = siteItems.find(q => q.id === id), A = x.pts[0], B = x.pts[1], r = document.getElementById('viewport').getBoundingClientRect(); { const Lpx = Math.hypot(...[0, 1].map(k => mToPx(B)[k] - mToPx(A)[k])); view.scale = Math.min(view.scale, 300 / Math.max(1, Lpx)); applyView(); const s0 = stageToScreen(mToPx([(A[0] + B[0]) / 2, (A[1] + B[1]) / 2])); view.tx += 450 - s0[0]; view.ty += 400 - s0[1]; applyView(); renderZones(); } const f = t => { const m = [A[0] + (B[0] - A[0]) * t + 0.2, A[1] + (B[1] - A[1]) * t + 0.2], s = stageToScreen(mToPx(m)); return { x: r.left + s[0], y: r.top + s[1] }; }; widToolStart(id); return [f(0.3), f(0.7)]; }, prep.id);
+    await page.mouse.move(a[0].x, a[0].y); await page.mouse.down(); await page.mouse.up(); await page.waitForTimeout(100);
+    await page.mouse.move(a[1].x, a[1].y); await page.mouse.down(); await page.mouse.up(); await page.waitForTimeout(300);
+    const w1 = await page.evaluate(id => ({ wid: siteItems.find(q => q.id === id).wid, tool: !!widTool }), prep.id);
+    if (w1.wid.length !== 1 || w1.tool || !(w1.wid[0].b > w1.wid[0].a + 0.4) || w1.wid[0].d !== 1.2) fail('Två klick ska rita en breddning: ' + JSON.stringify(w1));
+    // 3) dra breddningens handtag utåt: bredden ändras
+    const hd = await scr(prep.id, 'widD', 0); const d0 = w1.wid[0].d;
+    await page.mouse.move(hd.x, hd.y); await page.mouse.down(); await page.mouse.move(hd.x + 30, hd.y + 30, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
+    const w2 = await page.evaluate(id => siteItems.find(q => q.id === id).wid[0], prep.id);
+    if (Math.abs(w2.d - d0) < 0.1) fail('Handtaget ska ändra breddningens bredd: ' + JSON.stringify({ d0, w2 }));
+    // 4) ritas som plattform (fler bildpunkter än utan) + mått i etiketten
+    const px2 = await page.evaluate(id => { const x = siteItems.find(q => q.id === id), run = o => { const cv = document.createElement('canvas'); cv.width = 1400; cv.height = 900; const ctx = cv.getContext('2d'), Q = x.pts.map(mToPx); ctx.translate(100 - Math.min(...Q.map(q => q[0])), 100 - Math.min(...Q.map(q => q[1]))); drawScaffold2D(ctx, o, siteStyle(o, 14), pxPerMeter(), '', ''); const d = ctx.getImageData(0, 0, 1400, 900).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 20) n++; return n; }; return { with: run(x), without: run({ ...x, wid: [] }) }; }, prep.id);
+    if (px2.with <= px2.without + 200) fail('Breddningen ska ritas: ' + JSON.stringify(px2));
+    // 5) en punkt in på sträckan med breddningen: breddningen följer med
+    const keep = await page.evaluate(id => { const x = JSON.parse(JSON.stringify(siteItems.find(q => q.id === id))); const j = x.wid[0].i, A = x.pts[j], B = x.pts[j + 1], m = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]; x.pts.splice(j + 1, 0, m); widAfterInsert(x, j, m); const tot = x.wid.reduce((s, q) => s + (q.b - q.a), 0); const g = x.wid.map(q => widCorners(x, q)).every(Boolean); return { n: x.wid.length, tot, orig: siteItems.find(q => q.id === id).wid[0].b - siteItems.find(q => q.id === id).wid[0].a, g }; }, prep.id);
+    if (!keep.g || Math.abs(keep.tot - keep.orig) > 0.1) fail('Breddningen ska följa med när en punkt läggs in: ' + JSON.stringify(keep));
+    // 6) Ctrl+D duplicerar, Ctrl+C / Ctrl+V klistrar in vid pekaren
+    const c0 = await page.evaluate(id => { closeSitePop(); selectedSiteId = id; return siteItems.length; }, prep.id);
+    await page.mouse.move(300, 300); await page.keyboard.press('Control+d'); await page.waitForTimeout(300);
+    const c1 = await page.evaluate(() => ({ n: siteItems.length, sel: selectedSiteId, wid: (siteItems.find(q => q.id === selectedSiteId) || {}).wid }));
+    if (c1.n !== c0 + 1 || !c1.wid || c1.wid.length !== 1) fail('Ctrl+D ska duplicera ställningen med breddning: ' + JSON.stringify({ c0, c1 }));
+    await page.keyboard.press('Control+c'); await page.mouse.move(520, 380); await page.keyboard.press('Control+v'); await page.waitForTimeout(300);
+    const c2 = await page.evaluate(() => { const x = siteItems.find(q => q.id === selectedSiteId), ctr = centroidOf(x.pts), v = document.getElementById('viewport').getBoundingClientRect(), s = stageToScreen(mToPx(ctr)); return { n: siteItems.length, dx: Math.abs(v.left + s[0] - 520), dy: Math.abs(v.top + s[1] - 380) }; });
+    if (c2.n !== c0 + 2 || c2.dx > 3 || c2.dy > 3) fail('Ctrl+V ska klistra in vid pekaren: ' + JSON.stringify(c2));
+    // 7) breddningen går att ta bort (högerklicka på handtaget) – och blir bara ett objekt att ångra
+    await page.evaluate(() => { selectedSiteId = siteItems.find(q => q.type === 'scaffold' && (q.wid || []).length).id; renderZones(); });
+    const rid = await page.evaluate(() => selectedSiteId); const hh = await scr(rid, 'widA', 0);
+    await page.mouse.click(hh.x, hh.y, { button: 'right' }); await page.waitForTimeout(300);
+    const w3 = await page.evaluate(id => siteItems.find(q => q.id === id).wid.length, rid);
+    if (w3 !== 0) fail('Högerklick på breddningens handtag ska ta bort den: ' + w3);
+    console.log('OK: ⊕ med enkelklick, breddning med plattform (rita, dra, följer punkter, ta bort) och Ctrl+C/V/D', JSON.stringify({ px2, keep }));
+  }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)
   const pl = await page.evaluate(async () => {
     const o = {}; const top = document.getElementById('btnPlayTop'); o.has = !!top && top.getBoundingClientRect().width > 0; o.t0 = top.textContent;

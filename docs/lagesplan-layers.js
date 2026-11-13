@@ -1166,6 +1166,43 @@ function scaffoldInfo(x) {
   let bays = 0; for (let i = 1; i < x.pts.length; i++) bays += Math.max(1, Math.round(Math.hypot(x.pts[i][0] - x.pts[i - 1][0], x.pts[i][1] - x.pts[i - 1][1]) / fack));
   return { B, H, fack, L, bays, lifts: Number(x.lifts) > 0 ? Math.round(Number(x.lifts)) : Math.max(1, Math.ceil(H / 2)), area: L * H };
 }
+/* Breddningar/plattformar (Victor 2026-11-13): ett utbyggt parti utanför ställningen, t.ex. lastplattform eller trappa. wid[] = { i: sträcka, a/b: från/till i meter längs sträckan, d: utbyggnad i meter, s: sida ±1 }. */
+function widCorners(x, q) {
+  const A = x.pts[q.i], B = x.pts[q.i + 1]; if (!A || !B) return null;
+  const L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < 0.01) return null;
+  const ux = (B[0] - A[0]) / L, uy = (B[1] - A[1]) / L, sd = q.s < 0 ? -1 : 1, nx = -uy * sd, ny = ux * sd, hw = Math.max(0.3, Number(x.w) || 0.73) / 2;
+  const a = Math.max(0, Math.min(L, q.a)), b = Math.max(a, Math.min(L, q.b)), d = Math.max(0.2, Number(q.d) || 1.2), P = (t, o) => [A[0] + ux * t + nx * o, A[1] + uy * t + ny * o];
+  return { A, L, u: [ux, uy], n: [nx, ny], a, b, d, hw, P, c: [P(a, hw), P(b, hw), P(b, hw + d), P(a, hw + d)] };
+}
+function widAfterInsert(w, j, m) {   // en punkt lades in på sträcka j: breddningarna följer med den del de ligger på
+  if (!Array.isArray(w.wid) || !w.wid.length) return; const A = w.pts[j], t = Math.hypot(m[0] - A[0], m[1] - A[1]), out = [];
+  w.wid.forEach(q => { if (q.i < j) out.push(q); else if (q.i > j) out.push({ ...q, i: q.i + 1 }); else { if (q.a < t - 0.05) out.push({ ...q, b: Math.min(q.b, t) }); if (q.b > t + 0.05) out.push({ ...q, i: j + 1, a: Math.max(q.a, t) - t, b: q.b - t }); } });
+  w.wid = out;
+}
+function widAfterRemove(next, oldPts, v) {   // punkt v togs bort: sträckorna v-1 och v blir en
+  if (!Array.isArray(next.wid) || !next.wid.length) return; const last = oldPts.length - 1, lp = v > 0 ? Math.hypot(oldPts[v][0] - oldPts[v - 1][0], oldPts[v][1] - oldPts[v - 1][1]) : 0, out = [];
+  next.wid.forEach(q => { if (v === 0) { if (q.i > 0) out.push({ ...q, i: q.i - 1 }); } else if (v === last) { if (q.i < v - 1) out.push(q); } else if (q.i < v) out.push(q); else if (q.i === v) out.push({ ...q, i: v - 1, a: q.a + lp, b: q.b + lp }); else out.push({ ...q, i: q.i - 1 }); });
+  next.wid = out;
+}
+function drawScaffoldWid(ctx, x, q, st, ppm, col, lw) {
+  const g = widCorners(x, q); if (!g) return;
+  const C = g.c.map(mToPx), M = (t, o) => mToPx(g.P(t, o));
+  ctx.save(); ctx.lineJoin = "miter";
+  ctx.beginPath(); C.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+  ctx.fillStyle = hexToRgba("#fde047", 0.34); ctx.fill(); ctx.strokeStyle = hexToRgba(col, 0.9); ctx.lineWidth = lw * 1.3; ctx.stroke();
+  // plattformens bräder (tvärs ut) och diagonaler, så den läses som en plattform
+  const n = Math.max(1, Math.round((g.b - g.a) / Math.max(0.5, Number(x.fack) || 2.57))), step = (g.b - g.a) / n;
+  ctx.strokeStyle = hexToRgba(col, 0.38); ctx.lineWidth = lw * 0.6;
+  for (let k = 0; k <= n; k++) { const t = g.a + step * k, p0 = M(t, g.hw), p1 = M(t, g.hw + g.d); ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke(); }
+  for (let k = 0; k < n; k++) { const t0 = g.a + step * k, t1 = t0 + step, f = k % 2, p0 = f ? M(t0, g.hw) : M(t0, g.hw + g.d), p1 = f ? M(t1, g.hw + g.d) : M(t1, g.hw); ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke(); }
+  if (x.sPosts !== false) { ctx.fillStyle = hexToRgba("#1f2937", 0.85); const r = Math.max(0.9, Math.min(g.d * ppm * 0.08, 1.8)); for (let k = 0; k <= n; k++) { const p = M(g.a + step * k, g.hw + g.d); ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2); ctx.fill(); } }
+  if (x.sWid !== false) {   // mått: längd × utbyggnad
+    const c = M((g.a + g.b) / 2, g.hw + g.d / 2), fs = st.fs * 0.6, tx = `${fmtM(g.b - g.a)} × ${fmtM(g.d)} m`, aw = Math.hypot(C[1][0] - C[0][0], C[1][1] - C[0][1]);
+    ctx.font = `600 ${fs}px Arial`; if (ctx.measureText(tx).width + 6 < Math.max(aw, Math.hypot(C[3][0] - C[0][0], C[3][1] - C[0][1])) * 1.05) { let ang = Math.atan2(C[1][1] - C[0][1], C[1][0] - C[0][0]); if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI; ctx.save(); ctx.translate(c[0], c[1]); ctx.rotate(ang); ctx.fillStyle = "#111827"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(tx, 0, 0); ctx.restore(); }
+  }
+  ctx.restore();
+}
+function scaffoldWidSum(x) { return (x.wid || []).reduce((a, q) => { const g = widCorners(x, q); return g ? { n: a.n + 1, area: a.area + (g.b - g.a) * g.d } : a; }, { n: 0, area: 0 }); }
 function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
   const P = x.pts.map(mToPx), I = scaffoldInfo(x), lw = Math.max(0.8, Math.min(st.lw, 2) * 0.55), wpx = Math.max(I.B * ppm, 4), hw = wpx / 2, col = st.color, posts = x.sPosts !== false;
   ctx.save(); ctx.lineJoin = "miter"; ctx.lineCap = "butt";
@@ -1202,6 +1239,7 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
   }
   // gavlar: tvärlinje i ändarna
   [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]].forEach(([e, f]) => { const dx = f[0] - e[0], dy = f[1] - e[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l * hw, ny = dx / l * hw; ctx.lineWidth = lw * 1.4; ctx.strokeStyle = hexToRgba(col, 0.9); ctx.beginPath(); ctx.moveTo(e[0] + nx, e[1] + ny); ctx.lineTo(e[0] - nx, e[1] - ny); ctx.stroke(); });
+  (x.wid || []).forEach(q => drawScaffoldWid(ctx, x, q, st, ppm, col, lw));
   ctx.restore();
   // etiketten: namn + valda mått (släck mått, fack, våningar i redigeringsrutan)
   const segMode = scaffoldSegOn(x);
@@ -1223,7 +1261,7 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
     }
     ctx.restore();
   }
-  const parts = []; if (x.sDim !== false) parts.push(segMode ? `Σ ${fmtM(I.L)} m × ${fmtM(I.H)} m` : `${fmtM(I.L)} m × ${fmtM(I.H)} m`); if (x.sFack !== false) parts.push(`${I.bays} fack${segMode ? " totalt" : ""}`); if (x.sLifts !== false) parts.push(`${I.lifts} vån`);
+  const parts = []; if (x.sDim !== false) parts.push(segMode ? `Σ ${fmtM(I.L)} m × ${fmtM(I.H)} m` : `${fmtM(I.L)} m × ${fmtM(I.H)} m`); if (x.sFack !== false) parts.push(`${I.bays} fack${segMode ? " totalt" : ""}`); if (x.sLifts !== false) parts.push(`${I.lifts} vån`); { const ws = scaffoldWidSum(x); if (ws.n && x.sWid !== false) parts.push(`${ws.n} breddning${ws.n > 1 ? "ar" : ""}`); }
   const nm = x.sName === false ? "" : (x.name || "").trim(), head = nm ? `${nm}${lock}` : (lock || ""), text = [head, parts.join(x.sWrap ? "\n" : " · ")].filter(Boolean).join("\n");
   if (!text || x.sCallout === false) return;   // callouten (etikettrutan) släckt: bara ritningen och måttkedjan syns
   const mi = Math.floor((P.length - 1) / 2), m = P[mi], nn = P[mi + 1] || m;
@@ -1232,7 +1270,7 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
 /* Kopiera egenskaper (Victor 2026-11-09): färg, linje, tjocklek, textstorlek, lager och typens egna inställningar (för ställning: bredd, höjd, fack, våningar och vad som visas)
    sparas som en mall. "Klistra in" lägger dem på ett annat objekt av samma typ, och med "Använd på nya" ritas nästa objekt av typen redan med dem. */
 const SITE_CLIP_KEY = "lagesplan-siteclip";
-const SITE_CLIP_KEYS = { common: ["color", "dash", "weight", "textSize", "layer"], scaffold: ["w", "h", "fack", "lifts", "sDim", "sFack", "sLifts", "sPosts", "sWrap", "sSeg", "sFackSeg", "sName", "sCallout"], route: ["w", "twoWay"], crane: ["radius", "capacity", "chart"] };
+const SITE_CLIP_KEYS = { common: ["color", "dash", "weight", "textSize", "layer"], scaffold: ["w", "h", "fack", "lifts", "sDim", "sFack", "sLifts", "sPosts", "sWrap", "sSeg", "sFackSeg", "sName", "sCallout", "sWid"], route: ["w", "twoWay"], crane: ["radius", "capacity", "chart"] };
 const siteClipGet = () => { try { const c = JSON.parse(localStorage.getItem(SITE_CLIP_KEY) || "null"); return c && c.type && c.props ? c : null; } catch (e) { return null; } };
 const siteClipSet = c => { try { localStorage.setItem(SITE_CLIP_KEY, JSON.stringify(c)); } catch (e) { /* utan lagring */ } };
 function siteClipPick(rec) { const o = {}; [...SITE_CLIP_KEYS.common, ...(SITE_CLIP_KEYS[rec.type] || [])].forEach(k => { if (rec[k] !== undefined) o[k] = rec[k]; }); return o; }
@@ -1268,9 +1306,13 @@ function scaffoldFieldsHtml(rec) {
     <div class="sc-chips">${chip("sp-sseg", scaffoldSegOn(rec), "Mått per sträcka", "Ett mått längs varje sträcka (ett U får tre mått) – oberoende av etiketten")}${chip("sp-sfackseg", rec.sFackSeg !== false && rec.sFack !== false, "Fack i måttet", "Skriv antal fack efter längden i måttkedjan")}</div>
     <div class="sc-h">Text på planen</div>
     <div class="sc-chips">${chip("sp-scallout", rec.sCallout !== false, "Visa callout", "Hela etikettrutan med namn och mått – släck den så syns bara ställningen (och måttkedjan)")}${chip("sp-sname", rec.sName !== false, "Namn / kommentar", "Texten du skrivit i namnrutan (t.ex. en kommentar) – släck för att bara visa måtten")}${chip("sp-sdim", rec.sDim !== false, "Längd × höjd", "Total längd och höjd i etiketten")}${chip("sp-sfack", rec.sFack !== false, "Fack", "Antal fack i etiketten")}${chip("sp-slifts", rec.sLifts !== false, "Våningar", "Antal våningar i etiketten")}${chip("sp-swrap", !!rec.sWrap, "Radbryt", "Varje mått på egen rad")}</div>
+    <div class="sc-h">Breddningar &amp; plattformar</div>
+    <div class="sc-wids">${(rec.wid || []).map((q, k) => { const g = widCorners(rec, q); return `<div class="sc-wrow" data-k="${k}"><span>${g ? fmtM(g.b - g.a) : "–"} m</span><input type="text" inputmode="decimal" class="sp-wd" data-k="${k}" value="${fmtIn(Number(q.d) || 1.2)}" title="Utbyggnad utanför ställningen (m)" /><em>m ut</em><button type="button" class="sp-wdel" data-k="${k}" title="Ta bort breddningen">✕</button></div>`; }).join("") || `<div class="muted" style="font-size:11.5px">Inga än – t.ex. lastplattform eller trappa som sticker ut från ställningen.</div>`}</div>
+    <button type="button" class="sp-addwid" title="Klicka där breddningen börjar och slutar längs ställningen – därefter justerar du längd och bredd med handtagen">＋ Rita breddning / plattform</button>
+    <div class="sc-chips">${chip("sp-swid", rec.sWid !== false, "Mått på breddningar", "Skriv längd × utbyggnad på plattformen")}</div>
     <div class="sc-h">Ritning</div>
     <div class="sc-chips">${chip("sp-sposts", rec.sPosts !== false, "Stolpar", "Små prickar i fackgränserna")}</div>
-    <div class="muted" style="font-size:11.5px">Högerklicka på en punkt (handtag) för att ta bort den. Dra i + för att lägga till en ny.</div>
+    <div class="muted" style="font-size:11.5px">Högerklicka på en punkt (handtag) för att ta bort den. Klicka eller dra i + för att lägga till en ny. Ctrl+D duplicerar ställningen.</div>
     <button type="button" class="sp-to3d sc-3d" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">Skapa 3D-ställning av linjen</button>
   </div>`;
 }
@@ -1481,7 +1523,9 @@ function siteHandlesBase(x, fontPx, ppm) {
     mids.push({ kind: "insert", i, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] });
   }
   const ys = x.pts.map(p => p[1]), c = centroidOf(x.pts);
-  return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), ...mids, { kind: "rotate", m: [c[0], Math.min(...ys) - off] }];
+  const wh = [];
+  if (x.type === "scaffold") (x.wid || []).forEach((q, k) => { const g = widCorners(x, q); if (!g) return; wh.push({ kind: "widA", k, m: g.P(g.a, g.hw + g.d / 2) }, { kind: "widB", k, m: g.P(g.b, g.hw + g.d / 2) }, { kind: "widD", k, m: g.P((g.a + g.b) / 2, g.hw + g.d) }); });
+  return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), ...mids, ...wh, { kind: "rotate", m: [c[0], Math.min(...ys) - off] }];
 }
 function drawHandles(ctx, x, fontPx, ppm) {
   const k = 1 / Math.max(0.05, view.scale), hs = 6 * k;   // handtagen är lika stora på skärmen oavsett zoom
@@ -1500,6 +1544,9 @@ function drawHandles(ctx, x, fontPx, ppm) {
     } else if (h.kind === "label") {
       const r = hs * 1.5; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = "#0b5fff"; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * k; ctx.stroke();
       ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.6 * k; ctx.beginPath(); ctx.moveTo(px - r * 0.62, py); ctx.lineTo(px + r * 0.62, py); ctx.moveTo(px, py - r * 0.62); ctx.lineTo(px, py + r * 0.62); ctx.stroke();   // flytta-symbol
+    } else if (h.kind === "widA" || h.kind === "widB" || h.kind === "widD") {
+      const r = hs * 0.95; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = h.kind === "widD" ? "#f59e0b" : "#fff"; ctx.fill(); ctx.strokeStyle = h.kind === "widD" ? "#fff" : "#f59e0b"; ctx.lineWidth = 2 * k; ctx.stroke();
+      if (h.kind === "widD") { ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.6 * k; ctx.beginPath(); ctx.moveTo(px - r * 0.5, py); ctx.lineTo(px + r * 0.5, py); ctx.moveTo(px, py - r * 0.5); ctx.lineTo(px, py + r * 0.5); ctx.stroke(); }   // bredda: dra ut/in
     } else if (h.kind === "insert") {
       const r = hs * 0.8;
       ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fill();
@@ -1632,7 +1679,32 @@ function constrainPdf(pdfPt, e, prev, excludeId) {
 }
 
 /* Anropas från lagesplan.js vid mousedown: börjar dra ett objekt/handtag. */
+let siteCopyBuf = null, siteLastPtr = null;   // Ctrl+C / Ctrl+V / Ctrl+D på markerat objekt
+/* Kopia av ett objekt: lägger objektets mittpunkt vid "at" (modellens koordinater) eller 3 m snett nedåt, och markerar kopian. */
+function siteCloneAt(rec, at) {
+  if (!rec || !plan || !plan.calib) return null;
+  const c = JSON.parse(JSON.stringify(rec)); c.id = ghNewId(); c.created_at = new Date().toISOString(); c.updated_at = c.created_at; delete c.locked;
+  const ctr = isRect(c) ? [rectGeom(c).cx, rectGeom(c).cy] : centroidOf(c.pts), dx = at ? at[0] - ctr[0] : 3, dy = at ? at[1] - ctr[1] : -3;
+  if (isRect(c)) { const g = rectGeom(c); Object.assign(c, { cx: g.cx + dx, cy: g.cy + dy, w: g.w, h: g.h, rot: g.rot }); delete c.pts; } else c.pts = c.pts.map(p => [Math.round((p[0] + dx) * 1000) / 1000, Math.round((p[1] + dy) * 1000) / 1000]);
+  if (c.lblAt) c.lblAt = [c.lblAt[0] + dx, c.lblAt[1] + dy];
+  closeSitePop(); selectedSiteId = c.id; siteClickedId = c.id; saveSiteItem(c); setSaveStatus(`⧉ ${(SITE_KINDS[c.type] || {}).label || "Objektet"} kopierat – dra i det för att flytta, Ctrl+V för fler.`);
+  return c;
+}
+let widTool = null;   // { id, stage, i, t, s } – rita en breddning: klicka där den börjar och där den slutar längs ställningen
+function widToolStart(id) { widTool = { id, stage: 0 }; $("viewport").classList.add("drawing"); setSaveStatus("Breddning: klicka där den ska börja längs ställningen (Esc avbryter)."); }
+function widToolStop() { if (!widTool) return; widTool = null; $("viewport").classList.remove("drawing"); }
+function widToolClick(e) {
+  const x = siteItems.find(q => q.id === widTool.id); if (!x || !plan || !plan.calib) { widToolStop(); return false; }
+  const m = pdfToModel(toPdf(stagePoint(e))), hw = Math.max(0.3, Number(x.w) || 0.73) / 2;
+  const near = (pt, onlyI) => { let best = null; for (let i = 0; i < x.pts.length - 1; i++) { if (onlyI !== undefined && i !== onlyI) continue; const A = x.pts[i], B = x.pts[i + 1], L = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L < 0.01) continue; const ux = (B[0] - A[0]) / L, uy = (B[1] - A[1]) / L, t = Math.max(0, Math.min(L, (pt[0] - A[0]) * ux + (pt[1] - A[1]) * uy)), dx = pt[0] - (A[0] + ux * t), dy = pt[1] - (A[1] + uy * t), o = dx * -uy + dy * ux, dist = Math.hypot(dx, dy); if (!best || dist < best.dist) best = { i, t, o, dist, L }; } return best; };
+  if (widTool.stage === 0) { const b = near(m); if (!b) return true; Object.assign(widTool, { stage: 1, i: b.i, t: b.t, s: b.o < 0 ? -1 : 1 }); setSaveStatus("Klicka nu där breddningen slutar (på samma sträcka)."); return true; }
+  const b = near(m, widTool.i); let a = widTool.t, z = b ? b.t : a + 3; if (z < a) [a, z] = [z, a]; if (z - a < 0.5) z = Math.min(b ? b.L : a + 3, a + 3); if (z - a < 0.5) a = Math.max(0, z - 3);
+  const r2 = v => Math.round(v * 20) / 20, next = { ...x, wid: [...(x.wid || []), { i: widTool.i, a: r2(a), b: r2(z), d: 1.2, s: widTool.s }], updated_at: new Date().toISOString() };
+  widToolStop(); selectedSiteId = x.id; saveSiteItem(next, false, { prev: x }); setSaveStatus("Breddning tillagd – dra i de orange handtagen för längd och bredd, högerklicka på ett handtag för att ta bort den. Ctrl+Z ångrar.");
+  return true;
+}
 function layersPointerDown(e) {
+  if (widTool) return widToolClick(e);
   if (!plan || !plan.calib || !viewport || siteTool || (typeof measure !== "undefined" && measure) || photoPlacing || (calib && calib.waitPdf)) return false;
   const pdfPt = toPdf(stagePoint(e));
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
@@ -1675,7 +1747,15 @@ function applySiteDrag(d, m) {
   } else if (h.kind === "vertex") {
     w.pts[h.i] = m;
   } else if (h.kind === "insert") {
-    w.pts.splice(h.i + 1, 0, m);
+    w.pts.splice(h.i + 1, 0, m); widAfterInsert(w, h.i, m);
+  } else if (h.kind === "widA" || h.kind === "widB" || h.kind === "widD") {
+    const q = (w.wid || [])[h.k], g = q && widCorners(w, q);
+    if (g) {
+      const r2 = v => Math.round(v * 20) / 20, t = (m[0] - g.A[0]) * g.u[0] + (m[1] - g.A[1]) * g.u[1], nm = [-g.u[1], g.u[0]], o = (m[0] - g.A[0]) * nm[0] + (m[1] - g.A[1]) * nm[1];
+      if (h.kind === "widA") q.a = r2(Math.max(0, Math.min(g.b - 0.3, t)));
+      else if (h.kind === "widB") q.b = r2(Math.max(g.a + 0.3, Math.min(g.L, t)));
+      else { q.s = o < 0 ? -1 : 1; q.d = Math.max(0.3, Math.round((Math.abs(o) - g.hw) * 10) / 10); }
+    }
   } else if (h.kind === "radius") {
     const nr = Math.max(1, Math.round(Math.hypot(m[0] - o.pts[0][0], m[1] - o.pts[0][1]) * 2) / 2);
     const ch = parseChart(o.chart);
@@ -1737,6 +1817,11 @@ function onSiteDragUp() {
   const d = siteDrag;
   if (!d) return;
   siteDrag = null;
+  if (!d.moved && d.handle && d.handle.kind === "insert" && !d.locked && Array.isArray(d.orig.pts)) {   // klick på ⊕: lägg in en punkt mitt på sträckan
+    const w = JSON.parse(JSON.stringify(d.orig)); w.pts.splice(d.handle.i + 1, 0, d.handle.m.map(v => Math.round(v * 1000) / 1000)); widAfterInsert(w, d.handle.i, d.handle.m); w.updated_at = new Date().toISOString();
+    selectedSiteId = w.id; siteClickedId = w.id; saveSiteItem(w, false, { prev: d.orig }); setSaveStatus(`Punkt tillagd (${w.pts.length} punkter) – dra i den för att flytta. Ctrl+Z ångrar.`);
+    return;
+  }
   if (!d.moved) { // ett klick: välj och visa redigering
     selectedSiteId = d.orig.id; siteClickedId = d.orig.id; renderZones(); openSitePop(d.orig, false);
     return;
@@ -1777,7 +1862,7 @@ function updateSiteUi() {
     sketch: ["Rita med fingret (eller musen). Varje drag sparas direkt – två fingrar zoomar/panorerar. Tryck på ✏️ igen när du är klar."]
   };
   $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
-    : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form, i ⊕ för att lägga till en punkt (dubbelklicka på en punkt för att ta bort den) och i ↻ för att rotera (Shift = fritt). Texten kan dras fritt.";
+    : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form, i ⊕ eller klicka på det för att lägga till en punkt (högerklicka på en punkt för att ta bort den), Ctrl+D duplicerar, Ctrl+C / Ctrl+V kopierar och klistrar in vid pekaren och i ↻ för att rotera (Shift = fritt). Texten kan dras fritt.";
   // Den allmänna förklaringen ligger bakom kortets ⓘ; verktygets instruktion syns alltid.
   $("siteHint").classList.toggle("sec-help", !k);
   $("viewport").classList.toggle("drawing", !!siteTool || !!measure || photoPlacing || drawMode);
@@ -1938,7 +2023,7 @@ function openSitePop(rec, isNew) {
     </div>
     ${rec.lbl && rec.type !== "note" ? `<button type="button" class="sp-lblreset">↺ Återställ textens läge</button>` : ""}
     ${!isNew && typeof storagePopHtml === "function" ? storagePopHtml(rec) : ""}
-    ${isNew ? "" : `<div class="acts"><button type="button" class="sp-del" title="Ta bort">🗑️ Ta bort</button><button type="button" class="sp-dup" title="Kopiera objektet">⧉ Kopiera</button></div>`}`;
+    ${isNew ? "" : `<div class="acts"><button type="button" class="sp-del" title="Ta bort">🗑️ Ta bort</button><button type="button" class="sp-dup" title="Duplicera objektet (Ctrl+D). Ctrl+C / Ctrl+V klistrar in vid pekaren.">⧉ Duplicera</button></div>`}`;
   else pop.innerHTML = `
     <b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b>
     ${rec.type === "note" ? `
@@ -1987,7 +2072,7 @@ function openSitePop(rec, isNew) {
     box.querySelector(".sp-ccopy").onclick = () => {
       const v = c => { const e = pop.querySelector(c); return e ? e.value.trim() : undefined; }, p = siteClipPick(rec);
       Object.assign(p, { color: v(".sp-color"), dash: v(".sp-dash"), weight: Number(v(".sp-weight")) || 1, textSize: tsValue(), layer: v(".sp-layer") === "__new" ? p.layer : v(".sp-layer") });
-      if (rec.type === "scaffold") Object.assign(p, scaffoldFromPop());
+      if (rec.type === "scaffold") { Object.assign(p, scaffoldFromPop()); delete p.wid; }
       if (rec.type === "route") Object.assign(p, { w: Math.max(0.5, num(".sp-rw", 4)), twoWay: !!(pop.querySelector(".sp-two") || {}).checked });
       if (rec.type === "crane") Object.assign(p, { radius: num(".sp-radius", 40), capacity: v(".sp-cap") || "", chart: v(".sp-chart") || "" });
       Object.keys(p).forEach(kk => { if (p[kk] === undefined) delete p[kk]; });
@@ -2020,8 +2105,15 @@ function openSitePop(rec, isNew) {
   };
   tsR.oninput = () => { tsT.value = tsR.value; preview({ textSize: tsValue() }); };
   tsT.oninput = () => { const v = num(".sp-ts", NaN); if (Number.isFinite(v)) { tsR.value = Math.max(40, Math.min(400, v)); preview({ textSize: tsValue() }); } };
-  const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts"), sWrap: !!(pop.querySelector(".sp-swrap") || {}).checked, sSeg: !!(pop.querySelector(".sp-sseg") || {}).checked, sFackSeg: c(".sp-sfackseg"), sName: c(".sp-sname"), sCallout: c(".sp-scallout") }; };
-  if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts,.sp-swrap,.sp-sseg,.sp-sfackseg,.sp-sname,.sp-scallout,.sp-name").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); v.name = (pop.querySelector(".sp-name") || {}).value || ""; preview(v); const I2 = scaffoldInfo({ ...rec, ...v }), q = c => pop.querySelector(c); if (q(".sc-s-len")) { q(".sc-s-len").textContent = fmtM(I2.L) + " m längd"; q(".sc-s-bays").textContent = I2.bays + " fack"; q(".sc-s-lifts").textContent = I2.lifts + " vån"; } const ph = q(".sp-sl"); if (ph) ph.placeholder = `auto (${Math.max(1, Math.ceil(v.h / 2))})`; }; });
+  const widWork = JSON.parse(JSON.stringify(rec.wid || []));   // breddningarna i rutan (längd/bredd ändras direkt, sparas med Spara)
+  const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts"), sWrap: !!(pop.querySelector(".sp-swrap") || {}).checked, sSeg: !!(pop.querySelector(".sp-sseg") || {}).checked, sFackSeg: c(".sp-sfackseg"), sName: c(".sp-sname"), sCallout: c(".sp-scallout"), sWid: c(".sp-swid"), wid: widWork }; };
+  if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts,.sp-swid,.sp-swrap,.sp-sseg,.sp-sfackseg,.sp-sname,.sp-scallout,.sp-name").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); v.name = (pop.querySelector(".sp-name") || {}).value || ""; preview(v); const I2 = scaffoldInfo({ ...rec, ...v }), q = c => pop.querySelector(c); if (q(".sc-s-len")) { q(".sc-s-len").textContent = fmtM(I2.L) + " m längd"; q(".sc-s-bays").textContent = I2.bays + " fack"; q(".sc-s-lifts").textContent = I2.lifts + " vån"; } const ph = q(".sp-sl"); if (ph) ph.placeholder = `auto (${Math.max(1, Math.ceil(v.h / 2))})`; }; });
+  if (rec.type === "scaffold") {   // breddningar: bredd i rutan, ta bort, rita ny
+    pop.querySelectorAll(".sp-wd").forEach(i => { i.oninput = () => { const q = widWork[+i.dataset.k]; const v = Number(String(i.value).replace(",", ".")); if (q && v > 0) { q.d = Math.max(0.2, v); preview({ wid: widWork.map(z => ({ ...z })) }); } }; });
+    pop.querySelectorAll(".sp-wdel").forEach(b => { b.onclick = () => { widWork.splice(+b.dataset.k, 1); preview({ wid: widWork.map(z => ({ ...z })) }); b.closest(".sc-wrow").remove(); pop.querySelectorAll(".sc-wrow").forEach((r, n) => { r.dataset.k = n; r.querySelectorAll("[data-k]").forEach(e2 => { e2.dataset.k = n; }); }); }; });
+    const aw = pop.querySelector(".sp-addwid");
+    if (aw) aw.onclick = async () => { await pop.querySelector(".sp-save").onclick(); widToolStart(rec.id); };
+  }
   const lblReset = pop.querySelector(".sp-lblreset");
   if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null, lblAt: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
   pop.querySelector(".sp-save").onclick = async () => {
@@ -2123,11 +2215,12 @@ function siteVertexRemove(e) {
   const sel = selectedSiteId ? siteItems.find(x => x.id === selectedSiteId) : null;
   if (!sel || !Array.isArray(sel.pts) || sel.locked || !plan || !plan.calib) return false;
   const h = handleAt(sel, toPdf(stagePoint(e)));
+  if (h && /^wid[ABD]$/.test(h.kind)) { e.preventDefault(); const next = { ...sel, wid: (sel.wid || []).filter((_, i) => i !== h.k), updated_at: new Date().toISOString() }; closeSitePop(); saveSiteItem(next, false, { prev: sel }); setSaveStatus("Breddningen borttagen. Ctrl+Z ångrar."); return true; }
   if (!h || h.kind !== "vertex" || sel.type === "note") return false;
   e.preventDefault();
   const min = MIN_PTS[sel.type] || 2;
   if (sel.pts.length <= min) { setSaveStatus(`En ${(SITE_KINDS[sel.type] || { label: "linje" }).label.toLowerCase()} behöver minst ${min} punkter – punkten går inte att ta bort.`); return true; }
-  const next = { ...sel, pts: sel.pts.filter((_, i) => i !== h.i), updated_at: new Date().toISOString() };
+  const next = { ...sel, pts: sel.pts.filter((_, i) => i !== h.i), updated_at: new Date().toISOString() }; widAfterRemove(next, sel.pts, h.i);
   closeSitePop(); saveSiteItem(next, false, { prev: sel }); setSaveStatus(`Punkten borttagen (${next.pts.length} kvar). Ctrl+Z ångrar.`);
   return true;
 }
@@ -2973,7 +3066,8 @@ function bindLayers() {
   }, true);
   window.addEventListener("keydown", e => {
     if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
-    if (e.key === "Escape") { if (siteTool) stopSiteTool(); else if (!$("sitePop").classList.contains("hidden")) { closeSitePop(); selectedSiteId = null; renderZones(); } }
+    if (e.key === "Escape" && widTool) { widToolStop(); setSaveStatus("Breddningen avbröts."); }
+    else if (e.key === "Escape") { if (siteTool) stopSiteTool(); else if (!$("sitePop").classList.contains("hidden")) { closeSitePop(); selectedSiteId = null; renderZones(); } }
     else if ((e.key === "Delete" || e.key === "Backspace") && selectedSiteId && !siteTool) {
       // Delete (⌫ på Mac) tar bort det markerade objektet på planen – kan ångras med Ctrl+Z.
       const x = siteItems.find(y => y.id === selectedSiteId);
@@ -2985,7 +3079,14 @@ function bindLayers() {
       setSaveStatus(`🗑 ${(SITE_KINDS[x.type] || {}).label || "Objektet"} borttaget – Ctrl+Z ångrar`);
     }
     else if (e.key === "Enter" && siteTool && !SITE_KINDS[siteTool.kind].clicks) finishSiteTool();
+    else if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !siteTool && /^[cvd]$/i.test(e.key) && !(window.getSelection && String(window.getSelection()))) {
+      const k = e.key.toLowerCase(), sel = selectedSiteId && siteItems.find(y => y.id === selectedSiteId);
+      if (k === "c" && sel) { e.preventDefault(); siteCopyBuf = JSON.parse(JSON.stringify(sel)); setSaveStatus(`⧉ ${(SITE_KINDS[sel.type] || {}).label || "Objektet"} kopierat – Ctrl+V klistrar in vid pekaren.`); }
+      else if (k === "d" && sel) { e.preventDefault(); siteCloneAt(sel, null); }
+      else if (k === "v" && siteCopyBuf) { e.preventDefault(); siteCloneAt(siteCopyBuf, siteLastPtr ? pdfToModel(toPdf(stagePoint(siteLastPtr))) : null); }
+    }
   });
+  window.addEventListener("mousemove", e => { if (e.target && e.target.closest && e.target.closest("#viewport")) siteLastPtr = { clientX: e.clientX, clientY: e.clientY }; });
   applyLayerCss();
   renderLayerPanel();
 }
