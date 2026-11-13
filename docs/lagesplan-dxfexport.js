@@ -160,6 +160,7 @@ function buildObjectsDxf() {
     const z = Number.isFinite(mk.zTop) ? mk.zTop : 0; // på plushöjden (objektets högsta punkt, eller din egna höjd) – prickarna hamnade på nollnivån när modellen ligger på +400 (Victor 2026-11-13)
     ents.push({ t: "POINT", layer, x, y, z, rgb: mk.color });
     ents.push({ t: "DISC", layer, x, y, z, r: 0.4, rgb: mk.color });       // fylld ring av 3DFACE-trianglar (visas fylld i alla visare, även de som inte ritar bredd på polylinjer)       // fylld prick i statusfärg (som i Lägesplan)
+    for (let q = 1; q <= 9; q++) ents.push({ t: "CIRCLE", layer, x, y, z, r: 0.4 * q / 10, rgb: mk.color });   // koncentriska ringar i samma färg: fyller skivan även i visare som bara ritar kanter/ljusare ytor
     ents.push({ t: "CIRCLE", layer: "4D-NAMN", x, y, z, r: 0.4 }); // tunn ring runt (syns mot mörka underlag)
     // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
@@ -168,7 +169,7 @@ function buildObjectsDxf() {
     if (mk.adj && mk.adj.comment) { const [cx, cy] = along(lay[i].da, lay[i].dc - DXF_TEXT_H * 1.2); if (asLines) dxfTextLines(ents, "4D-KOMMENTAR", dxfText(mk.adj.comment), x + cx, y + cy, z, DXF_TEXT_H * 0.8, rr); else ents.push({ t: "TEXT", layer: "4D-KOMMENTAR", x: x + cx, y: y + cy, z, h: DXF_TEXT_H * 0.8, rot, s: dxfText(mk.adj.comment) }); used.add("4D-KOMMENTAR"); }
   });
   if (!ents.length) return null;
-  const layerAci = { "4D-NAMN": exportAciOf(EXPORT_TEXT_COL), "4D-KOMMENTAR": 30, ...layerAciX };
+  const layerAci = { "4D-NAMN": 7, "4D-KOMMENTAR": 7, ...layerAciX };   // text och siffror svarta (ACI 7) i DXF – gult används bara i IFC (Victor 2026-11-13)
   Object.entries(DXF_PHASE_LAYER).forEach(([ph, l]) => { layerAci[l] = dxfAci(phaseColor(ph)); });
   return { text: dxfWrite(ents, [...used], layerAci), n: marks.length };
 }
@@ -224,7 +225,7 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
   g(0, "SECTION"); g(2, "ENTITIES");
   ents.forEach(e => {
     if (e.t === "POINT") { g(0, "POINT"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); }
-    else if (e.t === "CIRCLE") { g(0, "CIRCLE"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.r)); }
+    else if (e.t === "CIRCLE") { g(0, "CIRCLE"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.r)); }
     else if (e.t === "TEXT") {
       g(0, "TEXT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z || 0)); g(40, dxfNum(e.h)); g(1, e.s);
       if (e.rot) g(50, dxfNum(e.rot));
