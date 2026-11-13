@@ -69,9 +69,19 @@ function l3lGlow(id) {
   if (!off && mats.length) { const t0 = performance.now(), step = now => { const k = Math.min(1, (now - t0) / 1400), v = 0.3 + 0.7 * Math.sin(k * Math.PI) * (1 - k * 0.2); mats.forEach(mt => { mt.emissiveIntensity = v; }); l3Render(); if (k < 1 && l3lay.glow === id) l3lay.glowRaf = requestAnimationFrame(step); else mats.forEach(mt => { mt.emissiveIntensity = 0.28; }); }; l3lay.glowRaf = requestAnimationFrame(step); const m = l3b.models.find(x => x.id === id); if (m && typeof l3Status === "function") l3Status(`${m.name} är markerad.`); } else l3Render();
   l3LayersRender();
 }
+const L3L_FOLDIN = new Set(["models", "pc", "site2d", "lyr"]);
+/* "Fäll ihop alla" per block (Victor 2026-11-13): mappar i Trimble Connect, DXF-lagerlistor, 2D-mappar, lager per modell/ritning och klippta lager under molnen. */
+function l3lFoldItems(id) {
+  if (id === "models") return { open: () => l3lay.open.size, shut: () => l3lay.open.clear(), unshut: () => {} };
+  if (id === "pc") { const cs = (typeof l3pc !== "undefined" ? l3pc.clouds : []).filter(c => (c.edits || []).some(e => !e.del)); return { open: () => cs.filter(c => !l3Prefs()["pcFold:" + c.id]).length, shut: () => cs.forEach(c => l3SetPref("pcFold:" + c.id, true)), unshut: () => cs.forEach(c => l3SetPref("pcFold:" + c.id, null)) }; }
+  if (id === "site2d" && typeof l3s !== "undefined") return { open: () => l3s.open.size + (l3s.fold && l3s.fold.has("*") ? 0 : 1), shut: () => { l3s.open.clear(); l3s.fold = new Set(["*"]); }, unshut: () => { l3s.fold = new Set(); } };
+  if (id === "lyr" && typeof l3ly !== "undefined") { const ks = () => [...document.querySelectorAll("[data-lymopen]")].map(b => [b.dataset.lymopen, b.getAttribute("aria-expanded") === "true"]); return { open: () => ks().filter(x => x[1]).length, shut: () => ks().forEach(x => l3ly.st.set(x[0], false)), unshut: () => ks().forEach(x => l3ly.st.set(x[0], true)) }; }
+  return null;
+}
+const l3lFoldShut = id => { const f = l3lFoldItems(id); return !f || f.open() === 0; };
 function l3lSec(id, title, body, extra = "", count = null) {
   const shut = l3lClosed().has(id) && !(l3lay.q || "").trim();
-  return `<section class="v3-lsec ${shut ? "shut" : ""}" data-lsec="${id}"><div class="v3-lg v3-lsec-h"><button type="button" class="v3-lsec-t" data-lsec-t="${id}" aria-expanded="${!shut}"><i>›</i>${title}${count != null ? ` <em class="v3-lsec-n">${count}</em>` : ""}</button>${extra}</div>${shut ? "" : `<div class="v3-lsec-b">${body}</div>`}</section>`;
+  return `<section class="v3-lsec ${shut ? "shut" : ""}" data-lsec="${id}"><div class="v3-lg v3-lsec-h"><button type="button" class="v3-lsec-t" data-lsec-t="${id}" aria-expanded="${!shut}"><i>›</i>${title}${count != null ? ` <em class="v3-lsec-n">${count}</em>` : ""}</button>${L3L_FOLDIN.has(id) ? `<button type="button" class="v3-ic v3-lay-foldin" data-l3l-foldin="${id}" title="Fäll ihop / fäll ut alla mappar och grupper i det här blocket">${L3L_FOLD_ICO(l3lFoldShut(id))}</button>` : ""}${extra}</div>${shut ? "" : `<div class="v3-lsec-b">${body}</div>`}</section>`;
 }
 /* Grupp inne i ett block (Modeller, Punktmoln …), hopfällbar. */
 function l3lSub(id, title, count, body, extra = "") {
@@ -207,6 +217,7 @@ function l3LayersRender() {
   { const b = host.querySelector("#v3IfcLocal"); if (b) b.onclick = () => { if (typeof lokalFilVal === "function") lokalFilVal(".ifc,.ifczip", true, f => lokalFilOppna(f)); }; }
   host.querySelectorAll("[data-l3l-pickdxf]").forEach(b => { b.onclick = () => { const i = host.querySelector("#v3SDxfIn"); if (i) i.click(); }; });
   host.querySelectorAll("[data-l3l-browse]").forEach(b => { b.onclick = () => { const k = b.dataset.l3lBrowse === "1" ? "models" : b.dataset.l3lBrowse; l3SetPref("laySort", "tree"); l3SetPref("layBrowse", k); const c = new Set(l3Prefs().layClosed || []); c.delete(k); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
+  host.querySelectorAll("[data-l3l-foldin]").forEach(b => { b.onclick = e => { e.stopPropagation(); const id = b.dataset.l3lFoldin, f = l3lFoldItems(id); if (!f) return; if (f.open() > 0) f.shut(); else f.unshut(); l3LayersRender(); }; });
   l3lMenusBind(host);
   const fold = host.querySelector("#v3LayFold");
   if (fold) fold.onclick = () => {

@@ -119,6 +119,17 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     if (zp > 1) fail('Zooma till PDF-ritningen: ' + zp);
     console.log('OK: zooma till ritning – DXF-raden och PDF-raden i Lager'); }
   await page.click('#v3PalLayers [data-l3s-open="cad:c1"]');
+  { // Klick på ett DXF-lager markerar det i modellen (orange); klick igen släcker markeringen
+    await page.click('#v3PalLayers [data-l3s-pick="c1|MÅTT"] .v3-lr-n'); await page.waitForTimeout(250);
+    const hi = await page.evaluate(() => ({ sel: l3lyHi.layer, orange: l3.groups.cad.children.some(o => o.material.color.getHex() === 0xff7a00), row: !!document.querySelector('[data-l3s-pick="c1|MÅTT"].v3-lr-pcsel') }));
+    if (hi.sel !== 'MÅTT' || !hi.orange || !hi.row) fail('Klick på DXF-lager ska markera det i modellen: ' + JSON.stringify(hi));
+    await page.click('#v3PalLayers [data-l3s-pick="c1|MÅTT"] .v3-lr-n'); await page.waitForTimeout(250);
+    if (await page.evaluate(() => l3lyHi.id !== '' || l3.groups.cad.children.some(o => o.material.color.getHex() === 0xff7a00))) fail('Andra klicket ska ta bort markeringen');
+    // Fäll ihop alla i blocket 2D-MODELLER
+    await page.click('[data-l3l-foldin="site2d"]'); await page.waitForTimeout(250);
+    if (await page.evaluate(() => !!document.querySelector('[data-l3s-pick]') || l3s.open.size)) fail('Fäll ihop alla ska stänga DXF-lagerlistan');
+    await page.click('[data-l3l-foldin="site2d"]'); await page.click('#v3PalLayers [data-l3s-open="cad:c1"]'); await page.waitForTimeout(150);
+    console.log('OK: DXF-lager markeras vid klick och fäll ihop alla per block'); }
   await page.click('#v3PalLayers [data-l3s="cadl:c1:MÅTT"]');
   await page.waitForTimeout(250);
   const off = await page.evaluate(() => ({ ls: ls('cadl:c1:MÅTT').visible, vis: l3.groups.cad.children.map(o => o.visible) }));
