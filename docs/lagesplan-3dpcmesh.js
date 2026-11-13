@@ -34,14 +34,19 @@ function l3pmDelaunay(X, Y) {
   return out;
 }
 /* Steg 1: ruta för ruta. Returnerar { n, V: [[x,y,z]…] (absoluta), C: [[r,g,b]…], nx, ny, cell (index→hörn eller -1), o: {x0,y0,h} } */
+/* Områden som plattas ut: { poly: [[x,y]…] (absoluta), mode: "flat" | "fill" }. */
+function l3pmAreasPrep(list) { return list.filter(a => a.poly && a.poly.length > 2).map(a => { const xs = a.poly.map(p => p[0]), ys = a.poly.map(p => p[1]); return { poly: a.poly, mode: a.mode === "fill" ? "fill" : "flat", bb: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] }; }); }
+const l3pmInAreas = (AR, x, y) => { for (let i = 0; i < AR.length; i++) { const b = AR[i].bb; if (x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3] && l3pcsIn(AR[i].poly, x, y)) return true; } return false; };
+function l3pmEdgeDist(poly, x, y) { let best = Infinity; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const ax = poly[j][0], ay = poly[j][1], bx = poly[i][0], by = poly[i][1], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)) : 0, d = Math.hypot(ax + t * dx - x, ay + t * dy - y); if (d < best) best = d; } return best; }
 async function l3pmGrid(c, o, onP) {
   const ctr = c.info.center, h = o.cell, cb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), A = o.area || null;
   const bb = A ? { min: [Math.max(cb.min[0], A.bb[0]), Math.max(cb.min[1], A.bb[1]), cb.min[2]], max: [Math.min(cb.max[0], A.bb[2]), Math.min(cb.max[1], A.bb[3]), cb.max[2]] } : cb;
   if (A && (bb.max[0] <= bb.min[0] || bb.max[1] <= bb.min[1])) throw new Error("Området ligger utanför molnet.");
-  if (o.tile) { bb.min = [Math.max(bb.min[0], o.tile[0]), Math.max(bb.min[1], o.tile[1]), bb.min[2]]; bb.max = [Math.min(bb.max[0], o.tile[2]), Math.min(bb.max[1], o.tile[3]), bb.max[2]]; if (bb.max[0] <= bb.min[0] || bb.max[1] <= bb.min[1]) return { V: [], C: [], nx: 0, ny: 0, cell: new Int32Array(0), bb, spikes: 0 }; }
+  if (o.tile) { bb.min = [Math.max(bb.min[0], o.tile[0]), Math.max(bb.min[1], o.tile[1]), bb.min[2]]; bb.max = [Math.min(bb.max[0], o.tile[2]), Math.min(bb.max[1], o.tile[3]), bb.max[2]]; if (bb.max[0] <= bb.min[0] || bb.max[1] <= bb.min[1]) return { V: [], C: [], nx: 0, ny: 0, cell: new Int32Array(0), bb, spikes: 0, AR: [] }; }
   const nx = Math.max(1, Math.ceil((bb.max[0] - bb.min[0]) / h) + 1), ny = Math.max(1, Math.ceil((bb.max[1] - bb.min[1]) / h) + 1);
   if (nx * ny > 5e6) throw new Error("Rutorna blir för många (" + (nx * ny).toLocaleString("sv-SE") + ") – välj större ruta, eller ett mindre område (zon eller bortklippt lager) för att komma ner till 0,1 m.");
   const N = nx * ny, cnt = new Uint32Array(N), sx = new Float64Array(N), sy = new Float64Array(N), sz = new Float64Array(N), sr = new Float32Array(N), sg = new Float32Array(N), sb = new Float32Array(N), mode = o.zmode;
+  const AR = l3pmAreasPrep(o.areas || []);   // områden som ska plattas ut/fyllas: punkterna inom dem (maskiner, skräp) tas inte med
   const pr = typeof l3Prefs === "function" ? l3Prefs() : null, old = pr ? pr.pcMode : undefined; let t0 = performance.now();
   try {
     if (pr && o.color !== "none") pr.pcMode = o.color;
@@ -49,7 +54,7 @@ async function l3pmGrid(c, o, onP) {
       const n = pc.pos.length / 3, P = pc.pos, col = o.color === "none" ? null : l3pcColorsBase(c, pc);
       for (let i = 0; i < n; i++) {
         if (mask && !mask[i]) continue; const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1], z = P[i * 3 + 2] + ctr[2], ix = Math.floor((x - bb.min[0]) / h), iy = Math.floor((y - bb.min[1]) / h); if (ix < 0 || iy < 0 || ix >= nx || iy >= ny) continue; if (A) { if (x < A.bb[0] || x > A.bb[2] || y < A.bb[1] || y > A.bb[3]) continue; let inside = false; for (let q = 0; q < A.polys.length; q++) if (l3pcsIn(A.polys[q], x, y)) { inside = true; break; } if (!inside) continue; }
-        const k = iy * nx + ix, first = cnt[k] === 0, r = col ? col[i * 3] : 160, g = col ? col[i * 3 + 1] : 165, b = col ? col[i * 3 + 2] : 175;
+        if (AR.length && l3pmInAreas(AR, x, y)) continue; const k = iy * nx + ix, first = cnt[k] === 0, r = col ? col[i * 3] : 160, g = col ? col[i * 3 + 1] : 165, b = col ? col[i * 3 + 2] : 175;
         if (mode === "mean" || first) { cnt[k]++; sx[k] += x; sy[k] += y; sz[k] += z; sr[k] += r; sg[k] += g; sb[k] += b; if (mode !== "mean") { sx[k] = x; sy[k] = y; sz[k] = z; sr[k] = r; sg[k] = g; sb[k] = b; } }
         else { cnt[k]++; if (mode === "min" ? z < sz[k] : z > sz[k]) { sx[k] = x; sy[k] = y; sz[k] = z; sr[k] = r; sg[k] = g; sb[k] = b; } }
       }
@@ -68,10 +73,23 @@ async function l3pmGrid(c, o, onP) {
       if (nb.length < 2) { drop[k] = 1; continue; } nb.sort((a, b) => a - b); const med = nb.length % 2 ? nb[nb.length >> 1] : (nb[nb.length / 2 - 1] + nb[nb.length / 2]) / 2; if (Math.abs(zc[k] - med) > o.spike) drop[k] = 1; }
     for (let k = 0; k < N; k++) if (drop[k]) { cnt[k] = 0; spikes++; }
   }
+  /* Utplattade områden: rutorna inom området fylls med en yta härledd ur rutorna precis utanför (ett band ≈ 1,5 m): medelhöjd runt (plan yta) eller interpolerad mellan kanten (lutande yta). */
+  let filledAreas = 0;
+  AR.forEach(a => {
+    const band = Math.max(1.5, 4 * h), ring = [], i0 = Math.max(0, Math.floor((a.bb[0] - band - bb.min[0]) / h)), i1 = Math.min(nx - 1, Math.floor((a.bb[2] + band - bb.min[0]) / h)), j0 = Math.max(0, Math.floor((a.bb[1] - band - bb.min[1]) / h)), j1 = Math.min(ny - 1, Math.floor((a.bb[3] + band - bb.min[1]) / h)), inside = [];
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const k = j * nx + i, x = bb.min[0] + (i + 0.5) * h, y = bb.min[1] + (j + 0.5) * h;
+      if (l3pcsIn(a.poly, x, y)) { inside.push(k); continue; } if (!cnt[k]) continue; if (l3pmEdgeDist(a.poly, x, y) <= band) { const d = mode === "mean" ? cnt[k] : 1; ring.push({ x: o.type === "grid" ? x : sx[k] / d, y: o.type === "grid" ? y : sy[k] / d, z: sz[k] / d, r: sr[k] / d, g: sg[k] / d, b: sb[k] / d }); } }
+    if (ring.length < 3 || !inside.length) return;
+    const stride = o.type === "grid" ? 1 : Math.max(1, Math.ceil(Math.sqrt(inside.length / 25000))), rs = ring.length > 600 ? ring.filter((_, q) => q % Math.ceil(ring.length / 600) === 0) : ring;
+    let mz = 0, mr = 0, mg = 0, mb = 0; ring.forEach(q => { mz += q.z; mr += q.r; mg += q.g; mb += q.b; }); mz /= ring.length; mr /= ring.length; mg /= ring.length; mb /= ring.length;
+    inside.forEach(k => { const ix = k % nx, iy = (k / nx) | 0; if (stride > 1 && (ix % stride || iy % stride)) return; const x = bb.min[0] + (ix + 0.5) * h, y = bb.min[1] + (iy + 0.5) * h; let z = mz, r = mr, g = mg, b = mb;
+      if (a.mode === "fill") { let w = 0, zz = 0, rr = 0, gg = 0, bq = 0; rs.forEach(q => { const d2 = (q.x - x) ** 2 + (q.y - y) ** 2 + 0.01, ww = 1 / (d2 * d2); w += ww; zz += ww * q.z; rr += ww * q.r; gg += ww * q.g; bq += ww * q.b; }); z = zz / w; r = rr / w; g = gg / w; b = bq / w; }
+      cnt[k] = 1; sx[k] = x; sy[k] = y; sz[k] = z; sr[k] = r; sg[k] = g; sb[k] = b; });
+    filledAreas++; });
   const V = [], C = [], cell = new Int32Array(N).fill(-1);
   for (let k = 0; k < N; k++) { if (!cnt[k]) continue; const d = mode === "mean" ? cnt[k] : 1, ix = k % nx, iy = (k / nx) | 0; cell[k] = V.length;
     V.push(o.type === "grid" ? [bb.min[0] + (ix + 0.5) * h, bb.min[1] + (iy + 0.5) * h, sz[k] / d] : [sx[k] / d, sy[k] / d, sz[k] / d]); C.push([sr[k] / d, sg[k] / d, sb[k] / d].map(v => Math.max(0, Math.min(255, Math.round(v))))); }
-  return { V, C, nx, ny, cell, bb, spikes };
+  return { V, C, nx, ny, cell, bb, spikes, filledAreas, AR };
 }
 /* Steg 2: trianglar. Returnerar { V, C, F (0-baserade hörnindex), FC (färg per triangel) } */
 async function l3pmBuild(c, o, onP) {
@@ -83,12 +101,12 @@ async function l3pmBuild(c, o, onP) {
   else { if (onP) onP("trianglerar (Delaunay)", 0.75); await l3pcsYield(); F = l3pmDelaunay(Float64Array.from(g.V, v => v[0]), Float64Array.from(g.V, v => v[1])); }
   const maxE = o.maxEdge > 0 ? o.maxEdge * o.maxEdge : Infinity, keep = [], FC = [], V = g.V; let area = 0;
   for (let i = 0; i < F.length; i += 3) {
-    const a = V[F[i]], b = V[F[i + 1]], d = V[F[i + 2]], e = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2; if (e(a, b) > maxE || e(b, d) > maxE || e(d, a) > maxE) continue;
+    const a = V[F[i]], b = V[F[i + 1]], d = V[F[i + 2]], e = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2; if ((e(a, b) > maxE || e(b, d) > maxE || e(d, a) > maxE) && !(g.AR.length && l3pmInAreas(g.AR, (a[0] + b[0] + d[0]) / 3, (a[1] + b[1] + d[1]) / 3))) continue;
     keep.push(F[i], F[i + 1], F[i + 2]); const ca = g.C[F[i]], cb = g.C[F[i + 1]], cc = g.C[F[i + 2]]; FC.push([0, 1, 2].map(k => Math.round((ca[k] + cb[k] + cc[k]) / 3)));
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2]; area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
   }
   if (!keep.length) throw new Error("Alla trianglar föll bort – öka största kantlängd eller välj större ruta.");
-  return { V: g.V, C: g.C, F: keep, FC, area, bb: g.bb, spikes: g.spikes };
+  return { V: g.V, C: g.C, F: keep, FC, area, bb: g.bb, spikes: g.spikes, filledAreas: g.filledAreas || 0 };
 }
 /* Lägsta höjd utan spridning av miljontals värden (Math.min(...) ger "Maximum call stack size exceeded"). */
 function l3pmMinZ(r) { let m = Infinity; for (let i = 0; i < r.V.length; i++) if (r.V[i][2] < m) m = r.V[i][2]; return m; }
@@ -178,6 +196,35 @@ function l3pmPreview(r, wire) {
   if (wire) { const w = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x0f172a, wireframe: true, transparent: true, opacity: 0.35 })); w.raycast = () => {}; w.frustumCulled = false; grp.add(w); }
   l3pmPrev.grp = grp; l3.scene.add(grp); l3Render();
 }
+/* ---- Markera områden i 3D att platta ut (maskiner, skräp) ---- */
+const l3pmAr = { grp: null, pick: null };
+function l3pmDrawAreas(list, live) {
+  if (l3pmAr.grp) { l3.scene.remove(l3pmAr.grp); l3pmAr.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3pmAr.grp = null; }
+  const g = new THREE.Group(), O = l3.O, zOf = (x, y) => { const m = l3pmPrev.grp && l3pmPrev.res; return null; };
+  const addLoop = (poly, z, col, closed) => { if (poly.length < 2) return; const pts = poly.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], (p[2] != null ? p[2] : z) - O[2] + 0.15)); if (closed) pts.push(pts[0].clone()); const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: col, depthTest: false })); l.renderOrder = 15; l.raycast = () => {}; g.add(l); };
+  list.forEach((a, i) => addLoop(a.poly, a.z != null ? a.z : 0, a.mode === "fill" ? 0x2563eb : 0xdc2626, true));
+  if (live && live.length) addLoop(live, 0, 0xf59e0b, false);
+  l3pmAr.grp = g; l3.scene.add(g); l3Render();
+}
+/* En punkt i 3D: först den förhandsvisade meshen, annars molnet. Returnerar [x, y, z] absolut eller null. */
+function l3pmPickPoint(e) {
+  const r = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);
+  if (l3pmPrev.grp && l3pmPrev.grp.children[0]) { const hits = []; THREE.Mesh.prototype.raycast.call(l3pmPrev.grp.children[0], rc, hits); hits.sort((a, b) => a.distance - b.distance); if (hits[0]) return [hits[0].point.x + l3.O[0], hits[0].point.y + l3.O[1], hits[0].point.z + l3.O[2]]; }
+  const pk = typeof l3pcPick === "function" ? l3pcPick(e) : null; return pk ? [pk.point.x + l3.O[0], pk.point.y + l3.O[1], pk.point.z + l3.O[2]] : null;
+}
+/* kind "poly": klicka hörnen, Enter/dubbelklick avslutar; "circle": klicka mitten (radie i m). done(poly|null). */
+function l3pmStartPick(kind, radius, done, onLive) {
+  l3pmStopPick(); const dom = l3.renderer.domElement, pts = []; dom.style.cursor = "crosshair";
+  const fin = ok => { const res = ok ? pts.map(p => [p[0], p[1], p[2]]) : null; l3pmStopPick(); done(res); };
+  const down = e => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); const p = l3pmPickPoint(e); if (!p) { l3Status("Ingen punkt här – tryck på meshen eller molnet.", true); return; }
+    if (kind === "circle") { const poly = []; for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; poly.push([p[0] + Math.cos(a) * radius, p[1] + Math.sin(a) * radius, p[2]]); } l3pmStopPick(); done(poly); return; }
+    if (pts.length >= 3 && Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1]) < Math.max(0.5, radius * 0.2) ) { fin(true); return; }
+    pts.push(p); onLive && onLive(pts); l3Status(`Område: ${pts.length} hörn. Fortsätt klicka, Enter eller klick vid första hörnet avslutar, Esc avbryter.`); };
+  const key = e => { if (e.key === "Escape") { e.stopPropagation(); fin(false); } else if (e.key === "Enter") { e.stopPropagation(); e.preventDefault(); if (pts.length >= 3) fin(true); } };
+  dom.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); l3pmAr.pick = { dom, down, key };
+  l3Status(kind === "circle" ? `Cirkel: tryck på mitten av maskinen/skräpet (radie ${radius} m). Esc avbryter.` : "Område: tryck hörnen runt maskinen/skräpet. Enter avslutar, Esc avbryter.");
+}
+function l3pmStopPick() { const p = l3pmAr.pick; if (!p) return; p.dom.style.cursor = ""; p.dom.removeEventListener("pointerdown", p.down, true); window.removeEventListener("keydown", p.key, true); l3pmAr.pick = null; }
 function l3pmDialog(id) {
   const c = l3pcGet(id); if (!c || l3pm.busy) return; l3pm.res = null;
   const bb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), w = bb.max[0] - bb.min[0], h = bb.max[1] - bb.min[1], cell0 = Math.max(0.1, Math.round(Math.sqrt(w * h / 100000) * 20) / 20);   // ≈ 100 000 rutor som start
@@ -193,6 +240,9 @@ function l3pmDialog(id) {
     ${row("Största kantlängd (m, 0 = ingen)", `<input type="number" id="pmEdge" min="0" step="0.5" value="${Math.round(cell0 * 3 * 10) / 10}" style="width:80px">`)}
     ${row("Ta bort spikar (m, 0 = av)", `<input type="number" id="pmSpike" min="0" step="0.1" value="1" title="Rutor vars höjd avviker mer än så från grannrutorna tas bort (punkter som sticker iväg, flygande brus)" style="width:80px">`)}
     ${row("Färger i IFC", `<select id="pmIfcCols" title="IFC får en färgad yta per färg i paletten (mer färger = mer exakt men tyngre fil)"><option value="32">32</option><option value="64">64</option><option value="128" selected>128</option><option value="256">256</option><option value="512">512</option></select>`)}
+    <div id="pmAreas" style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>Platta ut områden</b><span style="color:#64748b;font-size:12px">maskiner och skräp</span></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button type="button" id="pmArPoly" title="Klicka hörnen runt området i 3D">＋ Rita område</button><button type="button" id="pmArCirc" title="Klicka mitt på maskinen – området blir en cirkel">＋ Cirkel</button><label style="font-size:12px">radie <input type="number" id="pmArR" value="5" min="0.5" step="0.5" style="width:56px"> m</label></div>
+      <div id="pmArList" style="display:flex;flex-direction:column;gap:4px"></div></div>
     ${row("Färg", `<select id="pmCol">${modes.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
     <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj, ner till 0,1 m. För så fin ruta: välj en zon under Område (eller ett bortklippt lager) så att meshen blir hanterbar. Förhandsvisningen i 3D uppdateras direkt när du ändrar något. Varje triangel får medelfärgen av sina hörn. Spikfilter tar bort rutor som sticker iväg från grannarna så att inga taggar uppstår.</div>
     <div id="pmOut" style="color:#334155"></div>
@@ -205,7 +255,13 @@ function l3pmDialog(id) {
   const est = () => { const t = tiledInfo(), bad = t.tiles > L3PM_MAXTILES; q("#pmEst").textContent = t.n ? `≈ ${t.n.toLocaleString("sv-SE")} rutor${t.tiled ? ` → cirka ${t.tiles} modeller${bad ? " – för många, välj större ruta eller mindre område" : ""}` : ""}` : ""; q("#pmEst").style.color = bad ? "#b91c1c" : "#64748b"; };
   q("#pmArea").addEventListener("change", est); q("#pmType").addEventListener("change", est); let edgeTouched = false; q("#pmEdge").oninput = () => { edgeTouched = true; };
   q("#pmCell").oninput = () => { est(); const v = Number(q("#pmCell").value); if (!edgeTouched && v > 0) q("#pmEdge").value = Math.round(v * 3 * 10) / 10; }; est();
-  const closeAll = () => { clearTimeout(timer);  l3pmPreviewClear(); l3pmCloudHide(false); ov.remove(); l3Render(); }; q("#pmX").onclick = () => { if (!l3pm.busy) closeAll(); };
+  const areas = []; l3pm.areas = areas;
+  const drawAr = live => l3pmDrawAreas(areas, live), renderAr = () => { q("#pmArList").innerHTML = areas.length ? areas.map((a, i) => `<div style="display:flex;gap:6px;align-items:center"><span style="color:${a.mode === "fill" ? "#2563eb" : "#dc2626"}">▮</span><span style="flex:1">Område ${i + 1}</span><select data-armode="${i}" title="Plan yta på medelhöjden runt området, eller yta som följer kanten (lutning)"><option value="flat" ${a.mode === "flat" ? "selected" : ""}>Medelhöjd runt</option><option value="fill" ${a.mode === "fill" ? "selected" : ""}>Fyll mellan kanten</option></select><button type="button" data-ardel="${i}" title="Ta bort området">✕</button></div>`).join("") : `<span style="color:#94a3b8;font-size:12px">Inga områden. Punkterna inom ett område tas bort och ersätts med en yta härledd ur punkterna precis utanför.</span>`;
+    q("#pmArList").querySelectorAll("[data-armode]").forEach(el => el.onchange = () => { areas[+el.dataset.armode].mode = el.value; drawAr(); renderAr(); sched(150); }); q("#pmArList").querySelectorAll("[data-ardel]").forEach(el => el.onclick = () => { areas.splice(+el.dataset.ardel, 1); drawAr(); renderAr(); sched(150); }); };
+  const addArea = poly => { if (!poly) { drawAr(); l3Status("Avbrutet."); return; } areas.push({ poly, mode: "flat" }); drawAr(); renderAr(); l3Status(`Område ${areas.length} tillagt – meshen räknas om.`); sched(100); };
+  q("#pmArPoly").onclick = () => l3pmStartPick("poly", Number(q("#pmArR").value) || 5, addArea, live => drawAr(live)); q("#pmArCirc").onclick = () => l3pmStartPick("circle", Number(q("#pmArR").value) || 5, addArea);
+  renderAr();
+  const closeAll = () => { l3pmStopPick(); l3pmDrawAreas([], null); clearTimeout(timer);  l3pmPreviewClear(); l3pmCloudHide(false); ov.remove(); l3Render(); }; q("#pmX").onclick = () => { if (!l3pm.busy) closeAll(); };
   q("#pmHide").onchange = () => l3pmCloudHide(q("#pmHide").checked); q("#pmWire").onchange = () => { if (l3pm.res) l3pmPreview(l3pm.res, q("#pmWire").checked); };
   const base = () => `${l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""))} – mesh`;
   /* Live: varje ändring av valen bygger om förhandsvisningen (väntar in att man slutat ändra, och en pågående körning avslutas först). */
@@ -213,7 +269,7 @@ function l3pmDialog(id) {
   q("#pmGo").onclick = async () => {
     if (l3pm.busy) return; l3pm.busy = true; q("#pmGo").disabled = true; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
     try {
-      const o = { type: q("#pmType").value, cell: Math.max(0.1, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0), area: areaSel(), ifcCols: Number(q("#pmIfcCols").value) || 128 };
+      const o = { type: q("#pmType").value, cell: Math.max(0.1, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0), area: areaSel(), areas: areas.map(a => ({ poly: a.poly.map(p => [p[0], p[1]]), mode: a.mode })), ifcCols: Number(q("#pmIfcCols").value) || 128 };
       const ti = tiledInfo(); let oo = o;
       if (ti.tiled) { const [aw, ah] = areaWH(); oo = Object.assign({}, o, { cell: Math.max(o.cell, Math.round(Math.sqrt(aw * ah / 250000) * 20) / 20) }); }   // förhandsvisningen är grövre när meshen delas i flera modeller
       const r = await l3pmBuild(c, oo, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = oo; if (ti.tiled) r.tiled = { opts: o, tiles: ti.tiles, previewCell: oo.cell }; l3pm.res = r; l3pmPreview(r, q("#pmWire").checked); if (typeof l3Zoom === "function") { /* behåll vyn */ }

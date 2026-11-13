@@ -82,6 +82,30 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       return { tiles: pl.tiles.length, tx: pl.tx, made: x.made, names, faces, tri: x.tri }; });
     if (TL.tiles < 2 || TL.made !== TL.tiles || TL.names.length !== TL.tiles || !TL.names.every(n => /\.dxf$/.test(n)) || TL.faces !== TL.tri || TL.faces < 7000) fail('Flera modeller: ' + JSON.stringify(TL));
     console.log('OK: stor mesh delas i flera modeller (ZIP med en DXF per modell)', JSON.stringify(TL));
+    // 2f. Platta ut områden: en maskin (kulle 3 m) ersätts med plan yta på medelhöjden runt, eller yta mellan kanten
+    const AA = await page.evaluate(async () => { const cx = 637050, cy = 849020, cz = 100, n = 80 * 80, pos = new Float32Array(n * 3), rgb = new Uint8Array(n * 3), inten = new Uint8Array(n);
+      for (let i = 0; i < n; i++) { const x = (i % 80) * 0.5 - 20, y = ((i / 80) | 0) * 0.5 - 20, d = Math.hypot(x, y); pos.set([x, y, (d < 3 ? 3 : 0) + x * 0.02], i * 3); rgb.set([d < 3 ? 255 : 90, 120, 60], i * 3); }
+      const info = { n, total: n, center: [cx, cy, cz], min: [cx - 20, cy - 20, cz], max: [cx + 20, cy + 20, cz + 4], rgb: true, intensity: false, format: 'LAS' }; const c = l3pcBuild({ id: 'pc:ma', name: 'Maskin.laz' }, { info, chunks: [{ pos, rgb, inten }] });
+      const poly = Array.from({ length: 32 }, (_, i) => [cx + Math.cos(i / 32 * 6.283) * 4.2, cy + Math.sin(i / 32 * 6.283) * 4.2]), maxZ = r => Math.max(...r.V.filter(v => Math.hypot(v[0] - cx, v[1] - cy) < 3.2).map(v => v[2] - cz));
+      const base = { type: 'tin', cell: 0.5, zmode: 'mean', maxEdge: 1.5, color: 'rgb', spike: 0 };
+      const none = await l3pmBuild(c, base), flat = await l3pmBuild(c, Object.assign({}, base, { areas: [{ poly, mode: 'flat' }] })), fill = await l3pmBuild(c, Object.assign({}, base, { areas: [{ poly, mode: 'fill' }] })), grid = await l3pmBuild(c, Object.assign({}, base, { type: 'grid', areas: [{ poly, mode: 'flat' }] }));
+      const holeTris = r => { let k = 0; for (let i = 0; i < r.F.length; i += 3) { const a = r.V[r.F[i]], b = r.V[r.F[i + 1]], d = r.V[r.F[i + 2]], mx = (a[0] + b[0] + d[0]) / 3, my = (a[1] + b[1] + d[1]) / 3; if (Math.hypot(mx - cx, my - cy) < 3) k++; } return k; };
+      return { none: Math.round(maxZ(none) * 10) / 10, flat: Math.round(maxZ(flat) * 10) / 10, fill: Math.round(maxZ(fill) * 10) / 10, grid: Math.round(maxZ(grid) * 10) / 10, filled: flat.filledAreas, holeFlat: holeTris(flat), holeFill: holeTris(fill) }; });
+    if (AA.none < 2.9 || AA.flat > 0.5 || AA.fill > 0.5 || AA.grid > 0.5 || AA.filled !== 1 || AA.holeFlat < 20 || AA.holeFill < 20) fail('Platta ut område: ' + JSON.stringify(AA));
+    await page.evaluate(() => l3pcRemove('pc:ma'));
+    console.log('OK: maskinen plattas ut (medelhöjd runt / fyll mellan kanten / rutnät) och ytan är sluten', JSON.stringify(AA));
+    // 2g. Markera område i 3D via dialogen (cirkel runt en klickad punkt)
+    await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
+    await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');
+    await page.waitForFunction(() => /trianglar/.test(document.getElementById('pmOut').textContent), null, { timeout: 30000 });
+    await page.evaluate(() => { const c = l3pc.clouds[0], t = new THREE.Vector3(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2]); l3.camera.position.set(t.x, t.y - 0.01, t.z + 60); l3.orbit.target.copy(t); l3.camera.lookAt(t); l3.orbit.update && l3.orbit.update(); l3Render(); });
+    await page.waitForTimeout(300);
+    const sp = await page.evaluate(() => { const c = l3pc.clouds[0], p = new THREE.Vector3(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2]).project(l3.camera), r = l3.renderer.domElement.getBoundingClientRect(); return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height]; });
+    await page.click('#pmArCirc'); await page.mouse.click(sp[0], sp[1]); await page.waitForTimeout(800);
+    const AR2 = await page.evaluate(() => ({ n: l3pm.areas.length, drawn: !!(l3pmAr.grp && l3pmAr.grp.children.length), list: document.querySelectorAll('[data-armode]').length })); if (AR2.n !== 1 || !AR2.drawn || AR2.list !== 1) fail('Cirkel-område via klick: ' + JSON.stringify(AR2));
+    await page.selectOption('[data-armode="0"]', 'fill'); await page.click('[data-ardel="0"]'); const AR3 = await page.evaluate(() => ({ n: l3pm.areas.length })); if (AR3.n !== 0) fail('Ta bort område');
+    console.log('OK: område markeras med klick i 3D (cirkel), läge kan ändras, tas bort', JSON.stringify(AR2));
+    await page.click('#pmX'); await page.waitForTimeout(200);
     // 3. Dialogen: skapa, DXF, IFC, i modellen
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');
