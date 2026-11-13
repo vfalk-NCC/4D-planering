@@ -894,6 +894,7 @@ function l3PlacementGroup(p) {
     let c = new THREE.Color(color);
     if (tint && !(transp > 0)) { const hs = {}, hp = {}; tint.getHSL(hs); c.getHSL(hp); if (hp.l > 0.16 && hp.l < 0.92 && !(hp.s < 0.08 && (hp.l < 0.3 || hp.l > 0.8))) c.setHSL(hs.h, hs.s, hp.l); }   // färgväljaren färgar hela objektet men behåller delarnas ljushet (däck, glas och vitt står kvar)
     const mat = new THREE.MeshLambertMaterial({ color: c, transparent: transp > 0 || op < 1, opacity: (1 - (transp || 0)) * op, depthWrite: !(transp > 0.5 || op < 0.6), side: THREE.DoubleSide });
+    if (geo.getAttribute && geo.getAttribute("color")) { mat.vertexColors = true; mat.color.set(0xffffff); }   // färg per yta (mesh från punktmoln)
     if (p.tex && !(transp > 0) && typeof l3texPlaced === "function") l3texPlaced(mat, p.tex); // textur (Victor 2026-10-28)
     const m = new THREE.Mesh(geo, mat); m.userData.placeId = p.id; m.userData.mat0 = { t: mat.transparent, o: mat.opacity, d: mat.depthWrite }; grp.add(m); return m;
   };
@@ -930,7 +931,7 @@ function l3PlacementGroup(p) {
     if (p.pts) local.pts = p.pts.map(q => [q[0] - p.x, q[1] - p.y, (q[2] || 0) - (Number(p.z) || 0)]);
     if ((lib.crew || lib.smart) && typeof smEditorBuild === "function") { // bemanningen och de smarta objekten: PBR-material och texturskyltar (place-smart.js)
       smEditorBuild(p, grp, placeParts(local, 48));
-    } else placeParts(local, 48).forEach(pt => { const m = add(pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1), pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
+    } else placeParts(local, 48).forEach(pt => { const geo0 = pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1); if (pt.faceCols && pt.tris && pt.faceCols.length === pt.tris.faces.length * 3) { const cc = new Float32Array(pt.tris.faces.length * 9); for (let i = 0; i < pt.tris.faces.length; i++) for (let j = 0; j < 3; j++) { cc[i * 9 + j * 3] = pt.faceCols[i * 3] / 255; cc[i * 9 + j * 3 + 1] = pt.faceCols[i * 3 + 1] / 255; cc[i * 9 + j * 3 + 2] = pt.faceCols[i * 3 + 2] / 255; } geo0.setAttribute("color", new THREE.BufferAttribute(cc, 3)); } const m = add(geo0, pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
     if (lib.mod && typeof modEditorExtras === "function") modEditorExtras(p, grp); // konturer och linjer för ritad geometri
     if (lib.fence && (p.pts || []).length === 1) add(prism([[-0.05, -0.05], [0.05, -0.05], [0.05, 0.05], [-0.05, 0.05]], 0, Number(p.H) || 2), p.color || lib.color, 0);
   }

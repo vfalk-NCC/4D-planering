@@ -23,7 +23,7 @@ function modLocalMesh(p) {
   const key = p.id + "|" + m.rev; let c = modCache.get(key); if (c) return c;
   try {
     if (m.k === "curve") c = MG.tube(m.pts || [], Number(m.w) || 0.03, !!m.closed);
-    else if (m.k === "mesh") c = { pts: m.pts || [], faces: m.faces || [] };
+    else if (m.k === "mesh") { c = { pts: m.pts || [], faces: m.faces || [] }; if (m.pal && m.fci) { try { const bin = atob(m.fci), cols = new Uint8Array(c.faces.length * 3); for (let i = 0; i < c.faces.length; i++) { const h = parseInt(String(m.pal[bin.charCodeAt(i)] || "#9ca3af").slice(1), 16); cols[i * 3] = h >> 16 & 255; cols[i * 3 + 1] = h >> 8 & 255; cols[i * 3 + 2] = h & 255; } c.fc = cols; } catch (e) { /* utan färger */ } } }   // färg per yta (Punktmoln → mesh): palett + ett palettindex per triangel
     else if (m.k === "face") c = MG.faceMesh(m.pl, m.loops);
     else if (m.k === "solid") c = Math.abs(m.d) < 1e-4 ? MG.faceMesh(m.pl, m.loops) : MG.solidMesh(m.pl, m.loops, m.d);
   } catch (e) { console.warn("Ritat objekt", e); c = null; }
@@ -38,7 +38,7 @@ function modParts(p, z) {
   const pts = c.pts.map(q => [x0 + q[0] * cr - q[1] * sr, y0 + q[0] * sr + q[1] * cr, z + q[2]]);
   let ax = Infinity, ay = Infinity, bx = -Infinity, by = -Infinity, z0 = Infinity, z1 = -Infinity;
   pts.forEach(q => { ax = Math.min(ax, q[0]); ay = Math.min(ay, q[1]); bx = Math.max(bx, q[0]); by = Math.max(by, q[1]); z0 = Math.min(z0, q[2]); z1 = Math.max(z1, q[2]); });
-  return [{ tris: { pts, faces: c.faces }, poly: [[ax, ay], [bx, ay], [bx, by], [ax, by]], z0, z1: Math.max(z1, z0 + 0.001), role: "body", transp: 0, color: p.color || (p.m.k === "curve" ? "#334155" : "#a8b3c4") }];
+  return [{ tris: { pts, faces: c.faces }, faceCols: c.fc || null, poly: [[ax, ay], [bx, ay], [bx, by], [ax, by]], z0, z1: Math.max(z1, z0 + 0.001), role: "body", transp: 0, color: p.color || (p.m.k === "curve" ? "#334155" : "#a8b3c4") }];
 }
 /* Kanter och linjer i 3D-editorn (utöver nätet): ytans/kroppens konturer och kurvans linje. Lokala koordinater (gruppen ligger vid ankarpunkten). */
 function modEditorExtras(p, grp) {
