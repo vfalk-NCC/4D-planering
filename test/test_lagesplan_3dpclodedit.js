@@ -65,7 +65,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
         const wk = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); return new Promise((res, rej) => { wk.onmessage = e => { wk.terminate(); res(e.data); }; wk.onerror = e => { wk.terminate(); rej(new Error(e.message)); }; wk.postMessage(buf, [buf]); }); };
       const kl = await l3pxExport(c, 'kept', 'redigerad'), rl = await l3pxExport(c, 0, 'Tak-skräp'), KL = await decode(kl.blob), RL = await decode(rl.blob);
       out.lazKept = KL.cnt === kl.count && KL.zmax <= 80.02 && KL.cnt > 100; out.lazRemoved = RL.cnt === rl.count && RL.zmin > 79.9 - 0.2 && RL.cnt + KL.cnt === 2000; out.lazSmaller = kl.blob.size < (227 + kl.count * 26) * 0.95;
-      const las = await l3pxExport(c, 'kept', 'las', null, { format: 'las' }); out.lasStill = las.blob.size === 227 + las.count * 26 && las.count === kl.count; }
+      const las = await l3pxExport(c, 'kept', 'las', null, { format: 'las' }); out.lasStill = las.blob.size === 227 + las.count * 26 && las.count === kl.count;
+      const sp = await l3pcsRun(c, { strips: { axis: 'x', x0: c.info.center[0] - 1e6, y0: 0, cuts: [1e6] } }); out.stripsFullRes = sp.files.length === 1 && sp.files[0].n === kl.count && /\.laz$/.test(sp.files[0].name); out.stripsN = [sp.files.map(f => f.n), kl.count]; }
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 500)); process.exit(1); }

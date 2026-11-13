@@ -2,7 +2,7 @@
    • Lager → Punktmoln → ⋯ på molnet → "Dela upp efter WBS-zoner…". Nivå: zonerna (7421 …) eller överzonerna (742 …, från zonernas WBS-fält).
    • Varje punkt hamnar i första zonen vars yta (ritad i 2D, i x/y) innehåller den – ingen punkt dubbleras. Det som ligger utanför alla zoner blir en egen fil ("Utanför zoner").
    • Filerna är LAZ (LASzip-komprimerad LAS 1.2, punktformat 2: läge, intensitet, färg) i modellens koordinater (SWEREF), med färg som i skanningen (annars grå av intensiteten). Allt läggs i en ZIP som hämtas.
-   • Delas det som är inläst (Lager → Inställningar → Punkter per moln styr hur många punkter). Höjdjusteringen (±) för visning skrivs inte in i filerna. */
+   • Alla punkter som molnet har i modellen följer med (okträdsmoln läses ur filen, redigeringar respekteras) – ingen gallring. Höjdjusteringen (±) för visning skrivs inte in i filerna. */
 const l3pcs = { busy: false };
 /* Grupperna som polygoner i modellkoordinater: [{ name, polys: [[x,y]…], bb }]. */
 function l3pcsGroups(level) {
@@ -77,6 +77,41 @@ async function l3pcsLaz(c, ids, g, count, name) {
 }
 const l3pcsFile = s => String(s).replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
 /* Kör hela uppdelningen: returnerar { files: [{ name, n, bytes }], zip: Blob }. opts: { level, rest } */
+/* LAZ-uppdelning i ett svep med full upplösning (Victor 2026-11-13: "behåll samma upplösning alltid på laz-exporterna som molnen är i modellen"):
+   alla punkter som molnet har i modellen följer med, aldrig en gallrad delmängd. Okträdsmoln (LOD) läses nod för nod ur filen (inte bara det som råkar vara inläst på skärmen)
+   och redigeringar (borttagna punkter) respekteras. Varje grupp får sin egen LAZ-skrivare; punkterna skickas direkt dit de hör hemma. classify(P, n, ctr, id) fyller id (grupp) per punkt. */
+async function* l3pcsPieces(c) {
+  if (c.lod && typeof l3pxPieces === "function") { for await (const { o, f } of l3pxPieces(c)) yield { o, mask: l3pxMask(c, o, "kept"), f }; return; }
+  for (let i = 0; i < c.chunks.length; i++) yield { o: c.chunks[i], mask: null, f: (i + 1) / c.chunks.length };
+}
+async function l3pcsLazStream(c, G, classify, nameOf, onP) {
+  l3pcsLib = l3pcsLib || import("./vendor/las-laz-js/src/index.js"); const lib = await l3pcsLib, ctr = c.info.center, hasRgb = !!c.info.rgb, W = new Array(G).fill(null), counts = new Array(G).fill(0);
+  const open = async g => { const st = { buf: new Uint8Array(1 << 20), len: 0 }; st.sink = { write: async (bytes, pos) => { const end = pos + bytes.length; if (end > st.buf.length) { const gg = new Uint8Array(Math.max(end, st.buf.length * 2)); gg.set(st.buf.subarray(0, st.len)); st.buf = gg; } st.buf.set(bytes, pos); if (end > st.len) st.len = end; } };
+    st.w = await lib.createLasWriter(st.sink, { version: "1.2", pointFormat: 2, compress: true, scale: { x: 0.001, y: 0.001, z: 0.001 }, offset: { x: Math.floor(ctr[0]), y: Math.floor(ctr[1]), z: Math.floor(ctr[2]) } }); W[g] = st; return st; };
+  let t0 = performance.now();
+  try {
+    for await (const { o, mask, f } of l3pcsPieces(c)) {
+      const n = o.pos.length / 3, id = new Uint16Array(n), P = o.pos; classify(P, n, ctr, id); const cnt = new Map();
+      for (let i = 0; i < n; i++) { if (mask && !mask[i]) id[i] = 65535; else if (id[i] !== 65535) cnt.set(id[i], (cnt.get(id[i]) || 0) + 1); }
+      for (const [g, m] of cnt) {
+        const st = W[g] || await open(g), x = new Float64Array(m), y = new Float64Array(m), z = new Float64Array(m), it = new Uint16Array(m), r = new Uint16Array(m), gr = new Uint16Array(m), b = new Uint16Array(m); let j = 0;
+        for (let i = 0; i < n; i++) { if (id[i] !== g) continue; x[j] = P[i * 3] + ctr[0]; y[j] = P[i * 3 + 1] + ctr[1]; z[j] = P[i * 3 + 2] + ctr[2]; const inten = o.inten ? o.inten[i] : 0; it[j] = inten * 257;
+          if (hasRgb && o.rgb) { r[j] = o.rgb[i * 3] * 257; gr[j] = o.rgb[i * 3 + 1] * 257; b[j] = o.rgb[i * 3 + 2] * 257; } else { const v = Math.min(255, 40 + inten * 0.84) * 257; r[j] = gr[j] = b[j] = v; } j++; }
+        await st.w.writePoints({ count: m, x, y, z, intensity: it, red: r, green: gr, blue: b }); counts[g] += m;
+      }
+      if (onP && performance.now() - t0 > 200) { onP(f); t0 = performance.now(); await l3pcsYield(); }
+    }
+    for (let g = 0; g < G; g++) if (W[g]) await W[g].w.close();
+  } catch (e) { for (let g = 0; g < G; g++) if (W[g]) { try { await W[g].w.close(); } catch (e2) { /* stoppad */ } } throw e; }
+  const files = []; for (let g = 0; g < G; g++) if (W[g]) files.push({ g, n: counts[g], group: nameOf(g), bytes: W[g].buf.slice(0, W[g].len) });
+  return files;
+}
+const l3pcsClassZones = groups => (P, n, ctr, id) => { const G = groups.length;
+  for (let i = 0; i < n; i++) { const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1]; let g = G;
+    for (let k = 0; k < G; k++) { const b = groups[k].bb; if (x < b[0] || x > b[2] || y < b[1] || y > b[3]) continue; const ps = groups[k].polys; let hit = false; for (let q = 0; q < ps.length; q++) if (l3pcsIn(ps[q], x, y)) { hit = true; break; } if (hit) { g = k; break; } }
+    id[i] = g; } };
+const l3pcsClassStrips = st => (P, n, ctr, id) => { const ux = st.axis === "y" ? 0 : 1, uy = st.axis === "y" ? 1 : 0, cuts = st.cuts;
+  for (let i = 0; i < n; i++) { const t = (P[i * 3] + ctr[0] - st.x0) * ux + (P[i * 3 + 1] + ctr[1] - st.y0) * uy; let g = 0; while (g < cuts.length && t >= cuts[g]) g++; id[i] = g; } };
 /* Jämn delning i remsor (strips): { axis: "x"|"y", x0, y0, cuts: [m från början, stigande] }. Grupp = antal snitt som ligger före punkten. */
 async function l3pcsAssignStrips(c, st, onP) {
   const ctr = c.info.center, ux = st.axis === "y" ? 0 : 1, uy = st.axis === "y" ? 1 : 0, cuts = st.cuts, G = cuts.length + 1, counts = new Array(G).fill(0), ids = [];
@@ -89,7 +124,12 @@ async function l3pcsAssignStrips(c, st, onP) {
   return { ids, counts };
 }
 async function l3pcsRun(c, opts, onP) {
-  if (opts.strips) {
+  if (opts.strips && opts.format !== "las") {
+    const st = opts.strips, N = st.cuts.length + 1, base = l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""));
+    const fl = await l3pcsLazStream(c, N, l3pcsClassStrips(st), g => `Del ${g + 1} av ${N}`, f => onP && onP("skriver", f));
+    fl.forEach(f => { f.name = `${base} – del ${f.g + 1} av ${N}.laz`; }); return { files: fl, counts: fl.map(f => f.n), groups: N };
+  }
+  if (opts.strips) {  // LAS (ej LAZ): bara det som är inläst
     const st = opts.strips, { ids, counts } = await l3pcsAssignStrips(c, st, f => onP && onP("sorterar punkterna", f * 0.6)), base = l3pcsFile(String(c.name).replace(/\.[^.]+$/, "")), files = [], N = counts.length, ext0 = opts.format === "las" ? "las" : "laz";
     for (let k = 0; k < N; k++) {
       if (!counts[k]) continue; if (onP) onP(`skriver del ${k + 1} av ${N}`, 0.6 + 0.4 * k / N); await l3pcsYield();
@@ -101,6 +141,13 @@ async function l3pcsRun(c, opts, onP) {
   }
   const groups = l3pcsGroups(opts.level);
   if (!groups.length) throw new Error("Det finns inga zoner med yta på den här arbetsytan – rita zoner under fliken Zoner först.");
+  if (opts.format !== "las") {
+    const G = groups.length, rest = opts.rest !== false, base0 = l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""));
+    const fl = (await l3pcsLazStream(c, G + 1, l3pcsClassZones(groups), g => (g < G ? groups[g].name : "Utanför zoner"), f => onP && onP("skriver", f))).filter(f => f.g < G || rest);
+    if (!fl.length) throw new Error("Inga punkter ligger i zonerna eller utanför dem – är molnet på samma plats som arbetsytan?");
+    const used = new Set(); fl.forEach(f => { let nm = `${base0} – ${l3pcsFile(f.group)}.laz`, i = 2; while (used.has(nm.toLowerCase())) nm = `${base0} – ${l3pcsFile(f.group)} (${i++}).laz`; used.add(nm.toLowerCase()); f.name = nm; });
+    return { files: fl, counts: fl.map(f => f.n), groups: G };
+  }
   const { ids, counts } = await l3pcsAssign(c, groups, f => onP && onP("sorterar punkterna", f * 0.6));
   const base = l3pcsFile(String(c.name).replace(/\.[^.]+$/, "")), files = [];
   const all = [...groups.map((g, i) => ({ name: g.name, i, n: counts[i] })), ...(opts.rest !== false ? [{ name: "Utanför zoner", i: groups.length, n: counts[groups.length] }] : [])].filter(x => x.n > 0);
@@ -128,7 +175,7 @@ function l3pcsDialog(id) {
     <label style="display:flex;gap:8px;align-items:center;${hasWbs ? "" : "opacity:.5"}"><input type="radio" name="pcsLv" value="wbs" ${hasWbs ? "" : "disabled"}> Överzonerna (WBS-nivå 1)${hasWbs ? "" : " – inga överzoner angivna"}</label>
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pcsRest" checked> Det som ligger utanför zonerna blir en egen fil</label>
     ${opener ? `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="pcsTc"> Spara filerna även i Trimble Connect (mappen Punktmoln)</label>` : ""}
-    <div style="color:#64748b;font-size:12px">Filerna blir LAZ (komprimerad LAS, med färg) i modellens koordinater, samlade i en ZIP. Delar det som är inläst – full upplösning kräver att molnet lästs in med alla punkter (Lager → Inställningar). Höjdjusteringen av molnet skrivs inte in.</div>
+    <div style="color:#64748b;font-size:12px">Filerna blir LAZ (komprimerad LAS, med färg) i modellens koordinater, samlade i en ZIP. Alla punkter följer med i full upplösning (okträdsmoln läses ur filen, borttagna punkter utelämnas). Höjdjusteringen av molnet skrivs inte in.</div>
     <div id="pcsOut" style="color:#334155"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="pcsX">Stäng</button><button type="button" id="pcsGo" class="primary" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:6px 14px">Dela upp och hämta ZIP</button></div></div>`;
   document.body.appendChild(ov);
