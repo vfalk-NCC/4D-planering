@@ -54,6 +54,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (C.pp !== '#ff00aa' || C.x2 !== '#00cc44' || C.x1 || !C.lay.includes('4D-EGEN-FF00AA') || !C.lay.includes('4D-EGEN-00CC44') || !C.lay.some(l => /^4D-(PAGAENDE|PLANERAD|KLAR|FORSENAD|INGEN)/.test(l)) || !C.ifcPink || !C.ifcGreen || !C.tc) fail('Egen färg före statusfärg i DXF/IFC: ' + JSON.stringify(C));
   console.log('OK: egen färg på punkten går före statusfärgen i DXF (eget lager + äkta färg) och IFC', JSON.stringify(C.lay));
+  // Sparas i projektet (arbetsytans data), inte bara lokalt
+  const SV = await page.evaluate(() => { let saves = 0; const orig = schedulePlanSave; window.schedulePlanSave = () => { saves++; }; exportAdjSet('xl:x1', { z: 6.25, comment: 'Spara mig' }); exportAdjSave(); const inPlan = JSON.parse(JSON.stringify(plans.find(p => p.id === plan.id))).exportAdj; const sv1 = saves, local = Object.keys(localStorage).filter(k => /exportadj/.test(k)).length;
+    exportAdjSet('xl:x1', { z: NaN, comment: '' }); exportAdjSave(); window.schedulePlanSave = orig; return { saves: sv1, inPlan, local, after: !!plan.exportAdj }; });
+  if (SV.saves !== 1 || !SV.inPlan || SV.inPlan['xl:x1'].z !== 6.25 || SV.inPlan['xl:x1'].comment !== 'Spara mig' || SV.local !== 0) fail('Justeringarna sparas i projektets arbetsyta: ' + JSON.stringify(SV));
+  console.log('OK: justeringarna sparas i arbetsytans data i projektet (inte lokalt)', JSON.stringify(SV));
   // Dialogen: flera markerade ändras samtidigt
   await page.evaluate(() => exportAdjOpen()); await page.waitForSelector('#exportAdjDlg');
   await page.click('#eaAll'); await page.fill('#eaZ', '9'); await page.click('#eaZSet');

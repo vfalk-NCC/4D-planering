@@ -1,15 +1,19 @@
 /* Justera exportpunkter (Victor 2026-11-13: "lägga kommentarer och ange vilken plushöjd punkterna ligger på vid export … markera flera samtidigt och ändra plushöjder").
    CAD-export → 3D-objekt → "✎ Justera höjder & kommentarer": alla punkter som exporten tar med (Powerproject-objekten och Excel-planeringens punkter som syns i vyn) i en tabell.
-   Markera en eller flera (sök, markera alla som visas) och sätt plushöjd (absolut eller ± höjning) eller skriv en kommentar. Justeringarna sparas i webbläsaren per projekt och arbetsyta
-   (rör inte planeringen) och gäller nästa DXF/IFC-export: IFC lägger cylindern på vald höjd, DXF lägger punkt och text på höjden, och kommentaren följer med som text och egenskap. Prefix exportAdj. */
-const exportAdjKey = () => `lagesplan-exportadj-${typeof projectId !== "undefined" ? projectId : ""}-${plan ? plan.id : ""}`;
-let exportAdjCache = null;
+   Markera en eller flera (sök, markera alla som visas) och sätt plushöjd (absolut eller ± höjning) eller skriv en kommentar. Justeringarna sparas i projektet (arbetsytans data; rör inte planeringen) och gäller nästa DXF/IFC-export: IFC lägger cylindern på vald höjd, DXF lägger punkt och text på höjden, och kommentaren följer med som text och egenskap. Prefix exportAdj. */
+/* Justeringarna sparas i arbetsytan (plan.exportAdj, samma sparning som planens övriga data i projektet – inte bara i webbläsaren), så arbetet finns kvar och delas mellan datorer.
+   Äldre justeringar som sparats lokalt (webbläsaren) flyttas över första gången. */
+const exportAdjLocalKey = () => `lagesplan-exportadj-${typeof projectId !== "undefined" ? projectId : ""}-${plan ? plan.id : ""}`;
 function exportAdjAll() {
-  if (exportAdjCache && exportAdjCache.k === exportAdjKey()) return exportAdjCache.v;
-  let v = {}; try { v = JSON.parse(localStorage.getItem(exportAdjKey()) || "{}") || {}; } catch (e) { v = {}; }
-  exportAdjCache = { k: exportAdjKey(), v }; return v;
+  if (!plan) return {};
+  if (!plan.exportAdj) {
+    let v = {}; try { v = JSON.parse(localStorage.getItem(exportAdjLocalKey()) || "{}") || {}; } catch (e) { v = {}; }
+    plan.exportAdj = v;
+    if (Object.keys(v).length && typeof schedulePlanSave === "function") { schedulePlanSave(); try { localStorage.removeItem(exportAdjLocalKey()); } catch (e) { /* privat läge */ } }
+  }
+  return plan.exportAdj;
 }
-function exportAdjSave() { try { localStorage.setItem(exportAdjKey(), JSON.stringify(exportAdjAll())); } catch (e) { /* privat läge */ } }
+function exportAdjSave() { if (plan && plan.exportAdj && !Object.keys(plan.exportAdj).length) delete plan.exportAdj; if (typeof schedulePlanSave === "function") schedulePlanSave(); }
 /* Läggs på markeringarna i objExportMarkers(): zTop/zManual och adj.comment. */
 function exportAdjApply(marks) {
   const A = exportAdjAll();
@@ -35,7 +39,7 @@ function exportAdjOpen() {
       <label>Höj/sänk <input type="number" id="eaDz" step="0.1" style="width:80px"> m</label><button type="button" id="eaDzSet">Tillämpa</button>
       <label>Kommentar <input type="text" id="eaC" style="width:200px"></label><button type="button" id="eaCSet">Sätt</button><button type="button" id="eaReset" title="Tillbaka till automatisk höjd (objektets högsta punkt) och ingen kommentar">Återställ markerade</button></div>
     <div style="overflow:auto;flex:1"><table id="eaT" style="border-collapse:collapse;width:100%"></table></div>
-    <div style="padding:8px 16px;color:#64748b;font-size:12px;border-top:1px solid #e2e8f0">Automatisk höjd = objektets högsta punkt. En egen plushöjd och kommentar sparas i webbläsaren för den här arbetsytan och följer med nästa DXF/IFC-export av 3D-objekten.</div></div>`;
+    <div style="padding:8px 16px;color:#64748b;font-size:12px;border-top:1px solid #e2e8f0">Automatisk höjd = objektets högsta punkt. En egen plushöjd och kommentar sparas i projektet (arbetsytans data) och följer med nästa DXF/IFC-export av 3D-objekten.</div></div>`;
   document.body.appendChild(ov);
   const $$ = s => ov.querySelector(s), fmt = v => (Math.round(v * 100) / 100).toLocaleString("sv-SE");
   const rows = () => marks.filter(m => {
