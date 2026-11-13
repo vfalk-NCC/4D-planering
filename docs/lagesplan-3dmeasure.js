@@ -134,6 +134,7 @@ function l3mDraw() {
     if (!m.locked) { const x = document.createElement("i"); x.className = "v3-meas-x"; x.title = "Ta bort måttet"; x.setAttribute("role", "button"); x.onpointerdown = ev => ev.stopPropagation(); x.onclick = ev => { ev.stopPropagation(); ev.preventDefault(); l3mRemove(m.id); }; el.appendChild(x); }
     if (own != null && !sel) el.style.background = m.color;
     if (m.kind === "cutfill" && !sel) el.style.background = "#0f172a";
+    if (m.kind === "poly" && P.length >= 3) { el._poly = P; el.classList.add("tot"); el.title = (el.title ? el.title + " " : "") + "Summan (Σ) ligger vid sidan av linjen så att den inte täcker delmåtten."; }   // summan dras ut åt sidan (l3mPlaceLabels)
     host.appendChild(el);
     l3m.labels.set(m.id, el); el._at = at;
   });
@@ -157,7 +158,13 @@ function l3mPlaceLabels() {
   // Handtagen städas även när det inte finns några etiketter kvar (efter att sista måttet raderats låg de kvar som orange prickar).
   l3m.labels.forEach(el => {
     const q = l3ToScreen(el._at);
-    el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px";
+    let ox = 0, oy = 0;
+    if (el._poly) {   // polylinjens summa: ut åt sidan, vinkelrätt mot sträckan där mitten ligger (alltid uppåt på skärmen), så delmåtten inte döljs
+      const P = el._poly, cum = [0]; for (let i = 1; i < P.length; i++) cum.push(cum[i - 1] + P[i].distanceTo(P[i - 1])); const half = cum[cum.length - 1] / 2; let k = 1; while (k < P.length - 1 && cum[k] < half) k++;
+      const a = l3ToScreen(P[k - 1]), b = l3ToScreen(P[k]), dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; let nx = -dy / L, ny = dx / L; if (ny > 0 || (Math.abs(ny) < 1e-6 && nx > 0)) { nx = -nx; ny = -ny; }
+      const gap = 38; ox = nx * gap; oy = ny * gap;
+    }
+    el.style.display = q.behind ? "none" : "block"; el.style.left = (q.x + ox) + "px"; el.style.top = (q.y + oy) + "px";
     el.style.pointerEvents = l3.tool === "select" || !l3.tool ? "auto" : "none"; // med andra verktyg går trycket igenom
   });
   if (typeof l3rwPlace === "function") l3rwPlace();
