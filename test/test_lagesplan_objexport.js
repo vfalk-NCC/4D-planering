@@ -26,7 +26,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const page = await (await browser.newContext({ viewport: { width: 1300, height: 850 } })).newPage();
   await require('./_dialogs').bridge(page); // appens egna dialogrutor
   const errors = []; page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
-  await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
+  await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('lagesplan-rdock-hidden', '0'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
   await page.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));
   await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
@@ -141,6 +141,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const e2 = await page.evaluate(() => ({ back: document.getElementById('labelMenu').parentNode.tagName, pref: localStorage.getItem('lagesplan-rdock-labelmenu') }));
     if (e2.back !== 'BODY' || e2.pref !== '0') fail('📌 igen ska lösgöra menyn: ' + JSON.stringify(e2));
     await page.evaluate(() => document.getElementById('labelMenu').classList.add('hidden')); }
+  { // Högermenyn: alltid synlig (även tom), dölj-knapp och flik för att visa den igen
+    await page.evaluate(() => { localStorage.setItem('lagesplan-rdock-hidden', '0'); rdockBoot(); rdockResync(); rdockRefresh(); });
+    await page.waitForTimeout(250);
+    const a = await page.evaluate(() => { const r = document.getElementById('rdock'); return { shown: !!r && !r.hidden && r.getBoundingClientRect().width > 300, empty: !!r.querySelector('.rd-empty') && getComputedStyle(r.querySelector('.rd-empty')).display !== 'none' || r.classList.contains('rd-has'), tab: !document.getElementById('rdockTab') || document.getElementById('rdockTab').hidden }; });
+    if (!a.shown || !a.tab) fail('Dockan ska vara synlig även utan markering: ' + JSON.stringify(a));
+    await page.evaluate(() => { view.scale = 1.7; view.tx = -20; view.ty = -30; applyView(); });
+    await page.click('#rdock .rd-hide'); await page.waitForTimeout(250);
+    const b = await page.evaluate(() => ({ hidden: document.getElementById('rdock').hidden, tab: !document.getElementById('rdockTab').hidden, pref: localStorage.getItem('lagesplan-rdock-hidden'), scale: view.scale, allowed: rdockAllowed() }));
+    if (!b.hidden || !b.tab || b.pref !== '1' || b.scale !== 1.7 || b.allowed) fail('Dölj ska gömma dockan, visa fliken och behålla zoomen: ' + JSON.stringify(b));
+    await page.click('#rdockTab'); await page.waitForTimeout(250);
+    const c = await page.evaluate(() => ({ hidden: document.getElementById('rdock').hidden, tab: document.getElementById('rdockTab').hidden, scale: view.scale }));
+    if (c.hidden || !c.tab || c.scale !== 1.7) fail('Fliken ska visa dockan igen: ' + JSON.stringify(c)); }
   console.log('OK: panelen – dockad, varningar med förslag, sortering, kolumnbredd, tryck på namn, dra prick på kartan, flerval, flytande, 0,0 utelämnas ur filerna', JSON.stringify({ PN: PN.rows, FX, w1 }));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_objexport');

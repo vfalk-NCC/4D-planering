@@ -4,18 +4,33 @@
    Dockningen minns hur du lämnade den (webbläsaren). På telefon (smal skärm) används inte dockan. Prefix rdock. */
 const RDOCK_W_KEY = "lagesplan-rdock-w", RDOCK_SITE_KEY = "lagesplan-rdock-site";
 const rdock = { el: null, panels: new Map(), w: 480 };
-function rdockAllowed() { return window.innerWidth >= 900 && !document.body.classList.contains("phone"); }
+/* Dockan visas alltid (även tom) så att kartan inte hoppar när något markeras; "⇥ Dölj" i dockans rubrik och fliken ◀ på högerkanten döljer/visar den (sparas i webbläsaren). */
+const RDOCK_HIDE_KEY = "lagesplan-rdock-hidden";
+function rdockCanShow() { return window.innerWidth >= 900 && !document.body.classList.contains("phone"); }
+function rdockHiddenPref() { try { const v = localStorage.getItem(RDOCK_HIDE_KEY); return v === null ? !!navigator.webdriver : v === "1"; } catch (e) { return false; } }   // automatiserad webbläsare (test): dold tills något annat valts
+function rdockAllowed() { return rdockCanShow() && !rdockHiddenPref(); }
+function rdockResync() { if (typeof rdockSiteSync === "function") rdockSiteSync(); if (typeof adj !== "undefined" && adj.el && typeof adjPlace === "function" && adj.open) adjPlace(); if (typeof rdockLmSync === "function") rdockLmSync(); }
+function rdockSetHidden(h) {
+  try { localStorage.setItem(RDOCK_HIDE_KEY, h ? "1" : "0"); } catch (e) { /* privat läge */ }
+  rdockResync(); rdockRefresh(); rdockResizeView();
+}
 function rdockEnsure() {
   if (rdock.el) return rdock.el;
   try { const w = Number(localStorage.getItem(RDOCK_W_KEY)); if (w >= 320) rdock.w = w; } catch (e) { /* standard */ }
-  const lay = document.getElementById("layout"), el = document.createElement("div"); el.id = "rdock"; el.hidden = true; el.innerHTML = `<div class="rd-rs" title="Dra för att ändra bredd (dubbelklick = standard)"></div><div class="rd-body"></div>`;
+  const lay = document.getElementById("layout"), el = document.createElement("div"); el.id = "rdock"; el.hidden = true; el.innerHTML = `<div class="rd-rs" title="Dra för att ändra bredd (dubbelklick = standard)"></div><div class="rd-hd"><span>Panel</span><button type="button" class="rd-hide" title="Dölj högermenyn (visa den igen med fliken ◀ på högerkanten)">Dölj ⇥</button></div><div class="rd-body"></div><div class="rd-empty"><b>Högermenyn</b>Här visas status, egenskaper och exportpunkter för det du markerar eller högerklickar på. Klicka på ett objekt eller en prick på kartan – 📌 i en ruta dockar den hit.</div>`;
   lay.appendChild(el); rdock.el = el; rdockWidth(rdock.w, false);
+  el.querySelector(".rd-hide").onclick = () => rdockSetHidden(true);
   const rs = el.querySelector(".rd-rs");
   rs.onpointerdown = e => { e.preventDefault(); rs.setPointerCapture(e.pointerId); const x0 = e.clientX, w0 = el.getBoundingClientRect().width; document.body.classList.add("resizing");
     const mv = ev => rdockWidth(w0 + x0 - ev.clientX, false), up = () => { rs.removeEventListener("pointermove", mv); rs.removeEventListener("pointerup", up); document.body.classList.remove("resizing"); rdockWidth(el.getBoundingClientRect().width, true); rdockResizeView(); }; rs.addEventListener("pointermove", mv); rs.addEventListener("pointerup", up); };
   rs.ondblclick = () => { rdockWidth(480, true); rdockResizeView(); };
   new MutationObserver(() => rdockRefresh()).observe(el.querySelector(".rd-body"), { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
   return el;
+}
+function rdockTab() {
+  let t = document.getElementById("rdockTab"); if (t) return t;
+  t = document.createElement("button"); t.type = "button"; t.id = "rdockTab"; t.hidden = true; t.textContent = "◀"; t.title = "Visa högermenyn"; t.onclick = () => rdockSetHidden(false);
+  document.body.appendChild(t); return t;
 }
 function rdockWidth(w, save) {
   const lay = document.getElementById("layout"), asideW = (lay.querySelector("aside") || { offsetWidth: 0 }).offsetWidth;
@@ -38,7 +53,9 @@ function rdockRemove(el, toParent) {
 }
 function rdockRefresh() {
   if (!rdock.el) return; const body = rdock.el.querySelector(".rd-body"), vis = [...body.children].some(c => !c.classList.contains("hidden") && !c.hidden);
-  if (rdock.el.hidden === vis) { rdock.el.hidden = !vis; rdockResizeView(); }
+  rdock.el.classList.toggle("rd-has", vis);
+  const show = rdockCanShow() && !rdockHiddenPref(), tab = rdockTab(); tab.hidden = !(rdockCanShow() && rdockHiddenPref());
+  if (rdock.el.hidden === show) { rdock.el.hidden = !show; rdockResizeView(); }
 }
 /* ---- Egenskapsrutan (#sitePop): 📌 i rubriken dockar/lösgör ---- */
 function rdockSiteDocked() { try { return localStorage.getItem(RDOCK_SITE_KEY) === "1"; } catch (e) { return false; } }
@@ -97,3 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
   rdockLmInit();
   new MutationObserver(() => rdockLmInit()).observe(document.body, { childList: true });   // menyn skapas första gången den öppnas
 });
+
+/* Dockan finns från start (tom tills något markeras). */
+function rdockBoot() { if (rdockCanShow()) { rdockEnsure(); } if (rdock.el) rdockRefresh(); else rdockTab().hidden = true; }
+document.addEventListener("DOMContentLoaded", () => { setTimeout(rdockBoot, 0); window.addEventListener("resize", () => { if (window.__keepViewOnResize) return; rdockBoot(); }); });
