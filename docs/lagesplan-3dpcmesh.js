@@ -38,13 +38,14 @@ async function l3pmGrid(c, o, onP) {
   const ctr = c.info.center, h = o.cell, cb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), A = o.area || null;
   const bb = A ? { min: [Math.max(cb.min[0], A.bb[0]), Math.max(cb.min[1], A.bb[1]), cb.min[2]], max: [Math.min(cb.max[0], A.bb[2]), Math.min(cb.max[1], A.bb[3]), cb.max[2]] } : cb;
   if (A && (bb.max[0] <= bb.min[0] || bb.max[1] <= bb.min[1])) throw new Error("Området ligger utanför molnet.");
+  if (o.tile) { bb.min = [Math.max(bb.min[0], o.tile[0]), Math.max(bb.min[1], o.tile[1]), bb.min[2]]; bb.max = [Math.min(bb.max[0], o.tile[2]), Math.min(bb.max[1], o.tile[3]), bb.max[2]]; if (bb.max[0] <= bb.min[0] || bb.max[1] <= bb.min[1]) return { V: [], C: [], nx: 0, ny: 0, cell: new Int32Array(0), bb, spikes: 0 }; }
   const nx = Math.max(1, Math.ceil((bb.max[0] - bb.min[0]) / h) + 1), ny = Math.max(1, Math.ceil((bb.max[1] - bb.min[1]) / h) + 1);
   if (nx * ny > 5e6) throw new Error("Rutorna blir för många (" + (nx * ny).toLocaleString("sv-SE") + ") – välj större ruta, eller ett mindre område (zon eller bortklippt lager) för att komma ner till 0,1 m.");
   const N = nx * ny, cnt = new Uint32Array(N), sx = new Float64Array(N), sy = new Float64Array(N), sz = new Float64Array(N), sr = new Float32Array(N), sg = new Float32Array(N), sb = new Float32Array(N), mode = o.zmode;
   const pr = typeof l3Prefs === "function" ? l3Prefs() : null, old = pr ? pr.pcMode : undefined; let t0 = performance.now();
   try {
     if (pr && o.color !== "none") pr.pcMode = o.color;
-    for await (const { o: pc, mask, f } of l3pcsPieces(c)) {
+    for await (const { o: pc, mask, f } of l3pcsPieces(c, [bb.min[0] - h, bb.min[1] - h, -1e9, bb.max[0] + h, bb.max[1] + h, 1e9])) {
       const n = pc.pos.length / 3, P = pc.pos, col = o.color === "none" ? null : l3pcColorsBase(c, pc);
       for (let i = 0; i < n; i++) {
         if (mask && !mask[i]) continue; const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1], z = P[i * 3 + 2] + ctr[2], ix = Math.floor((x - bb.min[0]) / h), iy = Math.floor((y - bb.min[1]) / h); if (ix < 0 || iy < 0 || ix >= nx || iy >= ny) continue; if (A) { if (x < A.bb[0] || x > A.bb[2] || y < A.bb[1] || y > A.bb[3]) continue; let inside = false; for (let q = 0; q < A.polys.length; q++) if (l3pcsIn(A.polys[q], x, y)) { inside = true; break; } if (!inside) continue; }
@@ -60,8 +61,10 @@ async function l3pmGrid(c, o, onP) {
   if (o.spike > 0) {
     const zc = new Float32Array(N), drop = new Uint8Array(N), nb = [];
     for (let k = 0; k < N; k++) if (cnt[k]) zc[k] = sz[k] / (mode === "mean" ? cnt[k] : 1);
+    let filled = 0; for (let k = 0; k < N; k++) if (cnt[k]) filled++;
+    const spacing = Math.sqrt(N * h * h / Math.max(1, filled)), R = Math.max(1, Math.min(30, Math.ceil(Math.max(0.75, 2.5 * spacing) / h)));   // grannfönstret följer punkttätheten (minst 0,75 m) så att det fungerar även med mycket små rutor (0,1 m)
     for (let k = 0; k < N; k++) { if (!cnt[k]) continue; const ix = k % nx, iy = (k / nx) | 0; nb.length = 0;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const x = ix + dx, y = iy + dy; if (x < 0 || y < 0 || x >= nx || y >= ny) continue; const q = y * nx + x; if (cnt[q]) nb.push(zc[q]); }
+      for (let dy = -R; dy <= R; dy++) { const y = iy + dy; if (y < 0 || y >= ny) continue; for (let dx = -R; dx <= R; dx++) { if (!dx && !dy) continue; const x = ix + dx; if (x < 0 || x >= nx) continue; const q = y * nx + x; if (cnt[q]) nb.push(zc[q]); } }
       if (nb.length < 2) { drop[k] = 1; continue; } nb.sort((a, b) => a - b); const med = nb.length % 2 ? nb[nb.length >> 1] : (nb[nb.length / 2 - 1] + nb[nb.length / 2]) / 2; if (Math.abs(zc[k] - med) > o.spike) drop[k] = 1; }
     for (let k = 0; k < N; k++) if (drop[k]) { cnt[k] = 0; spikes++; }
   }
@@ -72,7 +75,7 @@ async function l3pmGrid(c, o, onP) {
 }
 /* Steg 2: trianglar. Returnerar { V, C, F (0-baserade hörnindex), FC (färg per triangel) } */
 async function l3pmBuild(c, o, onP) {
-  const g = await l3pmGrid(c, o, onP); if (g.V.length < 3) throw new Error("För få punkter för en mesh – välj mindre ruta eller kontrollera att molnet är inläst.");
+  const g = await l3pmGrid(c, o, onP); if (o.tile && g.V.length < 3) return null; if (g.V.length < 3) throw new Error("För få punkter för en mesh – välj mindre ruta eller kontrollera att molnet är inläst.");
   if (o.type !== "grid" && g.V.length > l3pmMaxTin) throw new Error(`TIN av ${g.V.length.toLocaleString("sv-SE")} hörn blir för tungt (max ${l3pmMaxTin.toLocaleString("sv-SE")}) – välj större rutstorlek.`);
   if (o.type === "grid" && g.V.length * 2 > l3pmMaxTri) throw new Error(`Meshen blir för stor (cirka ${(g.V.length * 2).toLocaleString("sv-SE")} trianglar, max ${l3pmMaxTri.toLocaleString("sv-SE")}) – välj större rutstorlek.`);
   let F = [];
@@ -89,7 +92,38 @@ async function l3pmBuild(c, o, onP) {
 }
 /* Lägsta höjd utan spridning av miljontals värden (Math.min(...) ger "Maximum call stack size exceeded"). */
 function l3pmMinZ(r) { let m = Infinity; for (let i = 0; i < r.V.length; i++) if (r.V[i][2] < m) m = r.V[i][2]; return m; }
-const l3pmMaxTri = 2500000, l3pmMaxTin = 500000;
+const l3pmMaxTri = 1400000, l3pmMaxTin = 350000, L3PM_TILE = 300000, L3PM_MAXTILES = 80;   // en modell = högst ca 300 000 rutor (DXF/IFC-filer på några hundra MB), annars delas meshen i flera modeller
+/* Stora meshar delas i flera modeller (rutor som ligger kant i kant, en rutas bredd överlapp så att de möts). Returnerar { tiles: [[x0,y0,x1,y1]…], n (rutor totalt), nx, ny } för området. */
+function l3pmTilePlan(c, o) {
+  const cb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), A = o.area || null;
+  const x0 = Math.max(cb.min[0], A ? A.bb[0] : -Infinity), y0 = Math.max(cb.min[1], A ? A.bb[1] : -Infinity), x1 = Math.min(cb.max[0], A ? A.bb[2] : Infinity), y1 = Math.min(cb.max[1], A ? A.bb[3] : Infinity);
+  const w = Math.max(0, x1 - x0), hh = Math.max(0, y1 - y0), cells = (w / o.cell + 1) * (hh / o.cell + 1), edge = Math.floor(Math.sqrt(L3PM_TILE)) * o.cell, tx = Math.max(1, Math.ceil(w / edge)), ty = Math.max(1, Math.ceil(hh / edge)), tiles = [];
+  for (let j = 0; j < ty; j++) for (let i = 0; i < tx; i++) tiles.push([x0 + i * edge, y0 + j * edge, Math.min(x1, x0 + (i + 1) * edge + o.cell), Math.min(y1, y0 + (j + 1) * edge + o.cell)]);
+  return { tiles, n: cells, tx, ty };
+}
+/* ZIP som skrivs direkt till disk när webbläsaren kan (Chrome/Edge), annars i minnet. */
+async function l3pmZipSink(name) {
+  if (typeof fflate === "undefined") await new Promise((res, rej) => { const s = document.createElement("script"); s.src = "vendor/three/fflate.min.js"; s.onload = res; s.onerror = () => rej(new Error("Kunde inte läsa in ZIP-biblioteket.")); document.head.appendChild(s); });
+  let w = null, wr = Promise.resolve(); const parts = [];
+  if (typeof showSaveFilePicker === "function") { try { const fh = await showSaveFilePicker({ suggestedName: name, types: [{ description: "ZIP", accept: { "application/zip": [".zip"] } }] }); w = await fh.createWritable(); } catch (e) { if (e && e.name === "AbortError") throw new Error("Sparandet avbröts."); w = null; } }
+  let done, fail; const fin = new Promise((res, rej) => { done = res; fail = rej; });
+  const z = new fflate.Zip((err, chunk, final) => { if (err) return fail(err); if (w) wr = wr.then(() => w.write(chunk)); else parts.push(chunk); if (final) done(); });
+  return { streaming: !!w, add(fname, bytes) { const e = new fflate.ZipPassThrough(fname); z.add(e); e.push(bytes, true); return wr; },
+    async finish() { z.end(); await fin; await wr; if (w) { await w.close(); return null; } return new Blob(parts, { type: "application/zip" }); } };
+}
+/* Bygger och skriver alla modeller, en i taget (minnet räcker för en modell åt gången). fmts = ["dxf","ifc"]. */
+async function l3pmExportTiles(c, o, fmts, base, onP) {
+  const plan = l3pmTilePlan(c, o); if (plan.tiles.length > L3PM_MAXTILES) throw new Error(`Det blir ${plan.tiles.length} modeller (max ${L3PM_MAXTILES}) – välj större rutstorlek eller ett mindre område (zon eller bortklippt lager).`);
+  const sink = await l3pmZipSink(`${base} – ${plan.tiles.length} modeller.zip`), enc = new TextEncoder(); let made = 0, tri = 0;
+  for (let k = 0; k < plan.tiles.length; k++) {
+    const r = await l3pmBuild(c, Object.assign({}, o, { tile: plan.tiles[k] }), (t, f) => onP && onP(`modell ${k + 1} av ${plan.tiles.length}: ${t}`, (k + f) / plan.tiles.length)); await l3pcsYield();
+    if (!r) continue; const nm = `${base} ${String(k + 1).padStart(2, "0")}`;
+    if (fmts.includes("dxf")) await sink.add(nm + ".dxf", enc.encode(l3pmDxf(r, "Mesh")));
+    if (fmts.includes("ifc")) await sink.add(nm + ".ifc", enc.encode(l3pmIfc(r, nm, o.color !== "none")));
+    made++; tri += r.F.length / 3;
+  }
+  const blob = await sink.finish(); return { made, tri, blob, streaming: sink.streaming, tiles: plan.tiles.length };
+}
 const l3pmHex = c => "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
 function l3pmDxf(r, layer) {
   const out = ["0", "SECTION", "2", "ENTITIES"], num = v => (Math.round(v * 1000) / 1000).toFixed(3);
@@ -151,7 +185,10 @@ function l3pmDialog(id) {
     <button type="button" id="pmDxf" disabled>⤓ DXF</button><button type="button" id="pmIfc" disabled>⤓ IFC</button><button type="button" id="pmMod" disabled>＋ Lägg i modellen</button></div></div>`;
   document.body.appendChild(ov); const q = s => ov.querySelector(s), out = q("#pmOut");
   const areaSel = () => { const i = q("#pmArea").value; return i === "" ? null : zones[Number(i)]; }, areaWH = () => { const a = areaSel(); if (!a) return [w, h]; return [Math.max(0, Math.min(bb.max[0], a.bb[2]) - Math.max(bb.min[0], a.bb[0])), Math.max(0, Math.min(bb.max[1], a.bb[3]) - Math.max(bb.min[1], a.bb[1]))]; };
-  const est = () => { const v = Number(q("#pmCell").value), [aw, ah] = areaWH(), n = v > 0 ? Math.round(aw * ah / (v * v)) : 0; q("#pmEst").textContent = n ? `≈ ${n.toLocaleString("sv-SE")} rutor${n > 1200000 ? " – för många: välj större ruta eller ett mindre område" : ""}` : ""; q("#pmEst").style.color = n > 1200000 ? "#b91c1c" : "#64748b"; }; q("#pmArea").addEventListener("change", est); let edgeTouched = false; q("#pmEdge").oninput = () => { edgeTouched = true; }; q("#pmCell").oninput = () => { est(); const v = Number(q("#pmCell").value); if (!edgeTouched && v > 0) q("#pmEdge").value = Math.round(v * 3 * 10) / 10; }; est();
+  const tiledInfo = () => { const v = Number(q("#pmCell").value), [aw, ah] = areaWH(), n = v > 0 ? Math.round((aw / v + 1) * (ah / v + 1)) : 0, tiled = n > (q("#pmType").value === "grid" ? L3PM_TILE * 2 : L3PM_TILE * 1.1); return { v, n, tiled, tiles: tiled ? Math.ceil(n / L3PM_TILE * 1.08) : 1 }; };
+  const est = () => { const t = tiledInfo(), bad = t.tiles > L3PM_MAXTILES; q("#pmEst").textContent = t.n ? `≈ ${t.n.toLocaleString("sv-SE")} rutor${t.tiled ? ` → cirka ${t.tiles} modeller${bad ? " – för många, välj större ruta eller mindre område" : ""}` : ""}` : ""; q("#pmEst").style.color = bad ? "#b91c1c" : "#64748b"; };
+  q("#pmArea").addEventListener("change", est); q("#pmType").addEventListener("change", est); let edgeTouched = false; q("#pmEdge").oninput = () => { edgeTouched = true; };
+  q("#pmCell").oninput = () => { est(); const v = Number(q("#pmCell").value); if (!edgeTouched && v > 0) q("#pmEdge").value = Math.round(v * 3 * 10) / 10; }; est();
   const closeAll = () => { clearTimeout(timer);  l3pmPreviewClear(); l3pmCloudHide(false); ov.remove(); l3Render(); }; q("#pmX").onclick = () => { if (!l3pm.busy) closeAll(); };
   q("#pmHide").onchange = () => l3pmCloudHide(q("#pmHide").checked); q("#pmWire").onchange = () => { if (l3pm.res) l3pmPreview(l3pm.res, q("#pmWire").checked); };
   const base = () => `${l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""))} – mesh`;
@@ -161,14 +198,24 @@ function l3pmDialog(id) {
     if (l3pm.busy) return; l3pm.busy = true; q("#pmGo").disabled = true; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
     try {
       const o = { type: q("#pmType").value, cell: Math.max(0.1, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0), area: areaSel() };
-      const r = await l3pmBuild(c, o, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = o; l3pm.res = r; l3pmPreview(r, q("#pmWire").checked); if (typeof l3Zoom === "function") { /* behåll vyn */ }
-      out.innerHTML = `<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta.${r.spikes ? ` ${r.spikes.toLocaleString("sv-SE")} spikar/brus-rutor togs bort.` : ""}`; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
+      const ti = tiledInfo(); let oo = o;
+      if (ti.tiled) { const [aw, ah] = areaWH(); oo = Object.assign({}, o, { cell: Math.max(o.cell, Math.round(Math.sqrt(aw * ah / 250000) * 20) / 20) }); }   // förhandsvisningen är grövre när meshen delas i flera modeller
+      const r = await l3pmBuild(c, oo, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = oo; if (ti.tiled) r.tiled = { opts: o, tiles: ti.tiles, previewCell: oo.cell }; l3pm.res = r; l3pmPreview(r, q("#pmWire").checked); if (typeof l3Zoom === "function") { /* behåll vyn */ }
+      out.innerHTML = `${r.tiled ? `<b>Stor mesh – delas i cirka ${r.tiled.tiles} modeller</b> (${o.cell} m ruta). Förhandsvisningen är grövre (${r.tiled.previewCell} m). DXF/IFC-knapparna skriver alla modeller i en ZIP.<br>` : ""}<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta${r.tiled ? " (förhandsvisning)" : ""}.${r.spikes ? ` ${r.spikes.toLocaleString("sv-SE")} spikar/brus-rutor togs bort.` : ""}`; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
     } catch (e) { out.textContent = "⚠ " + e.message; }
     l3pm.busy = false; q("#pmGo").disabled = false; if (again && ov.isConnected) { again = false; sched(50); }
   };
   ["#pmArea", "#pmType", "#pmCell", "#pmZ", "#pmEdge", "#pmSpike", "#pmCol"].forEach(id => { const el = q(id); el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => sched(el.tagName === "SELECT" ? 150 : 600)); });
   setTimeout(() => { if (ov.isConnected) sched(0); }, 50);
-  q("#pmDxf").onclick = () => { const r = l3pm.res; if (r) { l3pmSave(l3pmDxf(r, "Mesh"), base() + ".dxf", "application/dxf"); out.textContent = "DXF hämtad: " + base() + ".dxf"; } };
-  q("#pmIfc").onclick = () => { const r = l3pm.res; if (r) { l3pmSave(l3pmIfc(r, base(), r.opts.color !== "none"), base() + ".ifc", "application/x-step"); out.textContent = "IFC hämtad: " + base() + ".ifc"; } };
-  q("#pmMod").onclick = () => { const r = l3pm.res; if (r) try { l3pmToModel(r, base()); l3pmPreviewClear(); l3pmCloudHide(false); q("#pmHide").checked = false; out.textContent = "Meshen ligger nu i modellen som ett ritat objekt (förhandsvisningen är borttagen) (en medelfärg – färg per triangel finns i DXF och IFC)."; } catch (e) { out.textContent = "⚠ " + e.message; } };
+  const tiledGo = async fmt => {
+    const r = l3pm.res; if (!r || !r.tiled || l3pm.busy) return; l3pm.busy = true; ["#pmGo", "#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
+    try { const x = await l3pmExportTiles(c, r.tiled.opts, [fmt], base(), (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; });
+      if (x.blob) { const u = URL.createObjectURL(x.blob), a = document.createElement("a"); a.href = u; a.download = `${base()} – ${x.tiles} modeller.zip`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 8000); }
+      out.innerHTML = `<b>${x.made} modeller</b> (${x.tri.toLocaleString("sv-SE")} trianglar) i en ZIP ${x.streaming ? "(sparad direkt till disk)" : "(hämtad)"}.`;
+    } catch (e) { out.textContent = "⚠ " + e.message; }
+    l3pm.busy = false; ["#pmGo", "#pmDxf", "#pmIfc"].forEach(s => { q(s).disabled = false; });
+  };
+  q("#pmDxf").onclick = () => { const r = l3pm.res; if (!r) return; if (r.tiled) return tiledGo("dxf"); l3pmSave(l3pmDxf(r, "Mesh"), base() + ".dxf", "application/dxf"); out.textContent = "DXF hämtad: " + base() + ".dxf"; };
+  q("#pmIfc").onclick = () => { const r = l3pm.res; if (!r) return; if (r.tiled) return tiledGo("ifc"); l3pmSave(l3pmIfc(r, base(), r.opts.color !== "none"), base() + ".ifc", "application/x-step"); out.textContent = "IFC hämtad: " + base() + ".ifc"; };
+  q("#pmMod").onclick = () => { const r = l3pm.res; if (r && r.tiled) { out.textContent = "Meshen är för stor för att läggas i modellen som ett objekt – exportera den som DXF eller IFC (flera modeller) eller välj en zon."; return; } if (r) try { l3pmToModel(r, base()); l3pmPreviewClear(); l3pmCloudHide(false); q("#pmHide").checked = false; out.textContent = "Meshen ligger nu i modellen som ett ritat objekt (förhandsvisningen är borttagen) (en medelfärg – färg per triangel finns i DXF och IFC)."; } catch (e) { out.textContent = "⚠ " + e.message; } };
 }

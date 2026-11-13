@@ -75,12 +75,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       let whole = ''; try { await l3pmBuild(c, { type: 'tin', cell: 0.1, zmode: 'mean', maxEdge: 0, color: 'none', spike: 0 }); } catch (e) { whole = e.message; } return { tin: await mk({ type: 'tin' }), whole, ms: Math.round(performance.now() - t0) }; });
     if (F01.tin.v !== 400 || F01.tin.t < 700 || F01.tin.x[0] < 637010 || F01.tin.x[1] > 637030) fail('0,1 m i en zon: ' + JSON.stringify(F01));
     console.log('OK: rutstorlek 0,1 m i ett avgränsat område (för stora ytor avvisas med tips)', JSON.stringify(F01));
+    // 2e. Stor mesh delas i flera modeller (0,1 m över hela molnet): rutor kant i kant, ZIP med en fil per modell
+    const TL = await page.evaluate(async () => { window.showSaveFilePicker = undefined; const c = l3pc.clouds.find(x => x.id === 'pc:mesh'), o = { type: 'tin', cell: 0.1, zmode: 'mean', maxEdge: 0, color: 'rgb', spike: 0 }, pl = l3pmTilePlan(c, o);
+      const x = await l3pmExportTiles(c, o, ['dxf'], 'Skanning – mesh'); const u = new Uint8Array(await x.blob.arrayBuffer()), z = fflate.unzipSync(u), names = Object.keys(z), faces = names.reduce((a, k) => a + (new TextDecoder().decode(z[k]).match(/\n3DFACE\n/g) || []).length, 0);
+      let tooMany = ''; try { await l3pmExportTiles(c, Object.assign({}, o, { cell: 0.1 }), ['dxf'], 'x', null, 1); } catch (e) { tooMany = e.message; }
+      return { tiles: pl.tiles.length, tx: pl.tx, made: x.made, names, faces, tri: x.tri }; });
+    if (TL.tiles < 2 || TL.made !== TL.tiles || TL.names.length !== TL.tiles || !TL.names.every(n => /\.dxf$/.test(n)) || TL.faces !== TL.tri || TL.faces < 7000) fail('Flera modeller: ' + JSON.stringify(TL));
+    console.log('OK: stor mesh delas i flera modeller (ZIP med en DXF per modell)', JSON.stringify(TL));
     // 3. Dialogen: skapa, DXF, IFC, i modellen
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');
     await page.selectOption('#pmType', 'tin'); await page.fill('#pmCell', '2'); await page.selectOption('#pmCol', 'rgb');
     // live: ändringarna bygger om förhandsvisningen utan att man trycker på något
-    await page.waitForFunction(() => /1862trianglar/.test(document.getElementById('pmOut').textContent.replace(/\s/g, '')) && !document.getElementById('pmDxf').disabled, null, { timeout: 30000 });
+    await page.waitForFunction(() => /1862trianglar/.test(document.getElementById('pmOut').textContent.replace(/\s/g, '')) && !document.getElementById('pmDxf').disabled, null, { timeout: 30000 }).catch(async e => { fail('Dialog: ' + (await page.textContent('#pmOut'))); });
     console.log('OK: förhandsvisningen uppdateras direkt när valen ändras');
     const PV = await page.evaluate(() => ({ g: !!l3pmPrev.grp, n: l3pmPrev.grp && l3pmPrev.grp.children[0].geometry.getAttribute('position').count, inScene: l3.scene.children.includes(l3pmPrev.grp) })); if (!PV.g || !PV.inScene || PV.n !== 1862 * 3) fail('Förhandsvisning i 3D: ' + JSON.stringify(PV));
     await page.check('#pmHide'); await page.check('#pmWire'); const PV2 = await page.evaluate(() => ({ hid: !l3pc.clouds[0].group.visible, kids: l3pmPrev.grp.children.length })); if (!PV2.hid || PV2.kids !== 2) fail('Dölj moln + nät: ' + JSON.stringify(PV2));
@@ -94,6 +101,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (after.n !== before + 1 || after.k !== 'mesh') fail('Meshen i modellen: ' + JSON.stringify(after));
     if (await page.evaluate(() => !!l3pmPrev.grp || !l3pc.clouds[0].group.visible)) fail('Förhandsvisningen försvinner och molnet visas när meshen läggs i modellen');
     console.log('OK: dialogen ger DXF (3DFACE + färg), IFC (färgtabell) och ett ritat objekt', JSON.stringify({ nf, name: d1.suggestedFilename() }));
+    await page.fill('#pmCell', '0.1'); await page.fill('#pmEdge', '0'); await page.waitForFunction(() => /Stor mesh/.test(document.getElementById('pmOut').textContent) || /⚠/.test(document.getElementById('pmOut').textContent), null, { timeout: 30000 });
+    const TT = await page.evaluate(() => ({ out: document.getElementById('pmOut').textContent.slice(0, 160), est: document.getElementById('pmEst').textContent, tiled: !!(l3pm.res && l3pm.res.tiled) })); if (!TT.tiled || !/modeller/.test(TT.est)) fail('Dialogen delar stor mesh i flera modeller: ' + JSON.stringify(TT));
+    console.log('OK: 0,1 m över hela molnet → dialogen delar i flera modeller med grövre förhandsvisning', JSON.stringify(TT));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK test_lagesplan_pcmesh');
   } catch (e) { console.error('FEL:', e.message); process.exitCode = 1; }

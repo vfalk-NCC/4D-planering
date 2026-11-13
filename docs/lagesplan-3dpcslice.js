@@ -80,9 +80,9 @@ const l3pcsFile = s => String(s).replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, "
 /* LAZ-uppdelning i ett svep med full upplösning (Victor 2026-11-13: "behåll samma upplösning alltid på laz-exporterna som molnen är i modellen"):
    alla punkter som molnet har i modellen följer med, aldrig en gallrad delmängd. Okträdsmoln (LOD) läses nod för nod ur filen (inte bara det som råkar vara inläst på skärmen)
    och redigeringar (borttagna punkter) respekteras. Varje grupp får sin egen LAZ-skrivare; punkterna skickas direkt dit de hör hemma. classify(P, n, ctr, id) fyller id (grupp) per punkt. */
-async function* l3pcsPieces(c) {
-  if (c._sub != null) { for await (const { o, f } of l3pxPieces(c, c.lod ? c.edits[c._sub].bb : null)) yield { o, mask: l3pxMask(c, o, c._sub), f }; return; }   // ett bortklippt lager: bara punkterna den redigeringen tog bort
-  if ((c.lod || (c.edits || []).some(e => e.off)) && typeof l3pxPieces === "function") { for await (const { o, f } of l3pxPieces(c)) yield { o, mask: l3pxMask(c, o, "kept"), f }; return; }
+async function* l3pcsPieces(c, only) {
+  if (c._sub != null) { for await (const { o, f } of l3pxPieces(c, c.lod ? (only || c.edits[c._sub].bb) : null)) yield { o, mask: l3pxMask(c, o, c._sub), f }; return; }   // ett bortklippt lager: bara punkterna den redigeringen tog bort
+  if ((c.lod || (c.edits || []).some(e => e.off)) && typeof l3pxPieces === "function") { for await (const { o, f } of l3pxPieces(c, c.lod ? only : null)) yield { o, mask: l3pxMask(c, o, "kept"), f }; return; }
   for (let i = 0; i < c.chunks.length; i++) yield { o: c.chunks[i], mask: null, f: (i + 1) / c.chunks.length };
 }
 async function l3pcsLazStream(c, G, classify, nameOf, onP) {

@@ -7,7 +7,7 @@ const l3pxOnly = async (c, mode) => (c.lod && typeof mode === "number" && typeof
 /* only = ytterpunkter [x0,y0,z0,x1,y1,z1] (absoluta): okträdsnoder som ligger utanför hoppas över (det bortklippta ligger ofta på ett litet område av ett moln med hundratals miljoner punkter). */
 async function* l3pxPieces(c, only) {
   if (c.lod) {
-    const L = c.lod, ctr = c.info.center, ext = only ? Math.max(only[3] - only[0], only[4] - only[1], only[5] - only[2]) : 0, mg = ext * 0.05 + 2;
+    const L = c.lod, ctr = c.info.center, ext = only ? Math.max(only[3] - only[0], only[4] - only[1]) : 0, mg = ext * 0.05 + 2;
     const hit = n => !only || !(n.x0 + ctr[0] > only[3] + mg || n.x0 + n.s + ctr[0] < only[0] - mg || n.y0 + ctr[1] > only[4] + mg || n.y0 + n.s + ctr[1] < only[1] - mg || n.z0 + ctr[2] > only[5] + mg || n.z0 + n.s + ctr[2] < only[2] - mg);
     const list = L.nodes.filter(n => n.n && hit(n));
     for (let i = 0; i < list.length; i++) yield { o: await l3olRead(L, list[i]), f: (i + 1) / list.length }; return;
