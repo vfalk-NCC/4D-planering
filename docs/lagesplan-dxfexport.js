@@ -61,6 +61,8 @@ function dxfTextRotation() {
    en per aktivitet när objekten slås ihop. x/y = mitten (eller den flyttade markeringen), zTop =
    objektens högsta punkt, ph = status för valt datum, name = "L12" (+ antal). */
 /* Egen färg på pricken (plan.dotColors, "byta färg manuellt") går alltid före statusfärgen – exporten följer exakt färgen som syns i vyn. */
+/* Namnens färg i exporterna: mörkgul (syns mot både ljust och mörkt underlag – svart var svårt att läsa). */
+const EXPORT_TEXT_COL = "#e6b32a";
 const exportDotColor = c => (/^#[0-9a-f]{6}$/i.test(c || "") ? String(c).toLowerCase() : null);
 const exportAciOf = hex => (typeof l3pmAci === "function" ? l3pmAci([1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))) : dxfAci(hex));
 /* Markeringarna som hamnar i filerna: punkter på 0,0 (saknar läge) utelämnas – de hamnade långt bort från allt annat när filen lästes in i 3D-editorn. */
@@ -95,6 +97,12 @@ function objExportMarkers() {
       out.push({ x: p.x, y: p.y, zTop, zAuto: zTop, ph: xlsPhase(o.it), color: exportDotColor(plan && plan.dotColors && plan.dotColors[o.it.id]), members: [o.it], it: o.it, key: "xl:" + o.it.id, src: "Excel-planeringen", name: nm });
     });
   }
+  // Inga dubbletter (Victor 2026-11-13): samma objekt som finns både i Powerproject- och Excel-planeringen (samma namn, samma plats) exporteras en gång – Powerproject-markeringen går före.
+  { const norm = t => String(t || "").trim().toLowerCase(), seen = [];
+    for (let i = 0; i < out.length; i++) { const m = out[i], nm = norm(m.name || m.it.object_name || m.it.activity); if (!nm) continue;
+      const dup = seen.find(q => q.nm === nm && Math.hypot(q.x - m.x, q.y - m.y) < (q.src !== m.src ? 12 : 1));   // samma namn från Powerproject och Excel inom 12 m (positionerna skiljer några meter) = samma objekt
+      if (dup) { if (dup.src === "Powerproject" || m.src !== "Powerproject") { out.splice(i, 1); i--; continue; } const k = out.indexOf(dup.m); out.splice(k, 1); i--; seen.splice(seen.indexOf(dup), 1); }
+      seen.push({ nm, x: m.x, y: m.y, src: m.src, m }); } }
   // Manuella justeringar (plushöjd och kommentar, lagesplan-exportadj.js) läggs på sist.
   if (typeof exportAdjApply === "function") exportAdjApply(out);
   return out;
@@ -154,7 +162,7 @@ function buildObjectsDxf() {
     if (mk.adj && mk.adj.comment) { const [cx, cy] = along(lay[i].da, lay[i].dc - DXF_TEXT_H * 1.2); ents.push({ t: "TEXT", layer: "4D-KOMMENTAR", x: x + cx, y: y + cy, z, h: DXF_TEXT_H * 0.8, rot, s: dxfText(mk.adj.comment) }); used.add("4D-KOMMENTAR"); }
   });
   if (!ents.length) return null;
-  const layerAci = { "4D-NAMN": 7, "4D-KOMMENTAR": 30, ...layerAciX };
+  const layerAci = { "4D-NAMN": exportAciOf(EXPORT_TEXT_COL), "4D-KOMMENTAR": 30, ...layerAciX };
   Object.entries(DXF_PHASE_LAYER).forEach(([ph, l]) => { layerAci[l] = dxfAci(phaseColor(ph)); });
   return { text: dxfWrite(ents, [...used], layerAci), n: marks.length };
 }

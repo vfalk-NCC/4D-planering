@@ -47,6 +47,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (r.keys.length !== 3 || !r.keys.includes('xl:x1') || !r.keys.includes('xl:x2') || !r.srcs.includes('Excel-planeringen') || r.n !== 3 || r.nIfc !== 3 || !r.txtL12 || !r.ifcL12) fail('Excel-punkterna tas med i DXF och IFC: ' + JSON.stringify(r));
   if (r.z0 !== 4.5 || r.zManual !== 7.5 || !r.flag || r.cmt !== 'Kolla höjden' || !r.dxfZ || !r.dxfCmt || !r.ifcCmt || r.backZ !== 4.5 || r.backFlag) fail('Manuell plushöjd och kommentar: ' + JSON.stringify(r));
   console.log('OK: Excel-punkterna följer med i 3D-objekt-exporten, manuell plushöjd/kommentar läggs på och kan återställas', JSON.stringify(r.keys));
+  // Dubbletter (samma objekt i Powerproject och Excel) exporteras en gång; namnen i mörkgult
+  const DU = await page.evaluate(() => { xls.items.push({ id: 'xd', object_name: 'p1', activity: 'Akt p1', area: 'Hus', start_date: '2026-09-01', end_date: '2026-12-01', status: 'pagaende', progress: 50 }, { id: 'xe', object_name: 'L12', activity: 'dubbel', area: 'Hus', start_date: '2026-09-01', end_date: '2026-12-01', status: 'pagaende', progress: 50 }); xls.positions.push({ id: 'xd', x: 21, y: 18, z0: 1, z1: 2 }, { id: 'xe', x: 30.5, y: 20.4, z0: 1, z1: 5 }); xls.posPdf = null; exportAdjVer++;
+    const ms = objExportMarkers(), names = ms.map(m => m.name), ifc = buildObjectsIfc().text, dxf = buildObjectsDxf();
+    xls.items = xls.items.filter(i => i.id !== 'xd' && i.id !== 'xe'); xls.positions = xls.positions.filter(p => p.id !== 'xd' && p.id !== 'xe'); xls.posPdf = null; exportAdjVer++;
+    return { names, p1: names.filter(n => n === 'p1').length, l12: names.filter(n => n === 'L12').length, srcP1: ms.find(m => m.name === 'p1').src, gold: /IFCCOLOURRGB\(\$,0\.902,0\.702,0\.165\)/.test(ifc), black: /IFCCOLOURRGB\(\$,0\.067,0\.094,0\.153\)/.test(ifc), dxfAci: /4D-NAMN/.test(dxf.text) }; });
+  if (DU.p1 !== 1 || DU.l12 !== 1 || DU.srcP1 !== 'Powerproject' || !DU.gold) fail('Inga dubbletter och namn i mörkgult: ' + JSON.stringify(DU));
+  console.log('OK: dubbletter (samma objekt i PP och Excel) exporteras en gång, namnen i mörkgult', JSON.stringify({ p1: DU.p1, l12: DU.l12 }));
   // Egen färg (plan.dotColors) går alltid före statusfärgen – exporten följer färgerna som syns i vyn
   const C = await page.evaluate(() => { plan.dotColors = { p1: '#ff00aa', x2: '#00cc44' }; const ms = objExportMarkers(), dxf = buildObjectsDxf().text, ifc = buildObjectsIfc().text; const col = k => (ms.find(m => m.key === k) || {}).color;
     const dxfLayers = [...dxf.matchAll(/\r\n8\r\n(4D-[A-Z0-9-]+)\r\n10/g)].map(m => m[1]); delete plan.dotColors;
@@ -64,7 +71,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     xls.positions.push({ id: 'x3', x: 5200, y: 40, z0: 1, z1: 3 }, { id: 'x4', x: 0, y: 0, z0: 1, z1: 3 }, { id: 'x5', x: 45, y: 25, z0: 1, z1: 3.2 }, { id: 'x6', x: 35, y: 25, z0: 1, z1: 3.1 }); xls.posPdf = null; exportAdjVer++; });
   await page.evaluate(() => { viewport = { convertToViewportPoint: (x, y) => [x, y], convertToPdfPoint: (x, y) => [x, y] }; view.tx = 0; view.ty = 0; view.scale = 1; view.rot = 0; });
   await page.evaluate(() => exportAdjOpen()); await page.waitForSelector('#adjPanel');
-  const PN = await page.evaluate(() => ({ docked: document.getElementById('adjPanel').parentNode === document.getElementById('layout') && document.getElementById('adjPanel').nextElementSibling.tagName === 'MAIN', rows: document.querySelectorAll('#adjT tbody tr[data-key]').length, warn: [...adj.warn.keys()], far: adj.warn.get('xl:x3') && adj.warn.get('xl:x3').text, zero: adj.warn.get('xl:x4') && adj.warn.get('xl:x4').text }));
+  const PN = await page.evaluate(() => ({ docked: !!document.getElementById('adjPanel').closest('#rdock .rd-body') && document.getElementById('rdock').previousElementSibling.tagName === 'MAIN' && !document.getElementById('rdock').hidden, rows: document.querySelectorAll('#adjT tbody tr[data-key]').length, warn: [...adj.warn.keys()], far: adj.warn.get('xl:x3') && adj.warn.get('xl:x3').text, zero: adj.warn.get('xl:x4') && adj.warn.get('xl:x4').text }));
   if (!PN.docked || PN.rows < 5 || !PN.warn.includes('xl:x3') || !PN.warn.includes('xl:x4') || !/Förslag/.test(PN.far) || !/0,0/.test(PN.zero)) fail('Panelen dockad + varningar för punkter långt bort / på 0,0: ' + JSON.stringify(PN));
   // 0,0 utelämnas ur filerna (spökade långt bort i 3D-editorn)
   const FX = await page.evaluate(() => { const d = buildObjectsDxf(), i = buildObjectsIfc(); return { n: d.n, nIfc: i.n, zeroIn: /ZERO/.test(d.text) || /ZERO/.test(i.text) }; });
@@ -73,6 +80,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#adjT th[data-k="x"]'); const sx = await page.evaluate(() => [...document.querySelectorAll('#adjT tbody tr[data-key] td:nth-child(6)')].map(td => Number(td.textContent.replace(/\s/g, '').replace(',', '.')))); if (!sx.every((v, i) => i === 0 || v >= sx[i - 1])) fail('Sortera stigande på X: ' + JSON.stringify(sx));
   await page.click('#adjT th[data-k="x"]'); const sd = await page.evaluate(() => [...document.querySelectorAll('#adjT tbody tr[data-key] td:nth-child(6)')].map(td => Number(td.textContent.replace(/\s/g, '').replace(',', '.')))); if (!sd.every((v, i) => i === 0 || v <= sd[i - 1])) fail('Sortera fallande på X: ' + JSON.stringify(sd));
   // Kolumnbredd
+  await page.evaluate(() => { document.querySelector('.adj-tw').scrollLeft = 0; }); await page.waitForTimeout(500);
   const cw = await page.evaluate(() => { const h = document.querySelector('#adjT .adj-cr[data-r="name"]').getBoundingClientRect(), c = ADJ_COLS.find(x => x.k === 'name'); return { x: h.left + h.width / 2, y: h.top + h.height / 2, w0: c.w }; });
   await page.mouse.move(cw.x, cw.y); await page.mouse.down(); await page.mouse.move(cw.x + 60, cw.y, { steps: 4 }); await page.mouse.up(); const w1 = await page.evaluate(() => ADJ_COLS.find(x => x.k === 'name').w); if (w1 < cw.w0 + 40) fail('Dra i kolumnkanten ändrar bredden: ' + JSON.stringify([cw.w0, w1]));
   // Tryck på namn: markeras och kartan centreras
@@ -94,6 +102,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.fill('#adjDz', '-1.5'); await page.click('#adjDzSet'); const z75 = await page.evaluate(() => objExportMarkers().map(m => m.zTop)); if (!z75.every(v => v === 7.5)) fail('Höj/sänk markerade: ' + JSON.stringify(z75));
   await page.fill('#adjC', 'Justerad'); await page.click('#adjCSet'); const cm = await page.evaluate(() => objExportMarkers().filter(m => m.adj && m.adj.comment === 'Justerad').length); if (cm !== z9.length) fail('Kommentar på alla markerade: ' + cm);
   await page.click('#adjReset'); const rs = await page.evaluate(() => objExportMarkers().filter(m => m.zManual || m.adj).length); if (rs !== 0) fail('Återställ markerade: ' + rs);
+  // Egenskapsrutan (#sitePop) dockas i samma ram via 📌
+  const SP = await page.evaluate(async () => { const pop = document.getElementById('sitePop'); pop.innerHTML = '<b>Ny notering</b><label>Text</label><textarea class="sp-text"></textarea><div class="acts"><button>Spara</button></div>'; pop.classList.remove('hidden'); await new Promise(r => setTimeout(r, 50));
+    const pin = pop.querySelector('.rd-pin'); const had = !!pin; pin.click(); await new Promise(r => setTimeout(r, 80)); const docked = !!pop.closest('#rdock .rd-body'), both = !!document.getElementById('adjPanel').closest('#rdock .rd-body'), order = [...document.querySelector('#rdock .rd-body').children].map(c => c.id);
+    pop.querySelector('.rd-pin').click(); await new Promise(r => setTimeout(r, 80)); const back = pop.parentNode.tagName; pop.classList.add('hidden'); return { had, docked, both, order, back }; });
+  if (!SP.had || !SP.docked || !SP.both || SP.order[0] !== 'sitePop' || SP.back !== 'MAIN') fail('Egenskapsrutan dockas i samma ram som exportpanelen: ' + JSON.stringify(SP));
   // Flytande läge och stäng
   await page.click('#adjMode'); const fl = await page.evaluate(() => ({ float: document.getElementById('adjPanel').classList.contains('adj-float'), parent: document.getElementById('adjPanel').parentNode.tagName })); if (!fl.float || fl.parent !== 'BODY') fail('Flyt fritt: ' + JSON.stringify(fl));
   await page.click('#adjClose'); if (await page.evaluate(() => !!document.getElementById('adjPanel') || !!document.getElementById('adjRings'))) fail('Stäng tar bort panel och ringar');

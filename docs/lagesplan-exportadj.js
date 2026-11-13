@@ -1,6 +1,6 @@
 /* Justera exportpunkter (Victor 2026-11-13: "lägga kommentarer och ange vilken plushöjd punkterna ligger på vid export … markera flera samtidigt och ändra plushöjder").
    CAD-export → 3D-objekt → "✎ Justera höjder & kommentarer": alla punkter som exporten tar med (Powerproject-objekten och Excel-planeringens punkter som syns i vyn) i en panel
-   som kan dockas till vänster (bilden till höger krymper och går att panorera/zooma medan tabellen visas) eller flyta fritt.
+   som kan dockas till höger (kartan krymper och går att panorera/zooma medan tabellen visas) eller flyta fritt.
    – Kolumnerna sorteras (tryck på rubriken) och bredderna ändras (dra i rubrikkanten). Tryck på ett namn: punkten markeras och visas i 2D-vyn.
    – Punkterna kan dras på kartan: Powerproject-prickarna som förut (sparas som flyttad markering), Excel-prickarna när panelen är öppen. X/Y i tabellen följer automatiskt.
    – Plushöjd och kommentar per punkt, flera markerade ändras samtidigt. Allt sparas i projektet (arbetsytans data, plan.exportAdj).
@@ -98,16 +98,15 @@ function adjBuild() {
       <label class="adj-f">± <input type="number" id="adjDz" step="0.1" placeholder="m"><button type="button" id="adjDzSet">Tillämpa</button></label>
       <label class="adj-f adj-fc">Kommentar <input type="text" id="adjC" placeholder="Text"><button type="button" id="adjCSet">Sätt</button></label><button type="button" class="adj-lk danger" id="adjReset" title="Tillbaka till automatisk höjd och ingen kommentar">Återställ markerade</button></div>
     <div class="adj-tw" id="adjTW"><table id="adjT"></table></div>
-    <div class="adj-ft">Dra en punkt på kartan för att flytta den – X/Y uppdateras här. Tryck på ett namn för att visa punkten. Allt sparas i projektet.</div><div class="adj-rs" id="adjDockRs" title="Dra för att ändra bredd"></div>`;
+    <div class="adj-ft">Dra en punkt på kartan för att flytta den – X/Y uppdateras här. Tryck på ett namn för att visa punkten. Allt sparas i projektet.</div>`;
   return el;
 }
 function adjPlace() {
-  const el = adj.el, lay = document.getElementById("layout"), main = lay.querySelector("main"), docked = adj.mode === "dock";
+  const el = adj.el, docked = adj.mode === "dock" && typeof rdockAdd === "function" && rdockAllowed();
   el.classList.toggle("adj-dock", docked); el.classList.toggle("adj-float", !docked);
-  const asideW = (lay.querySelector("aside") || { offsetWidth: 0 }).offsetWidth; if (docked) adj.w = Math.max(380, Math.min(adj.w, window.innerWidth - asideW - 340));   // kartan får alltid minst ca 340 px
-  if (docked) { if (el.parentNode !== lay || el.nextSibling !== main) lay.insertBefore(el, main); el.style.cssText = `flex:0 0 ${adj.w}px;width:${adj.w}px`; }
-  else { if (el.parentNode !== document.body) document.body.appendChild(el); const f = adj.floatPos; el.style.cssText = `left:${f.x}px;top:${f.y}px;width:${f.w}px;height:${f.h}px`; }
-  const mb = el.querySelector("#adjMode"); mb.textContent = docked ? "⧉ Flyt" : "⇤ Docka"; mb.title = docked ? "Flyt panelen fritt över kartan" : "Docka panelen till vänster (som menyn)";
+  if (docked) { el.style.cssText = ""; rdockAdd(el, 2); }   // dockad till höger (lagesplan-rdock.js), samma ram som egenskapsrutan
+  else { if (typeof rdockRemove === "function" && el.classList.contains("rd-docked")) rdockRemove(el, document.body); if (el.parentNode !== document.body) document.body.appendChild(el); const f = adj.floatPos; el.style.cssText = `left:${f.x}px;top:${f.y}px;width:${f.w}px;height:${f.h}px`; }
+  const mb = el.querySelector("#adjMode"); mb.textContent = docked ? "⧉ Flyt" : "⇥ Docka"; mb.title = docked ? "Flyt panelen fritt över kartan" : "Docka panelen till höger";
   adjResizeView();
 }
 function adjResizeView() { window.dispatchEvent(new Event("resize")); if (typeof scheduleOrthoRender === "function") scheduleOrthoRender(); }
@@ -179,7 +178,7 @@ function exportAdjOpen() {
   if (!objExportMarkers().length) { alert("Inga punkter syns i vyn att justera (tänd objekten/Excel-planeringen och kontrollera filtret)."); return; }
   adjLoadPrefs(); if (!adj.el) adjBuild(); adj.open = true; adjPlace(); adjBind(); adjRefresh(true);
 }
-function adjClose() { adj.open = false; if (adj.el) { adj.el.remove(); adj.el = null; } const h = document.getElementById("adjRings"); if (h) h.remove(); adjResizeView(); }
+function adjClose() { adj.open = false; if (adj.el) { if (typeof rdockRemove === "function" && adj.el.classList.contains("rd-docked")) rdockRemove(adj.el, document.body); adj.el.remove(); adj.el = null; } const h = document.getElementById("adjRings"); if (h) h.remove(); adjResizeView(); }
 function adjBind() {
   const el = adj.el, $$ = s => el.querySelector(s); if (el._bound) return; el._bound = true;
   $$("#adjClose").onclick = adjClose; $$("#adjMode").onclick = () => { adj.mode = adj.mode === "dock" ? "float" : "dock"; adjSavePrefs(); adjPlace(); adjRender(); };
@@ -192,7 +191,7 @@ function adjBind() {
   $$("#adjCSet").onclick = () => { const c = $$("#adjC").value.trim(); tg().forEach(m => exportAdjSet(m.key, { comment: c })); done(); };
   $$("#adjReset").onclick = () => { const A = exportAdjAll(); tg().forEach(m => { delete A[m.key]; }); done(); };
   // Dockbredd (dra i högerkanten) och flytande fönster (dra i rubriken)
-  const rs = $$("#adjDockRs"); rs.onpointerdown = e => { e.preventDefault(); rs.setPointerCapture(e.pointerId); const x0 = e.clientX, w0 = el.getBoundingClientRect().width; document.body.classList.add("resizing");
+  const rs = $$("#adjDockRs"); if (rs) rs.onpointerdown = e => { e.preventDefault(); rs.setPointerCapture(e.pointerId); const x0 = e.clientX, w0 = el.getBoundingClientRect().width; document.body.classList.add("resizing");
     const mv = ev => { adj.w = Math.max(380, Math.min(window.innerWidth - ((document.querySelector("aside") || { offsetWidth: 0 }).offsetWidth) - 340, Math.round(w0 + ev.clientX - x0))); el.style.flexBasis = adj.w + "px"; el.style.width = adj.w + "px"; }, up = () => { rs.removeEventListener("pointermove", mv); rs.removeEventListener("pointerup", up); document.body.classList.remove("resizing"); adjSavePrefs(); adjResizeView(); }; rs.addEventListener("pointermove", mv); rs.addEventListener("pointerup", up); };
   const hd = $$(".adj-h"); hd.onpointerdown = e => { if (adj.mode !== "float" || e.target.closest("button")) return; const x0 = e.clientX - el.offsetLeft, y0 = e.clientY - el.offsetTop; hd.setPointerCapture(e.pointerId);
     const mv = ev => { adj.floatPos.x = Math.max(0, Math.min(window.innerWidth - 120, ev.clientX - x0)); adj.floatPos.y = Math.max(0, Math.min(window.innerHeight - 40, ev.clientY - y0)); el.style.left = adj.floatPos.x + "px"; el.style.top = adj.floatPos.y + "px"; }, up = () => { hd.removeEventListener("pointermove", mv); hd.removeEventListener("pointerup", up); adjSavePrefs(); }; hd.addEventListener("pointermove", mv); hd.addEventListener("pointerup", up); };

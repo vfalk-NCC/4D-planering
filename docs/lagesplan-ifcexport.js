@@ -46,7 +46,7 @@ function buildObjectsIfc(opts = {}) {
     // Lägesplans vy, bredvid cylindern (täcker den inte uppifrån), 0,5 m tjocka bokstäver uppåt
     // från samma nivå som cylinderns fot.
     if (mk.name) {
-      const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: lay[i].da, across: lay[i].dc + IFC_TEXT_H / 2 });
+      const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: lay[i].da, across: lay[i].dc + IFC_TEXT_H / 2, style: doc.style("namntext", EXPORT_TEXT_COL, "Namn (mörkgul)") });
       if (mesh) elems.push(doc.proxy(`${mk.name} – text`, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
     }
     // Senaste kommentaren som liten text under namnet (hela texten finns som egenskap på pricken).
