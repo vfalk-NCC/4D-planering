@@ -35,8 +35,11 @@ function l3pmDelaunay(X, Y) {
 }
 /* Steg 1: ruta för ruta. Returnerar { n, V: [[x,y,z]…] (absoluta), C: [[r,g,b]…], nx, ny, cell (index→hörn eller -1), o: {x0,y0,h} } */
 async function l3pmGrid(c, o, onP) {
-  const ctr = c.info.center, h = o.cell, bb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), nx = Math.max(1, Math.ceil((bb.max[0] - bb.min[0]) / h) + 1), ny = Math.max(1, Math.ceil((bb.max[1] - bb.min[1]) / h) + 1);
-  if (nx * ny > 6e6) throw new Error("Rutorna blir för många (" + (nx * ny).toLocaleString("sv-SE") + ") – välj större ruta.");
+  const ctr = c.info.center, h = o.cell, cb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), A = o.area || null;
+  const bb = A ? { min: [Math.max(cb.min[0], A.bb[0]), Math.max(cb.min[1], A.bb[1]), cb.min[2]], max: [Math.min(cb.max[0], A.bb[2]), Math.min(cb.max[1], A.bb[3]), cb.max[2]] } : cb;
+  if (A && (bb.max[0] <= bb.min[0] || bb.max[1] <= bb.min[1])) throw new Error("Området ligger utanför molnet.");
+  const nx = Math.max(1, Math.ceil((bb.max[0] - bb.min[0]) / h) + 1), ny = Math.max(1, Math.ceil((bb.max[1] - bb.min[1]) / h) + 1);
+  if (nx * ny > 5e6) throw new Error("Rutorna blir för många (" + (nx * ny).toLocaleString("sv-SE") + ") – välj större ruta, eller ett mindre område (zon eller bortklippt lager) för att komma ner till 0,1 m.");
   const N = nx * ny, cnt = new Uint32Array(N), sx = new Float64Array(N), sy = new Float64Array(N), sz = new Float64Array(N), sr = new Float32Array(N), sg = new Float32Array(N), sb = new Float32Array(N), mode = o.zmode;
   const pr = typeof l3Prefs === "function" ? l3Prefs() : null, old = pr ? pr.pcMode : undefined; let t0 = performance.now();
   try {
@@ -44,7 +47,7 @@ async function l3pmGrid(c, o, onP) {
     for await (const { o: pc, mask, f } of l3pcsPieces(c)) {
       const n = pc.pos.length / 3, P = pc.pos, col = o.color === "none" ? null : l3pcColorsBase(c, pc);
       for (let i = 0; i < n; i++) {
-        if (mask && !mask[i]) continue; const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1], z = P[i * 3 + 2] + ctr[2], ix = Math.floor((x - bb.min[0]) / h), iy = Math.floor((y - bb.min[1]) / h); if (ix < 0 || iy < 0 || ix >= nx || iy >= ny) continue;
+        if (mask && !mask[i]) continue; const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1], z = P[i * 3 + 2] + ctr[2], ix = Math.floor((x - bb.min[0]) / h), iy = Math.floor((y - bb.min[1]) / h); if (ix < 0 || iy < 0 || ix >= nx || iy >= ny) continue; if (A) { if (x < A.bb[0] || x > A.bb[2] || y < A.bb[1] || y > A.bb[3]) continue; let inside = false; for (let q = 0; q < A.polys.length; q++) if (l3pcsIn(A.polys[q], x, y)) { inside = true; break; } if (!inside) continue; }
         const k = iy * nx + ix, first = cnt[k] === 0, r = col ? col[i * 3] : 160, g = col ? col[i * 3 + 1] : 165, b = col ? col[i * 3 + 2] : 175;
         if (mode === "mean" || first) { cnt[k]++; sx[k] += x; sy[k] += y; sz[k] += z; sr[k] += r; sg[k] += g; sb[k] += b; if (mode !== "mean") { sx[k] = x; sy[k] = y; sz[k] = z; sr[k] = r; sg[k] = g; sb[k] = b; } }
         else { cnt[k]++; if (mode === "min" ? z < sz[k] : z > sz[k]) { sx[k] = x; sy[k] = y; sz[k] = z; sr[k] = r; sg[k] = g; sb[k] = b; } }
@@ -129,24 +132,26 @@ function l3pmPreview(r, wire) {
 function l3pmDialog(id) {
   const c = l3pcGet(id); if (!c || l3pm.busy) return; l3pm.res = null;
   const bb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), w = bb.max[0] - bb.min[0], h = bb.max[1] - bb.min[1], cell0 = Math.max(0.1, Math.round(Math.sqrt(w * h / 100000) * 20) / 20);   // ≈ 100 000 rutor som start
-  const modes = [["auto", "Automatiskt"], ["rgb", "Skanningens färger"], ["int", "Intensitet (grå)"], ["z", "Höjd – färgskala"], ["solid", "Enfärgad (molnets färg)"], ["diff", "Skillnad (differentialanalys)"], ["none", "Ingen färg (grå mesh)"]], cur = typeof l3pcMode === "function" ? l3pcMode() : "auto";
+  const zones = typeof l3pcsGroups === "function" ? l3pcsGroups("zone") : [], modes = [["auto", "Automatiskt"], ["rgb", "Skanningens färger"], ["int", "Intensitet (grå)"], ["z", "Höjd – färgskala"], ["solid", "Enfärgad (molnets färg)"], ["diff", "Skillnad (differentialanalys)"], ["none", "Ingen färg (grå mesh)"]], cur = typeof l3pcMode === "function" ? l3pcMode() : "auto";
   const ov = document.createElement("div"); ov.id = "l3pmDlg"; ov.style.cssText = "position:fixed;inset:0;z-index:9500;pointer-events:none;display:flex;align-items:flex-start;justify-content:flex-end;padding:80px 16px 16px";l3pmPrev.cloud = String(id).split("|")[0]; l3pmPreviewClear();
   const row = (l, ctl) => `<label style="display:flex;gap:8px;align-items:center;justify-content:space-between"><span>${l}</span>${ctl}</label>`;
   ov.innerHTML = `<div style="pointer-events:auto;max-height:calc(100vh - 100px);overflow:auto;background:#fff;color:#0f172a;border-radius:14px;max-width:400px;width:100%;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.4);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:9px">
     <b style="font-size:16px">Skapa mesh av punktmolnet</b><div style="color:#475569">${escHtml(c.name)} · ${w.toFixed(0)} × ${h.toFixed(0)} m</div>
+    ${row("Område", `<select id="pmArea"><option value="">Hela molnet</option>${zones.map((z, i) => `<option value="${i}">${escHtml(z.name)}</option>`).join("")}</select>`)}
     ${row("Typ", `<select id="pmType"><option value="tin">TIN (triangulerat nät, Delaunay)</option><option value="grid">Rutnät (regelbundna rutor, ej TIN)</option></select>`)}
-    ${row("Rutstorlek (m)", `<span><input type="number" id="pmCell" min="0.05" step="0.05" value="${cell0}" style="width:80px"> <span id="pmEst" style="color:#64748b"></span></span>`)}
+    ${row("Rutstorlek (m)", `<span><input type="number" id="pmCell" min="0.1" step="0.05" value="${cell0}" style="width:80px"> <span id="pmEst" style="color:#64748b"></span></span>`)}
     ${row("Höjd per ruta", `<select id="pmZ"><option value="mean">Medel</option><option value="min">Lägst (mark)</option><option value="max">Högst (tak)</option></select>`)}
     ${row("Största kantlängd (m, 0 = ingen)", `<input type="number" id="pmEdge" min="0" step="0.5" value="${Math.round(cell0 * 3 * 10) / 10}" style="width:80px">`)}
     ${row("Ta bort spikar (m, 0 = av)", `<input type="number" id="pmSpike" min="0" step="0.1" value="1" title="Rutor vars höjd avviker mer än så från grannrutorna tas bort (punkter som sticker iväg, flygande brus)" style="width:80px">`)}
     ${row("Färg", `<select id="pmCol">${modes.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
-    <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj. Förhandsvisningen i 3D uppdateras direkt när du ändrar något. Varje triangel får medelfärgen av sina hörn. Spikfilter tar bort rutor som sticker iväg från grannarna så att inga taggar uppstår.</div>
+    <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj, ner till 0,1 m. För så fin ruta: välj en zon under Område (eller ett bortklippt lager) så att meshen blir hanterbar. Förhandsvisningen i 3D uppdateras direkt när du ändrar något. Varje triangel får medelfärgen av sina hörn. Spikfilter tar bort rutor som sticker iväg från grannarna så att inga taggar uppstår.</div>
     <div id="pmOut" style="color:#334155"></div>
     <div style="display:flex;gap:14px;flex-wrap:wrap"><label><input type="checkbox" id="pmHide"> Dölj punktmolnet</label><label><input type="checkbox" id="pmWire"> Visa nät</label></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" id="pmX">Stäng</button><button type="button" id="pmGo" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:6px 14px">Uppdatera</button>
     <button type="button" id="pmDxf" disabled>⤓ DXF</button><button type="button" id="pmIfc" disabled>⤓ IFC</button><button type="button" id="pmMod" disabled>＋ Lägg i modellen</button></div></div>`;
   document.body.appendChild(ov); const q = s => ov.querySelector(s), out = q("#pmOut");
-  const est = () => { const v = Number(q("#pmCell").value), n = v > 0 ? Math.round(w * h / (v * v)) : 0; q("#pmEst").textContent = n ? `≈ ${n.toLocaleString("sv-SE")} rutor${n > 1200000 ? " – för många, välj större ruta" : ""}` : ""; q("#pmEst").style.color = n > 1200000 ? "#b91c1c" : "#64748b"; }; let edgeTouched = false; q("#pmEdge").oninput = () => { edgeTouched = true; }; q("#pmCell").oninput = () => { est(); const v = Number(q("#pmCell").value); if (!edgeTouched && v > 0) q("#pmEdge").value = Math.round(v * 3 * 10) / 10; }; est();
+  const areaSel = () => { const i = q("#pmArea").value; return i === "" ? null : zones[Number(i)]; }, areaWH = () => { const a = areaSel(); if (!a) return [w, h]; return [Math.max(0, Math.min(bb.max[0], a.bb[2]) - Math.max(bb.min[0], a.bb[0])), Math.max(0, Math.min(bb.max[1], a.bb[3]) - Math.max(bb.min[1], a.bb[1]))]; };
+  const est = () => { const v = Number(q("#pmCell").value), [aw, ah] = areaWH(), n = v > 0 ? Math.round(aw * ah / (v * v)) : 0; q("#pmEst").textContent = n ? `≈ ${n.toLocaleString("sv-SE")} rutor${n > 1200000 ? " – för många: välj större ruta eller ett mindre område" : ""}` : ""; q("#pmEst").style.color = n > 1200000 ? "#b91c1c" : "#64748b"; }; q("#pmArea").addEventListener("change", est); let edgeTouched = false; q("#pmEdge").oninput = () => { edgeTouched = true; }; q("#pmCell").oninput = () => { est(); const v = Number(q("#pmCell").value); if (!edgeTouched && v > 0) q("#pmEdge").value = Math.round(v * 3 * 10) / 10; }; est();
   const closeAll = () => { clearTimeout(timer);  l3pmPreviewClear(); l3pmCloudHide(false); ov.remove(); l3Render(); }; q("#pmX").onclick = () => { if (!l3pm.busy) closeAll(); };
   q("#pmHide").onchange = () => l3pmCloudHide(q("#pmHide").checked); q("#pmWire").onchange = () => { if (l3pm.res) l3pmPreview(l3pm.res, q("#pmWire").checked); };
   const base = () => `${l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""))} – mesh`;
@@ -155,13 +160,13 @@ function l3pmDialog(id) {
   q("#pmGo").onclick = async () => {
     if (l3pm.busy) return; l3pm.busy = true; q("#pmGo").disabled = true; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
     try {
-      const o = { type: q("#pmType").value, cell: Math.max(0.05, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0) };
+      const o = { type: q("#pmType").value, cell: Math.max(0.1, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0), area: areaSel() };
       const r = await l3pmBuild(c, o, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = o; l3pm.res = r; l3pmPreview(r, q("#pmWire").checked); if (typeof l3Zoom === "function") { /* behåll vyn */ }
       out.innerHTML = `<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta.${r.spikes ? ` ${r.spikes.toLocaleString("sv-SE")} spikar/brus-rutor togs bort.` : ""}`; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
     } catch (e) { out.textContent = "⚠ " + e.message; }
     l3pm.busy = false; q("#pmGo").disabled = false; if (again && ov.isConnected) { again = false; sched(50); }
   };
-  ["#pmType", "#pmCell", "#pmZ", "#pmEdge", "#pmSpike", "#pmCol"].forEach(id => { const el = q(id); el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => sched(el.tagName === "SELECT" ? 150 : 600)); });
+  ["#pmArea", "#pmType", "#pmCell", "#pmZ", "#pmEdge", "#pmSpike", "#pmCol"].forEach(id => { const el = q(id); el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => sched(el.tagName === "SELECT" ? 150 : 600)); });
   setTimeout(() => { if (ov.isConnected) sched(0); }, 50);
   q("#pmDxf").onclick = () => { const r = l3pm.res; if (r) { l3pmSave(l3pmDxf(r, "Mesh"), base() + ".dxf", "application/dxf"); out.textContent = "DXF hämtad: " + base() + ".dxf"; } };
   q("#pmIfc").onclick = () => { const r = l3pm.res; if (r) { l3pmSave(l3pmIfc(r, base(), r.opts.color !== "none"), base() + ".ifc", "application/x-step"); out.textContent = "IFC hämtad: " + base() + ".ifc"; } };

@@ -66,6 +66,8 @@ function l3ssCadAt(e) {
 function l3ssTap(e, hadSel) {
   const r = l3ssCadAt(e);
   if (r) { l3ssSelect({ kind: "cad", id: r.id }); return true; }
+  // Punktmoln: tryck på ett moln markerar det (Victor 2026-11-13: "jag vill kunna klicka på molnen så att dom markeras").
+  const pk = typeof l3pcPick === "function" ? l3pcPick(e) : null; if (pk && pk.cloud) { l3ssSelect({ kind: "pc", id: pk.cloud.id }); l3ssFlash({ kind: "pc", id: pk.cloud.id }); return true; }
   // Marken = PDF:en bara med mus (på pekskärm är tryck på marken till för att zooma och avmarkera).
   if (!hadSel && !l3ss.sel && e.pointerType !== "touch" && !(typeof l3IsTouch === "function" && l3IsTouch() && !e.pointerType) && l3.planMesh && l3.planMesh.visible && l3Ray(e, [l3.planMesh])[0]) { l3ssSelect({ kind: "pdf" }); return true; }
   if (l3ss.sel) l3ssSelect(null);
@@ -76,13 +78,15 @@ function l3ssSelect(sel, quiet) {
   if (sel) { if (typeof l3SelectIds === "function" && l3.sel.size) l3SelectIds([]); if (typeof l3bsClear === "function" && l3bs.sel.length) l3bsClear(); }
   l3ssHighlight();
   if (!quiet && typeof l3RenderSide === "function") l3RenderSide();
-  if (sel) l3Status(sel.kind === "cad" ? `DXF markerad: ${(l3ssRec() || {}).name || ""}. Esc avmarkerar.` : "Arbetsytans ritning (PDF) markerad. Esc avmarkerar.");
+  if (typeof l3LayersRender === "function") l3LayersRender();
+  if (sel) l3Status(sel.kind === "pc" ? `Punktmoln markerat: ${(l3pc.clouds.find(x => x.id === sel.id) || {}).name || ""}. Esc avmarkerar.` : sel.kind === "cad" ? `DXF markerad: ${(l3ssRec() || {}).name || ""}. Esc avmarkerar.` : "Arbetsytans ritning (PDF) markerad. Esc avmarkerar.");
 }
 /* Ljussken runt det markerade (från sidomenyn): en orange ruta runt ritningen/PDF:en som tonar ut. */
 function l3ssFlash(sel) {
   if (!l3 || !sel) return;
   const box = new THREE.Box3();
-  if (sel.kind === "cad") { if (typeof l3s !== "undefined" && l3s.cad) l3s.cad.forEach(o => { if (o.userData.cadId === sel.id && o.visible) box.expandByObject(o); }); }
+  if (sel.kind === "pc") { const b = l3ssPcBox(sel.id); if (b) box.copy(b); }
+  else if (sel.kind === "cad") { if (typeof l3s !== "undefined" && l3s.cad) l3s.cad.forEach(o => { if (o.userData.cadId === sel.id && o.visible) box.expandByObject(o); }); }
   else if (l3.planMesh) box.expandByObject(l3.planMesh);
   if (box.isEmpty()) return;
   const pad = Math.max(1, box.getSize(new THREE.Vector3()).length() * 0.01); box.expandByScalar(pad);
@@ -91,6 +95,8 @@ function l3ssFlash(sel) {
   const step = now => { const k = Math.min(1, (now - t0) / 1800); h.material.opacity = (1 - k) * (0.6 + 0.4 * Math.abs(Math.cos(k * Math.PI * 4))); l3Render(); if (k < 1) requestAnimationFrame(step); else { l3.scene.remove(h); h.geometry.dispose(); h.material.dispose(); l3Render(); } };
   requestAnimationFrame(step);
 }
+/* Molnets omslutande låda i 3D-vyns koordinater. */
+function l3ssPcBox(id) { const c = l3pc.clouds.find(x => x.id === id); if (!c) return null; const O = l3.O, dz = c.dz || 0, i = c.info; return new THREE.Box3(new THREE.Vector3(i.min[0] - O[0], i.min[1] - O[1], i.min[2] + dz - O[2]), new THREE.Vector3(i.max[0] - O[0], i.max[1] - O[1], i.max[2] + dz - O[2])); }
 const l3ssRec = () => (l3ss.sel && l3ss.sel.kind === "cad" && typeof cads === "function" ? cads().find(r => r.id === l3ss.sel.id) || null : null);
 /* Markeringen syns: DXF:ens linjer orange, PDF:en med en orange ram. Anropas också när linjerna byggts om. */
 function l3ssHighlight() {
@@ -107,6 +113,7 @@ function l3ssHighlight() {
     l3ss.ring.renderOrder = 12; l3ss.ring.userData.noHit = true; l3ss.ring.raycast = () => {};
     l3.scene.add(l3ss.ring);
   }
+  if (l3ss.sel && l3ss.sel.kind === "pc") { const b = l3ssPcBox(l3ss.sel.id); if (b) { const h = new THREE.Box3Helper(b, 0xf59e0b); h.material.depthTest = false; h.renderOrder = 12; h.userData.noHit = true; h.raycast = () => {}; l3ss.ring = h; l3.scene.add(h); } }
   l3Render();
 }
 
@@ -124,6 +131,33 @@ function l3ssRenderSide(side) {
   const esc = escHtml, I = L3_ICO;
   const f = (k, label, val, unit = "m", title = "") => `<label title="${esc(title)}"><span>${label}</span><div class="v3-in"><input type="text" inputmode="decimal" data-ssf="${k}" value="${val}" /><em>${unit}</em></div></label>`;
   const row = (k, v) => v || v === 0 ? `<tr><td>${k}</td><td>${esc(String(v))}</td></tr>` : "";
+  if (l3ss.sel.kind === "pc") {
+    const c = l3pc.clouds.find(x => x.id === l3ss.sel.id); if (!c) { l3ssSelect(null); return; }
+    const i = c.info, nEd = (c.edits || []).filter(x => !x.del).length, fm = v => Number(v).toLocaleString("sv-SE");
+    side.dataset.id = "site:pc:" + c.id;
+    side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:#f59e0b"></i><b title="${esc(c.name)}">${esc(c.name)}</b><button type="button" class="v3-x" id="v3SsClose" title="Avmarkera (Esc)">✕</button></div>
+      <div class="v3-sub">Punktmoln</div>
+      <div class="v3-acts">
+        <button type="button" class="v3-act" id="v3SsZoom">${I.focus}<span>Zooma</span></button>
+        <button type="button" class="v3-act" id="v3SsHide">${I.eyeOff}<span>Dölj</span></button>
+        <button type="button" class="v3-act" id="v3PcEdit" title="Klipp bort punkter">${I.edit}<span>Klipp</span></button>
+      </div>
+      <div class="v3-acts" style="margin-top:6px">
+        <button type="button" class="v3-act" id="v3PcExp" title="Exportera molnet (utan bortklippta punkter) som LAZ">${I.upload || I.edit}<span>Exportera LAZ</span></button>
+        <button type="button" class="v3-act" id="v3PcSlice" title="Dela upp efter WBS-zoner">✂<span>Zoner</span></button>
+        <button type="button" class="v3-act" id="v3PcStrips" title="Dela jämnt i bitar eller rutor">✂<span>Bitar</span></button>
+        <button type="button" class="v3-act" id="v3PcMesh" title="Skapa mesh (TIN eller rutnät)">▲<span>Mesh</span></button>
+      </div>
+      <table class="v3-info-t">${row("Format", i.format)}${row("Punkter", `${fm(i.n)} av ${fm(i.total)}`)}${row("Innehåll", [i.rgb ? "färg" : "", i.intensity ? "intensitet" : ""].filter(Boolean).join(", ") || "höjd")}${row("X", `${l3ssFmt(i.min[0])} – ${l3ssFmt(i.max[0])}`)}${row("Y", `${l3ssFmt(i.min[1])} – ${l3ssFmt(i.max[1])}`)}${row("Z", `${l3ssFmt(i.min[2])} – ${l3ssFmt(i.max[2])}`)}${c.dz ? row("Höjdjustering", l3ssFmt(c.dz) + " m") : ""}${nEd ? row("Bortklippta lager", nEd) : ""}</table>`;
+    const on3 = (id, fn) => { const x = side.querySelector("#" + id); if (x) x.onclick = fn; };
+    on3("v3SsClose", () => l3ssSelect(null));
+    on3("v3SsZoom", () => l3pcZoom(c.id));
+    on3("v3SsHide", () => { l3pcShow(c.id, false); l3ssSelect(null); if (typeof l3LayersRender === "function") l3LayersRender(); });
+    on3("v3PcEdit", () => { l3ssSelect(null, true); l3peStart(c.id); });
+    on3("v3PcExp", () => l3pxRun(c, "kept", (c.edits && c.edits.some(x => !x.off && !x.del)) ? "redigerad" : "hela molnet"));
+    on3("v3PcSlice", () => l3pcsDialog(c.id)); on3("v3PcStrips", () => l3pcsStripsOpen(c.id)); on3("v3PcMesh", () => l3pmDialog(c.id));
+    return;
+  }
   if (l3ss.sel.kind === "cad") {
     const r = l3ssRec(); if (!r) { l3ssSelect(null); return; }
     const key = "cad:" + r.id, b = l3ssCadBox(r), sh = cadShiftOf(r), on = r.layers.filter(l => cadLayerOn(r, l.name)).length;

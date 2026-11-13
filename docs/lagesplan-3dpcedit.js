@@ -9,7 +9,7 @@ const L3PE_CSS = `#v3PcEdOv{position:absolute;inset:0;z-index:25;cursor:crosshai
 #v3PcEdPanel .r{display:flex;flex-wrap:wrap;gap:6px;align-items:center}#v3PcEdPanel button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:9px;padding:6px 10px;font:inherit;cursor:pointer}
 #v3PcEdPanel button.on{background:#2563eb;color:#fff;border-color:#2563eb}#v3PcEdPanel button.bad{background:#dc2626;color:#fff;border-color:#dc2626}#v3PcEdPanel button:disabled{opacity:.4;cursor:default}#v3PcEdPanel .t{opacity:.7;font-size:12px}`;
 function l3peEdits(id) { const E = l3Prefs().pcEdits || {}; return Array.isArray(E[id]) ? E[id] : []; }
-function l3peSave(c) { const E = { ...(l3Prefs().pcEdits || {}) }; if (c.edits && c.edits.length) E[c.id] = c.edits; else delete E[c.id]; l3SetPref("pcEdits", E); }
+function l3peSave(c) { const E = { ...(l3Prefs().pcEdits || {}) }; if (c.edits && c.edits.length) E[c.id] = c.edits.map(({ ov, ovBusy, ...rest }) => rest); else delete E[c.id]; l3SetPref("pcEdits", E); }
 const l3peInPoly = (poly, bb, x, y) => {
   if (x < bb[0] || x > bb[2] || y < bb[1] || y > bb[3]) return false;
   let ins = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ins = !ins; }
@@ -68,7 +68,7 @@ function l3peAddFilter(c, spec) { const before = c.nTot; (c.edits = c.edits || [
 /* Redigeringarna på en enskild nod/ruta som läses in (detaljnoder i okträdet): ger nya { pos, rgb, inten } utan de borttagna punkterna. */
 function l3peFilterData(c, o) {
   const ed = c.edits || []; if (!ed.length) return o; const n = o.pos.length / 3, keep = new Uint8Array(n).fill(1); let cnt = n;
-  ed.forEach(e => { if (e.off) return; cnt -= e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); });
+  ed.forEach(e => { cnt -= e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); });   // molnet i bilden har alltid alla klipp påförda – tända lager ritas som egna punkter ovanpå
   if (cnt === n) return o;
   const P = new Float32Array(cnt * 3), R = o.rgb ? new Uint8Array(cnt * 3) : undefined, I = o.inten ? new Uint8Array(cnt) : undefined; let d = 0;
   for (let i = 0; i < n; i++) { if (!keep[i]) continue; P[d * 3] = o.pos[i * 3]; P[d * 3 + 1] = o.pos[i * 3 + 1]; P[d * 3 + 2] = o.pos[i * 3 + 2]; if (R) { R[d * 3] = o.rgb[i * 3]; R[d * 3 + 1] = o.rgb[i * 3 + 1]; R[d * 3 + 2] = o.rgb[i * 3 + 2]; } if (I) I[d] = o.inten[i]; d++; }
@@ -76,12 +76,12 @@ function l3peFilterData(c, o) {
 }
 function l3peApply(c) {
   if (!c.orig) c.orig = c.chunks.map(ch => ({ pos: ch.pos, rgb: ch.rgb, inten: ch.inten }));
-  const ed = c.edits || []; let total = 0; ed.forEach(e => { if (!e.off) e.nrem = 0; });
+  const ed = c.edits || []; let total = 0; ed.forEach(e => { e.nrem = 0; });
   c.chunks.forEach((ch, k) => {
     const o = c.orig[k], n = o.pos.length / 3; let keep = null, cnt = n;
     if (ed.length) {
       keep = new Uint8Array(n).fill(1); cnt = n;
-      ed.forEach(e => { if (e.off) return; const r = e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); e.nrem = (e.nrem || 0) + r; cnt -= r; });
+      ed.forEach(e => { const r = e.t ? l3peFilterRun(c, e, o.pos, keep, n) : l3pePolyRun(c, e, o.pos, keep, n); e.nrem = (e.nrem || 0) + r; cnt -= r; });
     }
     if (!keep || cnt === n) { ch.pos = o.pos; ch.rgb = o.rgb; ch.inten = o.inten; }
     else {
@@ -97,14 +97,14 @@ function l3peApply(c) {
   c.nTot = total; l3pcIndexIdle(c); if (typeof l3pcLegend === "function") l3pcLegend(); l3Render();
   return total;
 }
-function l3pcEdApplyOnLoad(c) { const e = l3peEdits(c.id); if (e.length) { c.edits = e.map(x => ({ ...x })); l3peApply(c); } }
+function l3pcEdApplyOnLoad(c) { const e = l3peEdits(c.id); if (e.length) { c.edits = e.map(x => ({ ...x })); l3peApply(c); c.edits.forEach((x, k) => { if (x.off && !x.del) l3peOverlay(c, k); }); } }
 /* En redigering: ring i bildens normaliserade koordinater (−1…1) + kameramatrisen som gällde när den ritades. */
 function l3peAddEdit(c, poly, mode) {
   l3.camera.updateMatrixWorld(); const pm = new THREE.Matrix4().multiplyMatrices(l3.camera.projectionMatrix, l3.camera.matrixWorldInverse);
   const before = c.nTot; (c.edits = c.edits || []).push({ pm: pm.elements.slice(), O: l3.O.slice(), dz: c.dz || 0, poly: poly.map(q => [Math.round(q[0] * 1e5) / 1e5, Math.round(q[1] * 1e5) / 1e5]), mode });
   const left = l3peApply(c); l3peSave(c); return { before, left, removed: before - left };
 }
-function l3peUndo(c) { if (!c.edits || !c.edits.length) return null; c.edits.pop(); const left = l3peApply(c); l3peSave(c); return left; }
+function l3peUndo(c) { if (!c.edits || !c.edits.length) return null; const gone = c.edits.length - 1; if (c.ovPts && c.ovPts.get(gone)) { const o = c.ovPts.get(gone); c.group.remove(o); o.geometry.dispose(); c.ovPts.delete(gone); } c.edits.pop(); const left = l3peApply(c); l3peSave(c); return left; }
 function l3peReset(c) { c.edits = []; const left = l3peApply(c); l3peSave(c); return left; }
 
 function l3peNdc(e) { const r = l3.renderer.domElement.getBoundingClientRect(); return [((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1)]; }
@@ -180,13 +180,42 @@ function l3peLabel(e, i) {
   return `Bortklippt ${i + 1}: ${nm}`;
 }
 async function l3peRename(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return; const e = c.edits[k], v = await uiPrompt("Namn på det bortklippta (lagret):", e.name || l3peLabel({ ...e, name: "" }, k), { ok: "Spara" }); if (v == null) return; e.name = String(v).trim().slice(0, 60) || undefined; l3peSave(c); }
-function l3peToggle(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return null; c.edits[k].off = !c.edits[k].off; const left = l3peApply(c); l3peSave(c); return { left, off: c.edits[k].off }; }
+/* Tänd/släck ett bortklippt lager (Victor 2026-11-13: ska inte läsa in hela molnet igen – bara det bortklippta). Molnet rörs inte: lagrets punkter ritas som ett eget punktobjekt ovanpå (tänd) eller tas bort (släckt). */
+function l3peToggle(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return null; const e = c.edits[k]; e.off = !e.off; l3peOverlay(c, k); l3peSave(c); return { left: c.nTot, off: e.off }; }
+/* Punkterna ett lager tog bort (sparas på redigeringen så att de bara läses en gång). */
+async function l3peOvData(c, k) {
+  const e = c.edits[k]; if (e.ov) return e.ov; if (e.ovBusy) return e.ovBusy;
+  e.ovBusy = (async () => { const P = [], R = [], I = []; let n = 0;
+    for await (const { o } of l3pxPieces(c)) { const m = l3pxMask(c, o, k), cnt = m.reduce((a, v) => a + v, 0); if (!cnt) continue; const pos = new Float32Array(cnt * 3), rgb = o.rgb ? new Uint8Array(cnt * 3) : undefined, inten = o.inten ? new Uint8Array(cnt) : undefined; let d = 0;
+      for (let i = 0; i < m.length; i++) { if (!m[i]) continue; pos[d * 3] = o.pos[i * 3]; pos[d * 3 + 1] = o.pos[i * 3 + 1]; pos[d * 3 + 2] = o.pos[i * 3 + 2]; if (rgb) { rgb[d * 3] = o.rgb[i * 3]; rgb[d * 3 + 1] = o.rgb[i * 3 + 1]; rgb[d * 3 + 2] = o.rgb[i * 3 + 2]; } if (inten) inten[d] = o.inten[i]; d++; }
+      P.push(pos); R.push(rgb); I.push(inten); n += cnt; }
+    const pos = new Float32Array(n * 3), rgb = c.info.rgb ? new Uint8Array(n * 3) : undefined, inten = new Uint8Array(n); let at = 0;
+    P.forEach((p, j) => { pos.set(p, at * 3); if (rgb && R[j]) rgb.set(R[j], at * 3); if (I[j]) inten.set(I[j], at); at += p.length / 3; });
+    return (e.ov = { pos, rgb, inten }); })();
+  try { return await e.ovBusy; } finally { e.ovBusy = null; }
+}
+async function l3peOverlay(c, k) {
+  const e = c.edits[k]; c.ovPts = c.ovPts || new Map(); const old = c.ovPts.get(k);
+  if (old) { c.group.remove(old); old.geometry.dispose(); c.ovPts.delete(k); }
+  if (!e.off || e.del) { l3Render(); return; }
+  const d = await l3peOvData(c, k); if (!e.off || e.del || !d.pos.length) { l3Render(); return; }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(d.pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, d), 3, true));
+  const pts = new THREE.Points(g, c.mat); pts.frustumCulled = false; pts.userData.noHit = true; pts.raycast = () => {}; c.group.add(pts); c.ovPts.set(k, pts); l3Render();
+}
+function l3peOverlayRecolor(c) { (c.ovPts || new Map()).forEach((pts, k) => { const d = c.edits[k] && c.edits[k].ov; if (d) pts.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, d), 3, true)); }); }
+/* Papperskorgen på ett bortklippt lager: lagret försvinner ur listan och punkterna är borta för gott (molnet ändras inte – de var redan bortklippta). */
+async function l3peDelete(id, k) {
+  const c = l3pc.clouds.find(x => x.id === id), e = c && c.edits && c.edits[k]; if (!e) return false;
+  const ok = typeof uiConfirm === "function" ? await uiConfirm(`Ta bort lagret "${l3peLabel(e, k)}"?\n\nDe bortklippta punkterna (${e.nrem != null ? Number(e.nrem).toLocaleString("sv-SE") : "några"} st) är redan borta ur molnet. Lagret försvinner ur listan och går inte att tända igen, så de bortklippta punkterna kan inte längre exporteras eller zoomas till.`, { ok: "Ta bort lagret", danger: true }) : true;
+  if (!ok) return false; e.off = false; e.del = true; e.ov = null; l3peOverlay(c, k); l3peSave(c); if (typeof l3LayersRender === "function") l3LayersRender(); return true;
+}
 
 /* Ytterpunkterna för det en redigering har klippt bort (absoluta koordinater) – räknas en gång och sparas på redigeringen. */
 async function l3peBB(c, k) {
   const e = c && c.edits && c.edits[k]; if (!e) return null; if (e.bb) return e.bb;
   const ctr = c.info.center; let a = [Infinity, Infinity, Infinity], b = [-Infinity, -Infinity, -Infinity], any = false;
-  for await (const { o } of l3pxPieces(c)) { const m = l3pxMask(c, o, k), P = o.pos, n = P.length / 3; for (let i = 0; i < n; i++) { if (!m[i]) continue; any = true; for (let d = 0; d < 3; d++) { const v = P[i * 3 + d] + ctr[d]; if (v < a[d]) a[d] = v; if (v > b[d]) b[d] = v; } } }
+  const src = c.lod ? (async function* () { for (const n of c.lod.nodes) if (n.pinned && n.n) yield { o: await l3olRead(c.lod, n) }; })() : l3pxPieces(c);   // okträdsmoln: bara översiktsnoderna (snabbt – ytterpunkterna räcker för att zooma)
+  for await (const { o } of src) { const m = l3pxMask(c, o, k), P = o.pos, n = P.length / 3; for (let i = 0; i < n; i++) { if (!m[i]) continue; any = true; for (let d = 0; d < 3; d++) { const v = P[i * 3 + d] + ctr[d]; if (v < a[d]) a[d] = v; if (v > b[d]) b[d] = v; } } }
   if (any) e.bb = [...a, ...b]; return e.bb || null;
 }
 /* Det bortklippta som ett eget "moln" som alla punktmolnsverktyg (zoner, bitar, mesh, export) kan arbeta på: id = "molnid|k". Hämta med l3pcGet (efter await l3peBB). */

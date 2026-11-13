@@ -376,6 +376,7 @@ function l3Dom() {
       <span class="v3-ft-tg"><button type="button" id="v3FtLegend" class="v3-ft-t ${P.legend ? "on" : ""}" aria-pressed="${!!P.legend}" title="Visa/dölj statusförklaringen (antal objekt per status)">Status</button><button type="button" id="v3FtNav" class="v3-ft-t ${P.navHelp !== false ? "on" : ""}" aria-pressed="${P.navHelp !== false}" title="Visa/dölj navigeringshjälpen (musens och tangenternas funktioner)">${typeof L3_NAV_ICO === "string" ? L3_NAV_ICO : ""}Navigering</button></span>
       <label class="v3-date" title="Datum för statusfärgerna (samma som i lägesplanen)">Datum <input type="date" id="v3Date" /></label>
       <span class="v3-dsl" title="Tidsreglage – alltid tillgängligt. ‹ › flyttar en dag."><button type="button" id="v3DPrev" aria-label="Backa en dag">‹</button><input type="range" id="v3DSlider" min="0" max="1" value="0" aria-label="Datum" /><button type="button" id="v3DNext" aria-label="Fram en dag">›</button></span>
+      <span class="v3-ft-tg"><button type="button" id="v3FtPlan" class="v3-ft-t on" aria-pressed="true" title="Visa/dölj ritningen (PDF) som mark">Ritning</button></span>
       <span class="v3-coord" id="v3Coord"></span>
       <span class="v3-save" id="v3Save"></span>
     </div>`;
@@ -427,6 +428,10 @@ function l3Dom() {
   box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); if (typeof l3NavHelp === "function") l3NavHelp(); }; });
   mouseHint();
   $3("v3PlanOp").oninput = e => { l3SetPref("planOp", Number(e.target.value)); if (typeof l3lApplyPlanOp === "function") l3lApplyPlanOp(); l3Render(); };
+  /* Snabbknapp vid koordinaterna (Victor 2026-11-13): tänder/släcker ritningen (PDF) som mark – följer samma reglage som i Visa-menyn. */
+  const ftPlan = $3("v3FtPlan"), ftSync = () => { const c = document.getElementById("v3ShowPlan"), on = c ? c.checked : true, has = !!(l3 && l3.planMesh); ftPlan.classList.toggle("on", on && has); ftPlan.setAttribute("aria-pressed", String(on && has)); ftPlan.disabled = !has; ftPlan.title = has ? (on ? "Dölj ritningen (PDF) som mark" : "Visa ritningen (PDF) som mark") : "Ingen ritning (PDF) inläst för arbetsytan"; };
+  ftPlan.onclick = e => { e.stopPropagation(); const c = document.getElementById("v3ShowPlan"); if (c) { c.checked = !c.checked; c.dispatchEvent(new Event("change")); } ftSync(); };
+  setInterval(ftSync, 500); setTimeout(ftSync, 0);
   $3("v3ShowPlan").onchange = e => { l3SetPref("plan", e.target.checked); if (l3.planMesh) l3.planMesh.visible = e.target.checked; if (typeof l3LayersRender === "function") l3LayersRender(); l3Render(); };
   box.querySelectorAll("[data-v3e4d]").forEach(b => { b.onclick = () => { l3SetPref("etab4d", b.dataset.v3e4d); box.querySelectorAll("[data-v3e4d]").forEach(x => x.classList.toggle("on", x === b)); l3Etab4dAll(); }; });
   box.querySelectorAll("[data-v3vm]").forEach(b => { b.onclick = () => { if (typeof l3vmSet === "function") l3vmSet(b.dataset.v3vm); }; });
@@ -1025,7 +1030,8 @@ function l3SelBox() {
   if (typeof l3m !== "undefined" && l3m.sel && l3m.sel.size) l3m.list.forEach(m => { if (l3m.sel.has(m.id) && m.kind === "volume" && m.h) m.pts.forEach(p => b.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2] + Number(m.h)))); });
   if (typeof l3k !== "undefined" && l3k.open && l3k.open.pos) { const c = l3k.open.pos; b.expandByPoint(new THREE.Vector3(c[0] - l3.O[0], c[1] - l3.O[1], c[2] - l3.O[2])); }
   if (typeof l3ss !== "undefined" && l3ss.sel) {
-    if (l3ss.sel.kind === "pdf" && l3.planMesh) b.union(new THREE.Box3().setFromObject(l3.planMesh));
+    if (l3ss.sel.kind === "pc") { const pb = typeof l3ssPcBox === "function" ? l3ssPcBox(l3ss.sel.id) : null; if (pb) b.union(pb); }
+    else if (l3ss.sel.kind === "pdf" && l3.planMesh) b.union(new THREE.Box3().setFromObject(l3.planMesh));
     else if (typeof l3s !== "undefined" && l3s.cad) l3s.cad.forEach(o => { if (o.userData.cadId === l3ss.sel.id) b.union(new THREE.Box3().setFromObject(o)); });
   }
   return b;

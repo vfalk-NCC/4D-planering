@@ -30,7 +30,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForSelector('#v3Show:not(.hidden)');
   const r = await page.evaluate(async () => {
     const out = {}, sw = k => document.querySelector(`[data-os="${k}"]`), click = k => { const e = sw(k); e.checked = !e.checked; e.dispatchEvent(new Event('change')); };
-    out.rows = document.querySelectorAll('#v3OrigIn [data-os]').length; out.hasClick = !!sw('bubClick') && sw('bubClick').checked;
+    out.rows = document.querySelectorAll('#v3Show [data-os]').length; out.hasClick = !!sw('bubClick') && sw('bubClick').checked;
     click('orig'); out.orig = l3b.orig === true && sw('orig').checked;
     click('tlOrig'); out.tlOrig = l3gm.mode === 'time' && l3gmCfg().origCol === true && !l3b.orig && sw('tlOrig').checked && !sw('tlProg').checked;
     click('tlProg'); out.tlProg = l3gm.mode === 'time' && l3gmCfg().origCol === false && sw('tlProg').checked;

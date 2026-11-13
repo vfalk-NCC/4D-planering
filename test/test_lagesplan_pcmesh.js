@@ -70,6 +70,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const c = l3pc.clouds.find(x => x.id === 'pc:mesh'); let err = ''; try { await l3pmBuild(c, { type: 'grid', cell: 0.05, zmode: 'mean', maxEdge: 0, color: 'none', spike: 0 }); } catch (e) { err = e.message; } return { ok, msg, err }; });
     if (!BIG.ok) fail('IFC med 700 000 hörn: ' + JSON.stringify(BIG)); if (!/för stor|för många|större/.test(BIG.err)) fail('För stor mesh ska avvisas: ' + JSON.stringify(BIG));
     console.log('OK: stora meshar – ingen stackspräckning, för stora avvisas', JSON.stringify(BIG));
+    // 2d. Rutstorlek 0,1 m i ett avgränsat område (zon A: 20 × 20 m, 400 punkter)
+    const F01 = await page.evaluate(async () => { const c = l3pc.clouds.find(x => x.id === 'pc:mesh'), z = l3pcsGroups('zone')[0], t0 = performance.now(); const mk = async o => { const r = await l3pmBuild(c, Object.assign({ cell: 0.1, zmode: 'mean', maxEdge: 0, color: 'rgb', spike: 0, area: z }, o)); return { v: r.V.length, t: r.F.length / 3, x: [Math.min(...r.V.map(p => p[0])), Math.max(...r.V.map(p => p[0]))] }; };
+      let whole = ''; try { await l3pmBuild(c, { type: 'tin', cell: 0.1, zmode: 'mean', maxEdge: 0, color: 'none', spike: 0 }); } catch (e) { whole = e.message; } return { tin: await mk({ type: 'tin' }), whole, ms: Math.round(performance.now() - t0) }; });
+    if (F01.tin.v !== 400 || F01.tin.t < 700 || F01.tin.x[0] < 637010 || F01.tin.x[1] > 637030) fail('0,1 m i en zon: ' + JSON.stringify(F01));
+    console.log('OK: rutstorlek 0,1 m i ett avgränsat område (för stora ytor avvisas med tips)', JSON.stringify(F01));
     // 3. Dialogen: skapa, DXF, IFC, i modellen
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');

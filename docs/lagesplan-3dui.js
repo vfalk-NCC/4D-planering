@@ -65,7 +65,7 @@ function l3UiInit(box) {
   const layPop = mk("div", "v3UiPop", "v3-pop v3-ui-pop hidden"); lay.append(layBtn, layPop);
   bar.insertBefore(lay, launch); bar.insertBefore(lockBtn, lay);
   const orig = mk("button", "v3Original", "v3-ghost v3-ui-orig", L3UI_ICO.eyeopt + "<span>Visning</span><i class=\"v3-orig-car\">▾</i>"); orig.type = "button"; orig.title = "Visning – originalmodell, tidslinje med originalfärg eller framdrift, med fler val";
-  orig.style.display = "none"; box.appendChild(orig);   /* Visning ligger nu överst i Visa-menyn (en dropdown, Victor 2026-11-13) */
+  bar.insertBefore(orig, bar.querySelector("#v3Fit")); orig.hidden = true; orig.style.cssText = "display:none !important";   /* Visning ligger nu överst i Visa-menyn (en dropdown, Victor 2026-11-13) */
   orig.onclick = e => { e.stopPropagation(); l3OrigPopToggle(); };
   lockBtn.onclick = () => l3UiSetLocked(!l3UiGet().locked);
   layBtn.onclick = e => { e.stopPropagation(); const open = layPop.classList.contains("hidden"); l3HideMenus(); if (open) { l3UiPopRender(); layPop.classList.remove("hidden"); } };
@@ -454,6 +454,7 @@ function l3OrigPopRender(force) {
   pop.querySelectorAll("[data-osl]").forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = r.value + " %"; l3gmSet(r.dataset.osl, Number(r.value)); l3gmApply(false); }; });
   pop.querySelectorAll("[data-os]").forEach(inp => { inp.onchange = () => l3OrigSwitch(inp.dataset.os, inp.checked); });
   pop.querySelectorAll("[data-osg]").forEach(inp => { inp.onchange = () => { const g = l3gd.list.find(x => x.id === inp.dataset.osg); if (!g) return; g.vis = inp.checked; l3gdDraw(); l3gdSave(g); if (typeof l3gdRenderDlg === "function") l3gdRenderDlg(); }; });
+  if (inl && typeof l3shEnhance === "function") l3shEnhance();
 }
 /* Rutnät i Visning: huvudswitch + en switch per rutnät (lagesplan-3dgrid.js). */
 function l3OrigGridHtml(sw) {
@@ -475,7 +476,7 @@ function l3OrigSwitch(k, on) {
 function l3UiPressSync(box) {
   if (!box || box._pressObs) return;
   const trig = el => el.id === "v3Help" ? box.querySelector("#v3HelpBtn") : el.id === "v3OrigPop" ? box.querySelector("#v3Original") : (el.closest(".v3-dd") ? el.closest(".v3-dd").querySelector(":scope > button") : null);
-  const sync = el => { const b = trig(el); if (!b) return; const open = !el.classList.contains("hidden"); b.classList.toggle("v3-open", open); b.setAttribute("aria-pressed", open ? "true" : "false"); if (el.id === "v3Show" && open) { if (typeof l3gdLoad === "function") l3gdLoad(); l3OrigPopRender(true); } };
+  const sync = el => { const b = trig(el); if (!b) return; const open = !el.classList.contains("hidden"); b.classList.toggle("v3-open", open); b.setAttribute("aria-pressed", open ? "true" : "false"); if (el.id === "v3Show" && open) { if (typeof l3gdLoad === "function") l3gdLoad(); l3OrigPopRender(true); if (typeof l3shEnhance === "function") l3shEnhance(); } };
   const watch = el => { if (!el || el._pw) return; el._pw = 1; new MutationObserver(() => sync(el)).observe(el, { attributes: true, attributeFilter: ["class"] }); sync(el); };
   const scan = () => ["v3Views", "v3Show", "v3Edit", "v3Help", "v3MorePop", "v3UiPop", "v3SnapPop", "v3OrigPop"].forEach(id => watch(document.getElementById(id)));
   scan(); box._pressObs = new MutationObserver(scan); box._pressObs.observe(box, { childList: true, subtree: true });

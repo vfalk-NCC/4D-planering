@@ -45,8 +45,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // bortklippt som lager: tänd = punkterna är med igen, släckt = bortklippta
     { const c2 = c; l3peReset(c2); const r1 = l3peAddFilter(c2, { t: 'z', mode: 'above', z0: 80 }); const rowsOn = () => document.querySelectorAll('[data-pc-ed]').length;
       out.edRow = typeof l3peLabel === 'function' && /Höjdfilter/.test(l3peLabel(c2.edits[0], 0)) && c2.edits[0].nrem > 100;
-      const rt = l3peToggle(c2.id, 0); out.layerOn = rt && rt.off === true && zOf(root)[0] === 1000 && !leaf.pts; leaf.state = 1; c2.lod.loading = 1; await l3olLoadNode(c2, leaf); out.layerOnLeaf = zOf(leaf)[0] === 1000;
-      const rt2 = l3peToggle(c2.id, 0); out.layerOff = rt2 && rt2.off === false && zOf(root)[0] < 1000 && !leaf.pts; leaf.state = 1; c2.lod.loading = 1; await l3olLoadNode(c2, leaf); out.layerOffLeaf = zOf(leaf)[0] < 1000 && zOf(leaf)[1] + 50 <= 80.01;
+      const rt = l3peToggle(c2.id, 0); await l3peOverlay(c2, 0); const ovp = c2.ovPts && c2.ovPts.get(0);   // tänd: molnet rörs inte, lagrets punkter ritas ovanpå
+      out.layerOn = rt && rt.off === true && zOf(root)[0] < 1000 && !!ovp && ovp.geometry.getAttribute('position').count === c2.edits[0].nrem && c2.group.children.includes(ovp);
+      const rt2 = l3peToggle(c2.id, 0); await l3peOverlay(c2, 0); out.layerOff = rt2 && rt2.off === false && !(c2.ovPts && c2.ovPts.get(0)) && zOf(root)[0] < 1000;
+      out.noReload = !leaf.pts || zOf(leaf)[0] < 1000;
+      { const h0 = l3pcHtml((a, on, l, ex, cls) => `<div ${a}>${l}${ex}</div>`, escHtml); out.trashBtn = /data-pc-eddel="tlod\|0"/.test(h0); const uc = window.uiConfirm; window.uiConfirm = async () => true; const did = await l3peDelete(c2.id, 0); window.uiConfirm = uc;
+        const h1 = l3pcHtml((a, on, l, ex, cls) => `<div ${a}>${l}${ex}</div>`, escHtml); out.trashDel = did === true && c2.edits[0].del === true && !/data-pc-ed="tlod\|0"/.test(h1) && zOf(root)[0] < 1000; c2.edits[0].del = false; }
       const html = l3pcHtml((a, on, l, ex, cls) => `<div ${a} data-on="${on}" class="${cls || ''}">${l}${ex}</div>`, escHtml); out.listRow = /data-pc-ed="tlod\|0"/.test(html) && /Bortklippt 1: Höjdfilter/.test(html) && /v3-lr-sub/.test(html); }
     // export: bortklippt (lager) + kvarvarande = alla punkter; LAS-huvudet stämmer
     { l3peReset(c); l3peAddFilter(c, { t: 'z', mode: 'above', z0: 80 }); c.edits[0].name = 'Tak-skräp';
