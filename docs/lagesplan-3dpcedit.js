@@ -181,3 +181,22 @@ function l3peLabel(e, i) {
 }
 async function l3peRename(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return; const e = c.edits[k], v = await uiPrompt("Namn på det bortklippta (lagret):", e.name || l3peLabel({ ...e, name: "" }, k), { ok: "Spara" }); if (v == null) return; e.name = String(v).trim().slice(0, 60) || undefined; l3peSave(c); }
 function l3peToggle(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!c || !c.edits || !c.edits[k]) return null; c.edits[k].off = !c.edits[k].off; const left = l3peApply(c); l3peSave(c); return { left, off: c.edits[k].off }; }
+
+/* Ytterpunkterna för det en redigering har klippt bort (absoluta koordinater) – räknas en gång och sparas på redigeringen. */
+async function l3peBB(c, k) {
+  const e = c && c.edits && c.edits[k]; if (!e) return null; if (e.bb) return e.bb;
+  const ctr = c.info.center; let a = [Infinity, Infinity, Infinity], b = [-Infinity, -Infinity, -Infinity], any = false;
+  for await (const { o } of l3pxPieces(c)) { const m = l3pxMask(c, o, k), P = o.pos, n = P.length / 3; for (let i = 0; i < n; i++) { if (!m[i]) continue; any = true; for (let d = 0; d < 3; d++) { const v = P[i * 3 + d] + ctr[d]; if (v < a[d]) a[d] = v; if (v > b[d]) b[d] = v; } } }
+  if (any) e.bb = [...a, ...b]; return e.bb || null;
+}
+/* Det bortklippta som ett eget "moln" som alla punktmolnsverktyg (zoner, bitar, mesh, export) kan arbeta på: id = "molnid|k". Hämta med l3pcGet (efter await l3peBB). */
+function l3pcGet(id) {
+  const m = String(id).split("|"), c = l3pc.clouds.find(x => x.id === m[0]); if (!c || m.length < 2) return c; const k = Number(m[1]), e = c.edits && c.edits[k]; if (!e) return null;
+  const v = Object.create(c); v._sub = k; v._base = c; v.id = id; v.name = `${c.name.replace(/\.[^.]+$/, "")} – ${typeof l3peLabel === "function" ? l3peLabel(e, k).replace(/^Bortklippt \d+: /, "bortklippt ") : "bortklippt " + (k + 1)}`; return v;
+}
+async function l3peView(id) { const m = String(id).split("|"); if (m.length > 1) { const c = l3pc.clouds.find(x => x.id === m[0]); if (!c) return null; if (!(await l3peBB(c, Number(m[1])))) { l3Status("Inga punkter är bortklippta i det här lagret.", true); return null; } } return l3pcGet(id); }
+async function l3peZoom(id, k) {
+  const c = l3pc.clouds.find(x => x.id === id); if (!c) return; l3Status("Söker det bortklippta…"); const bb = await l3peBB(c, k); if (!bb) { l3Status("Inga punkter är bortklippta i det här lagret.", true); return; }
+  const O = l3.O, ctr = new THREE.Vector3((bb[0] + bb[3]) / 2 - O[0], (bb[1] + bb[4]) / 2 - O[1], (bb[2] + bb[5]) / 2 - O[2]);
+  l3FlyTo(ctr, Math.max(5, Math.hypot(bb[3] - bb[0], bb[4] - bb[1], bb[5] - bb[2])) * 0.9);
+}

@@ -27,10 +27,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   await page.click('#btn3d');
   await page.evaluate(() => { document.getElementById('v3Original').click(); });
-  await page.waitForSelector('#v3OrigPop:not(.hidden)');
+  await page.waitForSelector('#v3Show:not(.hidden)');
   const r = await page.evaluate(async () => {
     const out = {}, sw = k => document.querySelector(`[data-os="${k}"]`), click = k => { const e = sw(k); e.checked = !e.checked; e.dispatchEvent(new Event('change')); };
-    out.rows = document.querySelectorAll('#v3OrigPop [data-os]').length; out.hasClick = !!sw('bubClick') && sw('bubClick').checked;
+    out.rows = document.querySelectorAll('#v3OrigIn [data-os]').length; out.hasClick = !!sw('bubClick') && sw('bubClick').checked;
     click('orig'); out.orig = l3b.orig === true && sw('orig').checked;
     click('tlOrig'); out.tlOrig = l3gm.mode === 'time' && l3gmCfg().origCol === true && !l3b.orig && sw('tlOrig').checked && !sw('tlProg').checked;
     click('tlProg'); out.tlProg = l3gm.mode === 'time' && l3gmCfg().origCol === false && sw('tlProg').checked;
@@ -58,7 +58,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       l3mnVis([b.id], true, 'tänd'); l3PlacedShow(false); const i = l3SavedViews().findIndex(x => x.name === 'Obj-test'); l3GoView(i); await new Promise(r => setTimeout(r, 600));
       out.viewObj = saved && l3.hidden.has(b.id) && !l3.hidden.has(a.id) && l3Prefs().placedOn !== false; l3DelView(i); l3mnVis([b.id], true, 'tänd');
     }
-    { const pr = document.getElementById('v3OrigPop').getBoundingClientRect(), cr = document.getElementById('v3Canvas').getBoundingClientRect(); out.inView = pr.top >= cr.top - 0.5 && pr.bottom <= cr.bottom + 0.5; }
+    { const pr = document.getElementById('v3Show').getBoundingClientRect(), cr = document.getElementById('v3Canvas').getBoundingClientRect(); out.inView = pr.top >= 0 && pr.bottom <= innerHeight + 0.5 && cr.width > 0; }
     { // rutnät i Visning-menyn
       const g = { ...l3gdDef(), name: 'Hus A', x: 6512330, y: 150130, z: 100 }; l3gd.list.push(g); l3gdDraw(); l3OrigPopRender(true);
       const row = document.querySelector('[data-osg="' + g.id + '"]'), all = document.querySelector('[data-os="gdAll"]'); out.gridRows = !!row && !!all && row.checked && all.checked;

@@ -66,6 +66,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const kl = await l3pxExport(c, 'kept', 'redigerad'), rl = await l3pxExport(c, 0, 'Tak-skräp'), KL = await decode(kl.blob), RL = await decode(rl.blob);
       out.lazKept = KL.cnt === kl.count && KL.zmax <= 80.02 && KL.cnt > 100; out.lazRemoved = RL.cnt === rl.count && RL.zmin > 79.9 - 0.2 && RL.cnt + KL.cnt === 2000; out.lazSmaller = kl.blob.size < (227 + kl.count * 26) * 0.95;
       const las = await l3pxExport(c, 'kept', 'las', null, { format: 'las' }); out.lasStill = las.blob.size === 227 + las.count * 26 && las.count === kl.count;
+      const flyN = []; const fly0 = l3FlyTo; l3FlyTo = (v, r) => { flyN.push([v.z, r]); }; await l3peZoom(c.id, 0); l3FlyTo = fly0; out.edZoom = flyN.length === 1 && Array.isArray(c.edits[0].bb) && c.edits[0].bb[5] >= c.edits[0].bb[2];
+      const hh = () => l3pcHtml((a, on, l, ex, cls) => `<div ${a} class="${cls || ''}">${l}${ex}</div>`, escHtml); out.hasZoomBtn = /data-pc-edzoom="tlod\|0"/.test(hh()); out.hasFold = /data-pc-fold="tlod"/.test(hh());
+      l3SetPref('pcFold:tlod', true); out.folded = !/data-pc-ed="tlod\|0"/.test(hh()) && /data-pc-fold="tlod"/.test(hh()); l3SetPref('pcFold:tlod', null); out.unfolded = /data-pc-ed="tlod\|0"/.test(hh());
+      const vw = await l3peView('tlod|0'); const rm = c.edits[0].nrem; const sv = await l3pcsRun(vw, { strips: { axis: 'x', x0: c.info.center[0] - 1e6, y0: 0, cuts: [1e6] } }); out.subStrips = sv.files.length === 1 && sv.files[0].n === rm && rm > 0;
+      const mb = await l3pmBuild(vw, { type: 'grid', cell: 50, zmode: 'mean', maxEdge: 0, color: 'rgb', spike: 0 }).then(r => r.V.length > 0, e => String(e.message)); out.subMesh = mb === true || /För få|föll bort/.test(mb); out.subName = /^test/.test(vw.name) && vw.name.length > 5; out.subBounds = JSON.stringify(l3pcsBounds(vw).min) === JSON.stringify(c.edits[0].bb.slice(0, 3)); out.subInfo = [rm, sv.files[0] && sv.files[0].n, String(mb)];
       const sp = await l3pcsRun(c, { strips: { axis: 'x', x0: c.info.center[0] - 1e6, y0: 0, cuts: [1e6] } }); out.stripsFullRes = sp.files.length === 1 && sp.files[0].n === kl.count && /\.laz$/.test(sp.files[0].name); out.stripsN = [sp.files.map(f => f.n), kl.count]; }
     return out;
   });

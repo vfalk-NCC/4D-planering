@@ -301,6 +301,7 @@ function l3Dom() {
       <div class="v3-dd">
         <button type="button" id="v3ShowBtn" class="v3-ghost" title="Vad som visas">${I.eye}<span>Visa</span></button>
         <div class="v3-pop v3-show hidden" id="v3Show">
+          <div id="v3OrigIn" class="v3-orig-in"></div>
           ${typeof l3vmHtml === "function" ? l3vmHtml() : ""}
           <div class="v3-pop-l">Byggnad</div>
           <div id="v3BldgBox"><button type="button" id="v3BldgBtn" class="v3-wide">${I.building} Visa byggnaden från Trimble Connect…</button></div>

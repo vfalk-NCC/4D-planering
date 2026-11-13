@@ -63,6 +63,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const out = { off: await mk(0), on: await mk(1) }; c.chunks[0] = ch; return out; });
     if (SP.off.z < 30 || SP.on.z > 6 || SP.on.sp < 4) fail('Spikfilter: ' + JSON.stringify(SP));
     console.log('OK: spikfiltret tar bort punkter som sticker iväg', JSON.stringify(SP));
+    // 2c. Stora meshar: exportfunktionerna får inte spränga stacken, och för stora meshar avvisas med ett begripligt fel
+    const BIG = await page.evaluate(async () => { const n = 700000, V = new Array(n), C = new Array(n); for (let i = 0; i < n; i++) { V[i] = [i % 1000, (i / 1000) | 0, i % 7]; C[i] = [1, 2, 3]; }
+      const F = []; for (let i = 0; i < 3000; i++) F.push(i, i + 1, i + 2); const r = { V, C, F, FC: Array.from({ length: F.length / 3 }, () => [9, 9, 9]), area: 1, bb: { min: [0, 0, 0], max: [1000, 700, 7] } };
+      let ok = true, msg = ''; try { const t = l3pmIfc(r, 'stor', true); ok = t.length > 1000; l3pmToModel; } catch (e) { ok = false; msg = e.message; }
+      const c = l3pc.clouds.find(x => x.id === 'pc:mesh'); let err = ''; try { await l3pmBuild(c, { type: 'grid', cell: 0.05, zmode: 'mean', maxEdge: 0, color: 'none', spike: 0 }); } catch (e) { err = e.message; } return { ok, msg, err }; });
+    if (!BIG.ok) fail('IFC med 700 000 hörn: ' + JSON.stringify(BIG)); if (!/för stor|för många|större/.test(BIG.err)) fail('För stor mesh ska avvisas: ' + JSON.stringify(BIG));
+    console.log('OK: stora meshar – ingen stackspräckning, för stora avvisas', JSON.stringify(BIG));
     // 3. Dialogen: skapa, DXF, IFC, i modellen
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');

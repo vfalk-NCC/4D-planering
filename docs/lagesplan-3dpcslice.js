@@ -81,6 +81,7 @@ const l3pcsFile = s => String(s).replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, "
    alla punkter som molnet har i modellen följer med, aldrig en gallrad delmängd. Okträdsmoln (LOD) läses nod för nod ur filen (inte bara det som råkar vara inläst på skärmen)
    och redigeringar (borttagna punkter) respekteras. Varje grupp får sin egen LAZ-skrivare; punkterna skickas direkt dit de hör hemma. classify(P, n, ctr, id) fyller id (grupp) per punkt. */
 async function* l3pcsPieces(c) {
+  if (c._sub != null) { for await (const { o, f } of l3pxPieces(c)) yield { o, mask: l3pxMask(c, o, c._sub), f }; return; }   // ett bortklippt lager: bara punkterna den redigeringen tog bort
   if (c.lod && typeof l3pxPieces === "function") { for await (const { o, f } of l3pxPieces(c)) yield { o, mask: l3pxMask(c, o, "kept"), f }; return; }
   for (let i = 0; i < c.chunks.length; i++) yield { o: c.chunks[i], mask: null, f: (i + 1) / c.chunks.length };
 }
@@ -110,30 +111,40 @@ const l3pcsClassZones = groups => (P, n, ctr, id) => { const G = groups.length;
   for (let i = 0; i < n; i++) { const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1]; let g = G;
     for (let k = 0; k < G; k++) { const b = groups[k].bb; if (x < b[0] || x > b[2] || y < b[1] || y > b[3]) continue; const ps = groups[k].polys; let hit = false; for (let q = 0; q < ps.length; q++) if (l3pcsIn(ps[q], x, y)) { hit = true; break; } if (hit) { g = k; break; } }
     id[i] = g; } };
-const l3pcsClassStrips = st => (P, n, ctr, id) => { const ux = st.axis === "y" ? 0 : 1, uy = st.axis === "y" ? 1 : 0, cuts = st.cuts;
-  for (let i = 0; i < n; i++) { const t = (P[i * 3] + ctr[0] - st.x0) * ux + (P[i * 3 + 1] + ctr[1] - st.y0) * uy; let g = 0; while (g < cuts.length && t >= cuts[g]) g++; id[i] = g; } };
+/* Snittriktning för remsorna: normalens vinkel i grader (0 = Väst → Öst, 90 = Syd → Nord, valfri vinkel för att lägga snitten längs ett rutnät). st = { ang, t0, cuts } eller äldre { axis, x0, y0, cuts }. t0 = projektionen där måttet 0 ligger. */
+function l3pcsStripU(st) { const ang = st.ang != null ? Number(st.ang) : st.axis === "y" ? 90 : 0, r = ang * Math.PI / 180, ux = Math.cos(r), uy = Math.sin(r); return { ux, uy, t0: st.t0 != null ? st.t0 : st.x0 * ux + st.y0 * uy }; }
+function l3pcsProj(bb, ang) {
+  const r = ang * Math.PI / 180, ux = Math.cos(r), uy = Math.sin(r); let t0 = Infinity, t1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+  [[bb.min[0], bb.min[1]], [bb.max[0], bb.min[1]], [bb.min[0], bb.max[1]], [bb.max[0], bb.max[1]]].forEach(([x, y]) => { const t = x * ux + y * uy, v = -x * uy + y * ux; t0 = Math.min(t0, t); t1 = Math.max(t1, t); v0 = Math.min(v0, v); v1 = Math.max(v1, v); });
+  return { t0, L: t1 - t0, v0, v1, ux, uy };
+}
+const l3pcsStripN = st => (st.cuts.length + 1) * ((st.cuts2 || []).length + 1);
+const l3pcsStripName = (st, g) => { const N1 = st.cuts.length + 1; if ((st.cuts2 || []).length) return `Ruta ${Math.floor(g / N1) + 1}.${g % N1 + 1}`; return `Del ${g + 1} av ${l3pcsStripN(st)}`; };
+/* Snitt åt två håll: cuts längs vinkeln ang, cuts2 längs ang + 90° (rutor). Grupp = g1 + (antal bitar åt håll 1) × g2. */
+const l3pcsClassStrips = st => (P, n, ctr, id) => { const A = l3pcsStripU(st), cuts = st.cuts, c2 = st.cuts2 || [], B = c2.length ? l3pcsStripU({ ang: (st.ang != null ? Number(st.ang) : st.axis === "y" ? 90 : 0) + 90, t0: st.t02 }) : null, N1 = cuts.length + 1;
+  for (let i = 0; i < n; i++) { const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1], t = x * A.ux + y * A.uy - A.t0; let g = 0; while (g < cuts.length && t >= cuts[g]) g++;
+    if (B) { const u = x * B.ux + y * B.uy - B.t0; let h = 0; while (h < c2.length && u >= c2[h]) h++; g += N1 * h; } id[i] = g; } };
 /* Jämn delning i remsor (strips): { axis: "x"|"y", x0, y0, cuts: [m från början, stigande] }. Grupp = antal snitt som ligger före punkten. */
 async function l3pcsAssignStrips(c, st, onP) {
-  const ctr = c.info.center, ux = st.axis === "y" ? 0 : 1, uy = st.axis === "y" ? 1 : 0, cuts = st.cuts, G = cuts.length + 1, counts = new Array(G).fill(0), ids = [];
+  const ctr = c.info.center, cls = l3pcsClassStrips(st), G = l3pcsStripN(st), counts = new Array(G).fill(0), ids = [];
   const total = c.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0); let done = 0, t0 = performance.now();
   for (const ch of c.chunks) {
-    const n = ch.pos.length / 3, id = new Uint16Array(n), P = ch.pos;
-    for (let i = 0; i < n; i++) { const t = (P[i * 3] + ctr[0] - st.x0) * ux + (P[i * 3 + 1] + ctr[1] - st.y0) * uy; let g = 0; while (g < cuts.length && t >= cuts[g]) g++; id[i] = g; counts[g]++; }
+    const n = ch.pos.length / 3, id = new Uint16Array(n); cls(ch.pos, n, ctr, id); for (let i = 0; i < n; i++) counts[id[i]]++;
     ids.push(id); done += n; if (performance.now() - t0 > 30) { if (onP) onP(done / total); await l3pcsYield(); t0 = performance.now(); }
   }
   return { ids, counts };
 }
 async function l3pcsRun(c, opts, onP) {
   if (opts.strips && opts.format !== "las") {
-    const st = opts.strips, N = st.cuts.length + 1, base = l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""));
-    const fl = await l3pcsLazStream(c, N, l3pcsClassStrips(st), g => `Del ${g + 1} av ${N}`, f => onP && onP("skriver", f));
-    fl.forEach(f => { f.name = `${base} – del ${f.g + 1} av ${N}.laz`; }); return { files: fl, counts: fl.map(f => f.n), groups: N };
+    const st = opts.strips, N = l3pcsStripN(st), base = l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""));
+    const fl = await l3pcsLazStream(c, N, l3pcsClassStrips(st), g => l3pcsStripName(st, g), f => onP && onP("skriver", f));
+    fl.forEach(f => { f.name = `${base} – ${l3pcsStripName(st, f.g).toLowerCase()}.laz`; }); return { files: fl, counts: fl.map(f => f.n), groups: N };
   }
   if (opts.strips) {  // LAS (ej LAZ): bara det som är inläst
     const st = opts.strips, { ids, counts } = await l3pcsAssignStrips(c, st, f => onP && onP("sorterar punkterna", f * 0.6)), base = l3pcsFile(String(c.name).replace(/\.[^.]+$/, "")), files = [], N = counts.length, ext0 = opts.format === "las" ? "las" : "laz";
     for (let k = 0; k < N; k++) {
-      if (!counts[k]) continue; if (onP) onP(`skriver del ${k + 1} av ${N}`, 0.6 + 0.4 * k / N); await l3pcsYield();
-      const nm = `Del ${k + 1} av ${N}`; let bytes, ext = ext0;
+      if (!counts[k]) continue; if (onP) onP(`skriver ${l3pcsStripName(st, k).toLowerCase()}`, 0.6 + 0.4 * k / N); await l3pcsYield();
+      const nm = l3pcsStripName(st, k); let bytes, ext = ext0;
       if (ext0 === "las") bytes = l3pcsLas(c, ids, k, counts[k], nm); else { try { bytes = await l3pcsLaz(c, ids, k, counts[k], nm); } catch (e) { console.warn("LAZ misslyckades, skriver LAS", e); bytes = l3pcsLas(c, ids, k, counts[k], nm); ext = "las"; } }
       files.push({ name: `${base} – ${nm.toLowerCase()}.${ext}`, n: counts[k], group: nm, bytes });
     }
@@ -163,11 +174,11 @@ async function l3pcsZip(files) {
   return new Blob(parts, { type: "application/zip" });
 }
 function l3pcsDialog(id) {
-  const c = l3pc.clouds.find(x => x.id === id); if (!c) return;
+  const c = l3pcGet(id); if (!c) return;
   if (l3pcs.busy) return;
   const hasWbs = (plan && plan.zones || []).some(z => z.parent && String(z.parent).trim()), nz = l3pcsGroups("zone").length, opener = !!(window.opener && !window.opener.closed);
   const ov = document.createElement("div"); ov.id = "l3pcsDlg"; ov.style.cssText = "position:fixed;inset:0;z-index:9500;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px";
-  const n = c.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0);
+  const n = c._sub != null ? (c.edits[c._sub].nrem || 0) : c.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0);
   ov.innerHTML = `<div style="background:#fff;color:#0f172a;border-radius:14px;max-width:460px;width:100%;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.4);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:10px">
     <b style="font-size:16px">Dela upp punktmolnet efter zoner</b>
     <div style="color:#475569">${escHtml(c.name)} · ${n.toLocaleString("sv-SE")} punkter inlästa · ${nz} zoner på arbetsytan ${escHtml(plan ? plan.name : "")}</div>
@@ -198,55 +209,68 @@ function l3pcsDialog(id) {
 }
 
 /* ---- Dela jämnt i bitar (Victor 2026-11-13: "dela upp punktmolnet jämnt i antal bitar som jag vill genom att visa streck som jag kan plussa och dela jämnt") ----
-   Lager → ⋯ → "✂ Dela jämnt i bitar…": streck (lodräta skivor) visas i 3D över molnet. Riktning Väst→Öst / Syd→Nord, antal bitar med −/＋, "Jämnt" fördelar strecken lika,
-   ＋ vid en bit delar den på mitten, ✕ tar bort ett streck, avstånden (m från början) kan skrivas in. "Dela och hämta ZIP" skriver en LAZ-fil per bit. */
-const l3pcsS = { on: false, cid: null, axis: "x", cuts: [], bb: null, grp: null, panel: null, busy: false };
+   Lager → ⋯ → "✂ Dela jämnt i bitar…": streck (lodräta skivor) visas i 3D över molnet. Vinkeln kan vridas fritt (även längs ritningens rutnät), antal bitar med −/＋, "Jämnt" fördelar strecken lika,
+   ＋ vid en bit delar den på mitten, ✕ tar bort ett streck, avstånden (m från början) kan skrivas in. "Klipp även åt andra hållet" lägger en andra uppsättning streck 90° mot den första så att molnet delas i rutor.
+   "Dela och hämta ZIP" skriver en LAZ-fil per bit/ruta. */
+const l3pcsS = { on: false, cid: null, ang: 0, cuts: [], cuts2: [], two: false, bb: null, grp: null, panel: null, busy: false };
 function l3pcsBounds(c) {
+  if (c._sub != null) { const b = c.edits[c._sub].bb; return { min: b.slice(0, 3), max: b.slice(3) }; }
   const ctr = c.info.center; let a = [Infinity, Infinity, Infinity], b = [-Infinity, -Infinity, -Infinity];
   c.chunks.forEach(ch => { const P = ch.pos; for (let i = 0; i < P.length; i += 3) for (let k = 0; k < 3; k++) { const v = P[i + k] + ctr[k]; if (v < a[k]) a[k] = v; if (v > b[k]) b[k] = v; } });
   return { min: a, max: b };
 }
-const l3pcsSLen = () => { const b = l3pcsS.bb, k = l3pcsS.axis === "y" ? 1 : 0; return b.max[k] - b.min[k]; };
-function l3pcsSEven(n) { const L = l3pcsSLen(); n = Math.max(1, Math.min(60, Math.round(n))); l3pcsS.cuts = []; for (let i = 1; i < n; i++) l3pcsS.cuts.push(Math.round(L * i / n * 100) / 100); }
+const l3pcsSAng = d => l3pcsS.ang + 90 * d, l3pcsSPr = d => l3pcsProj(l3pcsS.bb, l3pcsSAng(d)), l3pcsSCuts = d => (d ? l3pcsS.cuts2 : l3pcsS.cuts), l3pcsSLen = d => l3pcsSPr(d || 0).L;
+function l3pcsSEven(n, d) { d = d || 0; const L = l3pcsSLen(d), set = []; n = Math.max(1, Math.min(60, Math.round(n))); for (let i = 1; i < n; i++) set.push(Math.round(L * i / n * 100) / 100); if (d) l3pcsS.cuts2 = set; else l3pcsS.cuts = set; }
 function l3pcsSDraw() {
   const S = l3pcsS; if (S.grp) { l3.scene.remove(S.grp); S.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); S.grp = null; }
   if (!S.on || !S.bb) { l3Render(); return; }
-  const g = new THREE.Group(), b = S.bb, y = S.axis === "y", O = l3.O, w = (y ? b.max[0] - b.min[0] : b.max[1] - b.min[1]) + 2, h = Math.max(2, b.max[2] - b.min[2]) + 4, cz = (b.min[2] + b.max[2]) / 2;
-  S.cuts.forEach((t, i) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
-    const edge = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0xf59e0b })); m.add(edge);
-    if (y) { m.rotation.x = Math.PI / 2; m.position.set((b.min[0] + b.max[0]) / 2 - O[0], b.min[1] + t - O[1], cz - O[2]); }
-    else { m.rotation.set(Math.PI / 2, 0, Math.PI / 2); m.position.set(b.min[0] + t - O[0], (b.min[1] + b.max[1]) / 2 - O[1], cz - O[2]); }
-    m.userData.l3pcsCut = i; g.add(m);
+  const g = new THREE.Group(), b = S.bb, O = l3.O, h = Math.max(2, b.max[2] - b.min[2]) + 4, cz = (b.min[2] + b.max[2]) / 2;
+  [0, 1].forEach(d => {
+    if (d && !S.two) return; const pr = l3pcsSPr(d), w = pr.v1 - pr.v0 + 2, vc = (pr.v0 + pr.v1) / 2, rad = l3pcsSAng(d) * Math.PI / 180, col = d ? 0x2563eb : 0xf59e0b;
+    l3pcsSCuts(d).forEach((t, i) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
+      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: col })));
+      const tc = pr.t0 + t; m.rotation.order = "ZXY"; m.rotation.set(Math.PI / 2, 0, rad + Math.PI / 2);   // planet står lodrätt med normalen längs snittriktningen
+      m.position.set(pr.ux * tc - pr.uy * vc - O[0], pr.uy * tc + pr.ux * vc - O[1], cz - O[2]); m.userData.l3pcsCut = i; m.userData.dir = d; g.add(m);
+    });
   });
   g.name = "pcStrips"; S.grp = g; l3.scene.add(g); l3Render();
 }
 function l3pcsSPanel() {
-  const S = l3pcsS, L = l3pcsSLen(), N = S.cuts.length + 1; if (!S.panel) { S.panel = document.createElement("div"); S.panel.id = "l3pcsStrips"; S.panel.style.cssText = "position:fixed;right:16px;top:90px;z-index:9400;width:290px;max-height:70vh;overflow:auto;background:#fff;color:#0f172a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 40px rgba(0,0,0,.35);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:8px"; document.body.appendChild(S.panel); }
-  const edges = [0, ...S.cuts, L], btn = "border:1px solid #cbd5e1;background:#f8fafc;border-radius:7px;padding:3px 9px;cursor:pointer", rows = [];
-  for (let i = 0; i < N; i++) {
-    rows.push(`<div style="display:flex;align-items:center;gap:6px;color:#475569"><span style="flex:1">Bit ${i + 1}: ${(edges[i + 1] - edges[i]).toFixed(1)} m</span><button type="button" data-split="${i}" title="Dela den här biten på mitten" style="${btn}">＋</button></div>`);
-    if (i < S.cuts.length) rows.push(`<div style="display:flex;align-items:center;gap:6px"><span style="color:#b45309">▎Streck ${i + 1}</span><input type="number" data-cut="${i}" step="0.1" value="${S.cuts[i]}" style="width:80px"> m <button type="button" data-del="${i}" title="Ta bort strecket" style="${btn}">✕</button></div>`);
-  }
+  const S = l3pcsS; if (!S.panel) { S.panel = document.createElement("div"); S.panel.id = "l3pcsStrips"; S.panel.style.cssText = "position:fixed;right:16px;top:90px;z-index:9400;width:300px;max-height:78vh;overflow:auto;background:#fff;color:#0f172a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 40px rgba(0,0,0,.35);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:8px"; document.body.appendChild(S.panel); }
+  const btn = "border:1px solid #cbd5e1;background:#f8fafc;border-radius:7px;padding:3px 9px;cursor:pointer", nT = (S.cuts.length + 1) * (S.two ? S.cuts2.length + 1 : 1);
+  const dirHtml = d => { const set = l3pcsSCuts(d), L = l3pcsSLen(d), N = set.length + 1, edges = [0, ...set, L], col = d ? "#2563eb" : "#b45309", rows = [];
+    for (let i = 0; i < N; i++) {
+      rows.push(`<div style="display:flex;align-items:center;gap:6px;color:#475569"><span style="flex:1">Bit ${i + 1}: ${(edges[i + 1] - edges[i]).toFixed(1)} m</span><button type="button" data-split="${d}|${i}" title="Dela den här biten på mitten" style="${btn}">＋</button></div>`);
+      if (i < set.length) rows.push(`<div style="display:flex;align-items:center;gap:6px"><span style="color:${col}">▎Streck ${i + 1}</span><input type="number" data-cut="${d}|${i}" step="0.1" value="${set[i]}" style="width:80px"> m <button type="button" data-del="${d}|${i}" title="Ta bort strecket" style="${btn}">✕</button></div>`);
+    }
+    return `<div style="border-top:1px solid #e2e8f0;padding-top:6px;display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:6px;align-items:center"><b style="color:${col}">${d ? "Åt andra hållet (" + Math.round(l3pcsSAng(1) % 180) + "°)" : "Första hållet"}</b><span style="color:#64748b">${L.toFixed(0)} m</span></div>
+      <div style="display:flex;gap:6px;align-items:center">Antal bitar <button type="button" data-minus="${d}" style="${btn}">−</button><b style="min-width:22px;text-align:center">${N}</b><button type="button" data-plus="${d}" style="${btn}">＋</button><button type="button" data-even="${d}" style="${btn}" title="Fördela strecken lika">Jämnt</button></div>${rows.join("")}</div>`; };
   S.panel.innerHTML = `<b style="font-size:15px">Dela punktmolnet jämnt</b>
-    <div style="display:flex;gap:6px;align-items:center">Riktning <select id="pcsAx"><option value="x" ${S.axis === "x" ? "selected" : ""}>Väst → Öst</option><option value="y" ${S.axis === "y" ? "selected" : ""}>Syd → Nord</option></select> <span style="color:#64748b">(${L.toFixed(0)} m)</span></div>
-    <div style="display:flex;gap:6px;align-items:center">Antal bitar <button type="button" id="pcsMinus" style="${btn}">−</button><b id="pcsN" style="min-width:22px;text-align:center">${N}</b><button type="button" id="pcsPlus" style="${btn}">＋</button><button type="button" id="pcsEven" style="${btn}" title="Fördela strecken lika">Jämnt</button></div>
-    ${rows.join("")}
-    <div id="pcsSOut" style="color:#334155;font-size:12px">Strecken syns som orange skivor i 3D. Filerna blir LAZ med färg, samlade i en ZIP.</div>
+    <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">Vinkel <button type="button" data-rot="-15" style="${btn}">−15</button><button type="button" data-rot="-1" style="${btn}">−1</button><input type="number" id="pcsAng" step="0.5" value="${Math.round(S.ang * 100) / 100}" style="width:62px">°<button type="button" data-rot="1" style="${btn}">+1</button><button type="button" data-rot="15" style="${btn}">+15</button></div>
+    <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><button type="button" data-ang="0" style="${btn}">Väst → Öst</button><button type="button" data-ang="90" style="${btn}">Syd → Nord</button>${typeof plan !== "undefined" && plan && plan.calib ? `<button type="button" id="pcsGrid" style="${btn}" title="Lägg snitten längs ritningens rutnät (lägesplanens kalibrering)">Längs ritningens rutnät</button>` : ""}</div>
+    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pcsTwo" ${S.two ? "checked" : ""}> Klipp även åt andra hållet (rutor)</label>
+    ${dirHtml(0)}${S.two ? dirHtml(1) : ""}
+    <div id="pcsSOut" style="color:#334155;font-size:12px">${nT} ${S.two ? "rutor" : "bitar"}. Strecken syns som skivor i 3D (orange = första hållet, blå = andra). Filerna blir LAZ med färg, samlade i en ZIP.</div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="pcsSX" style="${btn}">Stäng</button><button type="button" id="pcsSGo" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:6px 14px;cursor:pointer">Dela och hämta ZIP</button></div>`;
-  const q = s => S.panel.querySelector(s), re = () => { S.cuts.sort((a, b) => a - b); l3pcsSPanel(); l3pcsSDraw(); };
-  q("#pcsAx").onchange = e => { S.axis = e.target.value; l3pcsSEven(N); re(); };
-  q("#pcsMinus").onclick = () => { l3pcsSEven(N - 1); re(); }; q("#pcsPlus").onclick = () => { l3pcsSEven(N + 1); re(); }; q("#pcsEven").onclick = () => { l3pcsSEven(N); re(); };
-  S.panel.querySelectorAll("[data-split]").forEach(el => el.onclick = () => { const i = +el.dataset.split; S.cuts.push(Math.round((edges[i] + edges[i + 1]) / 2 * 100) / 100); re(); });
-  S.panel.querySelectorAll("[data-del]").forEach(el => el.onclick = () => { S.cuts.splice(+el.dataset.del, 1); re(); });
-  S.panel.querySelectorAll("[data-cut]").forEach(el => el.onchange = () => { const v = Math.max(0.01, Math.min(L - 0.01, Number(el.value))); if (Number.isFinite(v)) S.cuts[+el.dataset.cut] = v; re(); });
+  const q = s => S.panel.querySelector(s), all = s => S.panel.querySelectorAll(s), re = () => { S.cuts.sort((a, b) => a - b); S.cuts2.sort((a, b) => a - b); l3pcsSPanel(); l3pcsSDraw(); }, par = el => String(el).split("|").map(Number);
+  const evenAll = () => { l3pcsSEven(S.cuts.length + 1, 0); if (S.two) l3pcsSEven(S.cuts2.length + 1, 1); };
+  const setAng = a => { S.ang = ((Number(a) % 180) + 180) % 180; if (!Number.isFinite(S.ang)) S.ang = 0; evenAll(); re(); };
+  q("#pcsAng").onchange = e => setAng(e.target.value); all("[data-rot]").forEach(el => el.onclick = () => setAng(S.ang + Number(el.dataset.rot))); all("[data-ang]").forEach(el => el.onclick = () => setAng(Number(el.dataset.ang)));
+  const gb = q("#pcsGrid"); if (gb) gb.onclick = () => { try { const a = pdfToModel([0, 0]), b = pdfToModel([1000, 0]); setAng(Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI); } catch (e) { l3Status("Kunde inte läsa ritningens kalibrering.", true); } };
+  q("#pcsTwo").onchange = e => { S.two = e.target.checked; if (S.two && !S.cuts2.length) l3pcsSEven(2, 1); re(); };
+  all("[data-minus]").forEach(el => el.onclick = () => { const d = +el.dataset.minus; l3pcsSEven(l3pcsSCuts(d).length, d); re(); }); all("[data-plus]").forEach(el => el.onclick = () => { const d = +el.dataset.plus; l3pcsSEven(l3pcsSCuts(d).length + 2, d); re(); }); all("[data-even]").forEach(el => el.onclick = () => { const d = +el.dataset.even; l3pcsSEven(l3pcsSCuts(d).length + 1, d); re(); });
+  all("[data-split]").forEach(el => el.onclick = () => { const [d, i] = par(el.dataset.split), set = l3pcsSCuts(d), ed = [0, ...set, l3pcsSLen(d)]; set.push(Math.round((ed[i] + ed[i + 1]) / 2 * 100) / 100); re(); });
+  all("[data-del]").forEach(el => el.onclick = () => { const [d, i] = par(el.dataset.del); l3pcsSCuts(d).splice(i, 1); re(); });
+  all("[data-cut]").forEach(el => el.onchange = () => { const [d, i] = par(el.dataset.cut), v = Math.max(0.01, Math.min(l3pcsSLen(d) - 0.01, Number(el.value))); if (Number.isFinite(v)) l3pcsSCuts(d)[i] = v; re(); });
   q("#pcsSX").onclick = () => { if (!S.busy) l3pcsStripsClose(); };
   q("#pcsSGo").onclick = async () => {
-    if (S.busy) return; const c = l3pc.clouds.find(x => x.id === S.cid); if (!c) return; S.busy = true; q("#pcsSGo").disabled = true; const out = q("#pcsSOut");
+    if (S.busy) return; const c = S.cloud || l3pc.clouds.find(x => x.id === S.cid); if (!c) return; S.busy = true; q("#pcsSGo").disabled = true; const out = q("#pcsSOut");
     try {
-      const k = S.axis === "y" ? 1 : 0, r = await l3pcsRun(c, { strips: { axis: S.axis, x0: S.bb.min[0], y0: S.bb.min[1], cuts: S.cuts.slice().sort((a, b) => a - b) } }, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; });
-      out.textContent = "packar…"; await l3pcsYield(); void k;
-      const zip = await l3pcsZip(r.files), name = `${l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""))} – ${r.groups} bitar.zip`;
+      const st = { ang: S.ang, t0: l3pcsSPr(0).t0, cuts: S.cuts.slice().sort((a, b) => a - b) }; if (S.two) { st.cuts2 = S.cuts2.slice().sort((a, b) => a - b); st.t02 = l3pcsSPr(1).t0; }
+      const r = await l3pcsRun(c, { strips: st }, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; });
+      out.textContent = "packar…"; await l3pcsYield();
+      const zip = await l3pcsZip(r.files), name = `${l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""))} – ${r.groups} ${S.two ? "rutor" : "bitar"}.zip`;
       const u = URL.createObjectURL(zip), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000);
       out.innerHTML = `<b>${r.files.length} filer</b> i ${escHtml(name)}:<br>${r.files.map(f => `${escHtml(f.group)}: ${f.n.toLocaleString("sv-SE")} punkter`).join("<br>")}`;
     } catch (e) { out.textContent = "⚠ " + e.message; }
@@ -254,8 +278,8 @@ function l3pcsSPanel() {
   };
 }
 function l3pcsStripsOpen(id) {
-  const c = l3pc.clouds.find(x => x.id === id); if (!c) return; l3pcsStripsClose(true);
-  const S = l3pcsS; S.on = true; S.cid = id; S.bb = l3pcsBounds(c); S.axis = (S.bb.max[0] - S.bb.min[0]) >= (S.bb.max[1] - S.bb.min[1]) ? "x" : "y"; l3pcsSEven(4);
-  l3pcsSPanel(); l3pcsSDraw(); l3Status("Dela jämnt: välj antal bitar eller lägg till streck med ＋. Avstånden kan skrivas in. Hämta ZIP när det ser rätt ut.");
+  const c = l3pcGet(id); if (!c) return; l3pcsStripsClose(true);
+  const S = l3pcsS; S.on = true; S.cid = id; S.cloud = c; S.two = false; S.cuts2 = []; S.bb = l3pcsBounds(c); S.ang = (S.bb.max[0] - S.bb.min[0]) >= (S.bb.max[1] - S.bb.min[1]) ? 0 : 90; l3pcsSEven(4, 0);
+  l3pcsSPanel(); l3pcsSDraw(); l3Status("Dela jämnt: välj vinkel och antal bitar, lägg till streck med ＋ och klipp även åt andra hållet för rutor. Avstånden kan skrivas in. Hämta ZIP när det ser rätt ut.");
 }
 function l3pcsStripsClose(quiet) { const S = l3pcsS; S.on = false; if (S.panel) { S.panel.remove(); S.panel = null; } l3pcsSDraw(); if (!quiet) l3Status("Delningen stängdes."); }

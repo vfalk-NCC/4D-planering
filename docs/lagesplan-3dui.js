@@ -51,6 +51,7 @@ function l3UiTip(b) {
 function l3UiTips() { if (l3ui) l3ui.bar.querySelectorAll("button[title], .v3-seg button[title]").forEach(l3UiTip); }
 
 function l3UiInit(box) {
+  setTimeout(() => l3UiPressSync(box), 0);
   if (l3ui) return;
   const bar = box.querySelector(".v3-bar"), canvas = box.querySelector("#v3Canvas");
   l3ui = { box, bar, canvas, drag: null, radial: null };
@@ -64,7 +65,8 @@ function l3UiInit(box) {
   const layPop = mk("div", "v3UiPop", "v3-pop v3-ui-pop hidden"); lay.append(layBtn, layPop);
   bar.insertBefore(lay, launch); bar.insertBefore(lockBtn, lay);
   const orig = mk("button", "v3Original", "v3-ghost v3-ui-orig", L3UI_ICO.eyeopt + "<span>Visning</span><i class=\"v3-orig-car\">▾</i>"); orig.type = "button"; orig.title = "Visning – originalmodell, tidslinje med originalfärg eller framdrift, med fler val";
-  bar.insertBefore(orig, bar.querySelector("#v3Fit")); orig.onclick = e => { e.stopPropagation(); l3OrigPopToggle(); };
+  orig.style.display = "none"; box.appendChild(orig);   /* Visning ligger nu överst i Visa-menyn (en dropdown, Victor 2026-11-13) */
+  orig.onclick = e => { e.stopPropagation(); l3OrigPopToggle(); };
   lockBtn.onclick = () => l3UiSetLocked(!l3UiGet().locked);
   layBtn.onclick = e => { e.stopPropagation(); const open = layPop.classList.contains("hidden"); l3HideMenus(); if (open) { l3UiPopRender(); layPop.classList.remove("hidden"); } };
   layPop.onclick = e => e.stopPropagation();
@@ -408,7 +410,7 @@ function l3Original(on) {
 function l3UiOrigPill() {
   if (!l3ui) return; let p = l3ui.canvas.querySelector("#v3OrigPill");
   const on = !!(typeof l3b !== "undefined" && l3b.orig);
-  const btn = l3ui.box.querySelector("#v3Original"); if (btn) btn.classList.toggle("on", on || (typeof l3gm !== "undefined" && l3gm.mode === "time")); l3OrigPopRender();
+  const act = on || (typeof l3gm !== "undefined" && l3gm.mode === "time"); ["#v3Original", "#v3ShowBtn"].forEach(q => { const btn = l3ui.box.querySelector(q); if (btn) btn.classList.toggle("on", act); }); l3OrigPopRender();
   if (!on) { if (p) p.remove(); return; }
   if (!p) { p = document.createElement("div"); p.id = "v3OrigPill"; p.className = "v3-orig-pill"; l3ui.canvas.appendChild(p); p.addEventListener("pointerdown", e => e.stopPropagation()); p.onclick = e => { if (e.target.closest("[data-orig-off]")) l3Original(false); }; }
   p.innerHTML = `<span class="v3-ui-dot"></span><b>Originalvy</b><span class="v3-ui-sub">modellerna utan tidplan och filter</span><button type="button" data-orig-off="1" aria-label="Tillbaka till 4D-färgerna" title="Tillbaka till 4D-färgerna">✕</button>`;
@@ -438,13 +440,15 @@ const L3_ORIG_OPTS = [
   ["actOutline", "Kontur runt aktivitetens objekt", "Linje runt objekten som hör till vald aktivitet", () => !!l3Prefs().actOutline, v => l3SetPref("actOutline", v)],
 ];
 function l3OrigPopToggle() {
+  const sb = document.getElementById("v3ShowBtn"); if (sb && document.getElementById("v3OrigIn")) { sb.click(); return; }
   if (typeof l3gdLoad === "function") l3gdLoad();
   let pop = document.getElementById("v3OrigPop"), open = !pop || pop.classList.contains("hidden"); l3HideMenus();
   if (!pop) { pop = document.createElement("div"); pop.id = "v3OrigPop"; pop.className = "v3-pop v3-orig-pop hidden"; l3ui.canvas.appendChild(pop); pop.onclick = e => e.stopPropagation(); pop.addEventListener("pointerdown", e => e.stopPropagation()); }
   if (open) { l3OrigPopRender(true); pop.classList.remove("hidden"); const b = document.getElementById("v3Original").getBoundingClientRect(), c = l3ui.canvas.getBoundingClientRect(); pop.style.left = Math.max(6, Math.min(c.width - 300, b.left - c.left)) + "px"; pop.style.top = Math.max(6, b.bottom - c.top + 6) + "px"; pop.style.maxHeight = Math.max(160, c.height - Math.max(6, b.bottom - c.top + 6) - 8) + "px"; pop.style.overflowY = "auto"; }   // verktygsraden ligger ovanför bilden: ruta som börjar ovanför kanten klipptes
 }
 function l3OrigPopRender(force) {
-  const pop = document.getElementById("v3OrigPop"); if (!pop || (!force && pop.classList.contains("hidden"))) return;
+  const inl = document.getElementById("v3OrigIn"), pop = inl || document.getElementById("v3OrigPop"); if (!pop) return;
+  if (!force && (inl ? (document.getElementById("v3Show") || pop).classList.contains("hidden") : pop.classList.contains("hidden"))) return;
   const S = l3OrigState(), sw = (id, t, d, on) => `<label class="v3-orig-row" title="${escHtml(d)}"><span><b>${escHtml(t)}</b><small>${escHtml(d)}</small></span><span class="v3-lay-sw v3-orig-sw"><input type="checkbox" role="switch" data-os="${id}" ${on ? "checked" : ""} /><i></i></span></label>`;
   pop.innerHTML = `<div class="v3-orig-h">Visning</div>${sw("orig", "Originalmodell", "Modellerna med egna färger – utan tidplan och filter", S.orig)}${sw("tlOrig", "Tidslinje med originalfärg", "Det som är byggt visas i modellens färg, resten dolt", S.tlOrig)}${sw("tlProg", "Tidslinje med framdrift", "Färgat efter status och framdrift för valt datum", S.tlProg)}${l3OrigGridHtml(sw)}<div class="v3-orig-h v3-orig-h2">Fler val</div>${L3_ORIG_OPTS.map(o => sw(o[0], o[1], o[2], o[3](S.C)) + (o[0] === "future" && S.C.future ? `<label class="v3-orig-sl" title="Hur mycket av det kommande som syns"><span>Synlighet</span><input type="range" min="0" max="100" step="5" value="${S.C.futureOp}" data-osl="futureOp" /><output>${S.C.futureOp} %</output></label>` : "")).join("")}`;
   pop.querySelectorAll("[data-osl]").forEach(r => { r.oninput = () => { r.nextElementSibling.textContent = r.value + " %"; l3gmSet(r.dataset.osl, Number(r.value)); l3gmApply(false); }; });
@@ -465,4 +469,14 @@ function l3OrigSwitch(k, on) {
     else l3gmSetMode("off", true);
   } else { const o = L3_ORIG_OPTS.find(x => x[0] === k); if (o) { o[4](on); if (typeof l3bRecolor === "function") l3bRecolor(); l3Render(); } }
   l3UiOrigPill(); l3OrigPopRender(true);
+}
+
+/* Öppen meny = intryckt knapp (Victor 2026-11-13): knappen som hör till en öppen meny/panel får klassen v3-open (och aria-pressed). Hjälpen har sin egen knapp, övriga menyer ligger i en .v3-dd bredvid sin knapp. */
+function l3UiPressSync(box) {
+  if (!box || box._pressObs) return;
+  const trig = el => el.id === "v3Help" ? box.querySelector("#v3HelpBtn") : el.id === "v3OrigPop" ? box.querySelector("#v3Original") : (el.closest(".v3-dd") ? el.closest(".v3-dd").querySelector(":scope > button") : null);
+  const sync = el => { const b = trig(el); if (!b) return; const open = !el.classList.contains("hidden"); b.classList.toggle("v3-open", open); b.setAttribute("aria-pressed", open ? "true" : "false"); if (el.id === "v3Show" && open) { if (typeof l3gdLoad === "function") l3gdLoad(); l3OrigPopRender(true); } };
+  const watch = el => { if (!el || el._pw) return; el._pw = 1; new MutationObserver(() => sync(el)).observe(el, { attributes: true, attributeFilter: ["class"] }); sync(el); };
+  const scan = () => ["v3Views", "v3Show", "v3Edit", "v3Help", "v3MorePop", "v3UiPop", "v3SnapPop", "v3OrigPop"].forEach(id => watch(document.getElementById(id)));
+  scan(); box._pressObs = new MutationObserver(scan); box._pressObs.observe(box, { childList: true, subtree: true });
 }
