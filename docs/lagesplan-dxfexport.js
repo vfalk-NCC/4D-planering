@@ -151,9 +151,9 @@ function buildObjectsDxf() {
   marks.forEach((mk, i) => {
     const layer = mk.color ? `4D-EGEN-${mk.color.slice(1).toUpperCase()}` : DXF_PHASE_LAYER[mk.ph] || "4D-INGEN", x = mk.x, y = mk.y;
     used.add(layer); if (mk.color) layerAciX[layer] = exportAciOf(mk.color);
-    const z = mk.zManual ? mk.zTop : 0; // planritning (höjden skulle göra ritningen rörig i plan) – utom där du satt en egen plushöjd
+    const z = Number.isFinite(mk.zTop) ? mk.zTop : 0; // på plushöjden (objektets högsta punkt, eller din egna höjd) – prickarna hamnade på nollnivån när modellen ligger på +400 (Victor 2026-11-13)
     ents.push({ t: "POINT", layer, x, y, z, rgb: mk.color });
-    ents.push({ t: "DOT", layer, x, y, r: 0.4, rgb: mk.color });       // fylld prick i statusfärg (som i Lägesplan)
+    ents.push({ t: "DOT", layer, x, y, z, r: 0.4, rgb: mk.color });       // fylld prick i statusfärg (som i Lägesplan)
     ents.push({ t: "CIRCLE", layer: "4D-NAMN", x, y, z, r: 0.4 }); // tunn ring runt (syns mot mörka underlag)
     // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
@@ -228,8 +228,8 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
     }
     else if (e.t === "DOT") {
       // Fylld prick: sluten polylinje av två halvcirklar med bredd = radien.
-      g(0, "POLYLINE"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, 1); g(40, dxfNum(e.r)); g(41, dxfNum(e.r));
-      [[e.x - e.r / 2, e.y], [e.x + e.r / 2, e.y]].forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, "0.0"); g(42, "1.0"); });
+      g(0, "POLYLINE"); g(8, e.layer); if (e.rgb) g(420, parseInt(e.rgb.slice(1), 16)); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, dxfNum(e.z || 0)); g(70, 1); g(40, dxfNum(e.r)); g(41, dxfNum(e.r));
+      [[e.x - e.r / 2, e.y], [e.x + e.r / 2, e.y]].forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, dxfNum(e.z || 0)); g(42, "1.0"); });
       g(0, "SEQEND"); g(8, e.layer);
     }
     else if (e.t === "PLINE") { // öppen eller sluten linje (DXF-redigeringen i 3D)

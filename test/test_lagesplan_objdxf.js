@@ -62,7 +62,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (JSON.stringify(r.layers) !== JSON.stringify(['4D-KLAR', '4D-NAMN', '4D-PAGAENDE'])) fail('Lager per status, fotavtryck och namn: ' + JSON.stringify(r.layers));
   const t = Object.fromEntries(r.geo.map(([s, x, y]) => [s, [x, y]]));
   if (!t['K10'] || Math.abs(t['K10'][0] - 6512346.15) > 0.001 || Math.abs(t['K10'][1] - 150122.75) > 0.001) fail('Namnet ska stå vid objektet i modellens koordinater (meter): ' + JSON.stringify(r.geo));
-  if (!r.text.includes('\r\n10\r\n6512345.500\r\n20\r\n150123.250\r\n30\r\n0.000')) fail('Punkten ska ligga exakt i modellens koordinater med höjden: ' + r.text.slice(0, 2000));
+  if (!r.text.includes('\r\n10\r\n6512345.500\r\n20\r\n150123.250\r\n30\r\n14.000')) fail('Punkten ska ligga exakt i modellens koordinater på plushöjden (inte nollnivån): ' + r.text.slice(0, 2000));
   if (!r.geo.some(([s]) => s === 'M30 (2)')) fail('Två objekt i samma aktivitet blir en markering med antalet, å/ä/ö kvar: ' + JSON.stringify(r.geo));
   if (r.ents.some(e => /^POLYLINE:4D-(FOTAVTRYCK|NAMN)/.test(e)) || r.ents.filter(e => /^POLYLINE:4D-(KLAR|PAGAENDE)/.test(e)).length !== 2) fail('En fylld prick per markering, inga fotavtryck (raka lådor blir fel vridna): ' + JSON.stringify(r.ents));
   if (JSON.stringify(r.aci) !== JSON.stringify({ klar: 3, pagaende: 30, forsenad: 1, planerad: 8, pausad: 8 })) fail('Statusfärgerna som CAD-färger: ' + JSON.stringify(r.aci));
