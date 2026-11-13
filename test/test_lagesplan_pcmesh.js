@@ -56,6 +56,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (Math.abs(R.tin.area - R.grid.area) / R.grid.area > 0.1) fail('Samma yta i TIN och rutnät: ' + JSON.stringify([R.tin.area, R.grid.area]));
     if (R.none.c0[0] !== R.none.c0[1] && R.none.c0[0] !== 160) fail('Ingen färg = grå: ' + JSON.stringify(R.none)); if (JSON.stringify(R.tin.c0) === JSON.stringify(R.z.c0)) fail('Färgläget påverkar färgen: ' + JSON.stringify([R.tin.c0, R.z.c0]));
     console.log('OK: TIN och rutnät, höjd per ruta, färgval', JSON.stringify(R));
+    // 2b. Spikar: tre punkter långt över/under molnet och ett flygande brus utanför
+    const SP = await page.evaluate(async () => { const c = l3pc.clouds.find(x => x.id === 'pc:mesh'), ch = c.chunks[0], n = ch.pos.length / 3, pos = new Float32Array((n + 4) * 3), rgb = new Uint8Array((n + 4) * 3), inten = new Uint8Array(n + 4); pos.set(ch.pos); rgb.set(ch.rgb); inten.set(ch.inten);
+      [[10.3, 5.3, 40], [50.3, 20.3, -30], [80.3, 30.3, 25], [140, 5, 3]].forEach((q, i) => { pos.set([637000.5 + q[0] - 637050, 849000.5 + q[1] - 849020, q[2] - 100], (n + i) * 3); });
+      c.chunks[0] = { pos, rgb, inten }; const zr = r => Math.max(...r.V.map(v => v[2])) - Math.min(...r.V.map(v => v[2])), mk = async sp => { const r = await l3pmBuild(c, { type: 'tin', cell: 1, zmode: 'mean', maxEdge: 6, color: 'rgb', spike: sp }); return { z: Math.round(zr(r)), sp: r.spikes, v: r.V.length }; };
+      const out = { off: await mk(0), on: await mk(1) }; c.chunks[0] = ch; return out; });
+    if (SP.off.z < 30 || SP.on.z > 6 || SP.on.sp < 4) fail('Spikfilter: ' + JSON.stringify(SP));
+    console.log('OK: spikfiltret tar bort punkter som sticker iväg', JSON.stringify(SP));
     // 3. Dialogen: skapa, DXF, IFC, i modellen
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');

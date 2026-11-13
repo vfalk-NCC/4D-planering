@@ -52,10 +52,20 @@ async function l3pmGrid(c, o, onP) {
       if (onP && performance.now() - t0 > 200) { onP("läser punkter", f * 0.7); t0 = performance.now(); await l3pcsYield(); }
     }
   } finally { if (pr) { if (old === undefined) delete pr.pcMode; else pr.pcMode = old; } }
+  /* Spikfilter: en ruta vars höjd avviker mer än o.spike meter från medianen av grannrutorna (8 st) tas bort, liksom enstaka rutor som saknar grannar (flygande brus). */
+  let spikes = 0;
+  if (o.spike > 0) {
+    const zc = new Float32Array(N), drop = new Uint8Array(N), nb = [];
+    for (let k = 0; k < N; k++) if (cnt[k]) zc[k] = sz[k] / (mode === "mean" ? cnt[k] : 1);
+    for (let k = 0; k < N; k++) { if (!cnt[k]) continue; const ix = k % nx, iy = (k / nx) | 0; nb.length = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const x = ix + dx, y = iy + dy; if (x < 0 || y < 0 || x >= nx || y >= ny) continue; const q = y * nx + x; if (cnt[q]) nb.push(zc[q]); }
+      if (nb.length < 2) { drop[k] = 1; continue; } nb.sort((a, b) => a - b); const med = nb.length % 2 ? nb[nb.length >> 1] : (nb[nb.length / 2 - 1] + nb[nb.length / 2]) / 2; if (Math.abs(zc[k] - med) > o.spike) drop[k] = 1; }
+    for (let k = 0; k < N; k++) if (drop[k]) { cnt[k] = 0; spikes++; }
+  }
   const V = [], C = [], cell = new Int32Array(N).fill(-1);
   for (let k = 0; k < N; k++) { if (!cnt[k]) continue; const d = mode === "mean" ? cnt[k] : 1, ix = k % nx, iy = (k / nx) | 0; cell[k] = V.length;
     V.push(o.type === "grid" ? [bb.min[0] + (ix + 0.5) * h, bb.min[1] + (iy + 0.5) * h, sz[k] / d] : [sx[k] / d, sy[k] / d, sz[k] / d]); C.push([sr[k] / d, sg[k] / d, sb[k] / d].map(v => Math.max(0, Math.min(255, Math.round(v))))); }
-  return { V, C, nx, ny, cell, bb };
+  return { V, C, nx, ny, cell, bb, spikes };
 }
 /* Steg 2: trianglar. Returnerar { V, C, F (0-baserade hörnindex), FC (färg per triangel) } */
 async function l3pmBuild(c, o, onP) {
@@ -70,7 +80,7 @@ async function l3pmBuild(c, o, onP) {
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2]; area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
   }
   if (!keep.length) throw new Error("Alla trianglar föll bort – öka största kantlängd eller välj större ruta.");
-  return { V: g.V, C: g.C, F: keep, FC, area, bb: g.bb };
+  return { V: g.V, C: g.C, F: keep, FC, area, bb: g.bb, spikes: g.spikes };
 }
 const l3pmHex = c => "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
 function l3pmDxf(r, layer) {
@@ -111,8 +121,9 @@ function l3pmDialog(id) {
     ${row("Rutstorlek (m)", `<span><input type="number" id="pmCell" min="0.05" step="0.05" value="${cell0}" style="width:80px"> <span id="pmEst" style="color:#64748b"></span></span>`)}
     ${row("Höjd per ruta", `<select id="pmZ"><option value="mean">Medel</option><option value="min">Lägst (mark)</option><option value="max">Högst (tak)</option></select>`)}
     ${row("Största kantlängd (m, 0 = ingen)", `<input type="number" id="pmEdge" min="0" step="0.5" value="${Math.round(cell0 * 3 * 10) / 10}" style="width:80px">`)}
+    ${row("Ta bort spikar (m, 0 = av)", `<input type="number" id="pmSpike" min="0" step="0.1" value="1" title="Rutor vars höjd avviker mer än så från grannrutorna tas bort (punkter som sticker iväg, flygande brus)" style="width:80px">`)}
     ${row("Färg", `<select id="pmCol">${modes.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
-    <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj. Varje triangel får medelfärgen av sina hörn.</div>
+    <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj. Varje triangel får medelfärgen av sina hörn. Spikfilter tar bort rutor som sticker iväg från grannarna så att inga taggar uppstår.</div>
     <div id="pmOut" style="color:#334155"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button type="button" id="pmX">Stäng</button><button type="button" id="pmGo" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:6px 14px">Skapa mesh</button>
     <button type="button" id="pmDxf" disabled>⤓ DXF</button><button type="button" id="pmIfc" disabled>⤓ IFC</button><button type="button" id="pmMod" disabled>＋ Lägg i modellen</button></div></div>`;
@@ -123,9 +134,9 @@ function l3pmDialog(id) {
   q("#pmGo").onclick = async () => {
     if (l3pm.busy) return; l3pm.busy = true; q("#pmGo").disabled = true; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
     try {
-      const o = { type: q("#pmType").value, cell: Math.max(0.05, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value };
+      const o = { type: q("#pmType").value, cell: Math.max(0.05, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0) };
       const r = await l3pmBuild(c, o, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = o; l3pm.res = r;
-      out.innerHTML = `<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta.`; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
+      out.innerHTML = `<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta.${r.spikes ? ` ${r.spikes.toLocaleString("sv-SE")} spikar/brus-rutor togs bort.` : ""}`; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
     } catch (e) { out.textContent = "⚠ " + e.message; }
     l3pm.busy = false; q("#pmGo").disabled = false;
   };
