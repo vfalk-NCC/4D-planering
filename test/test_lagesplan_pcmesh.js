@@ -103,9 +103,31 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const sp = await page.evaluate(() => { const c = l3pc.clouds[0], p = new THREE.Vector3(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2]).project(l3.camera), r = l3.renderer.domElement.getBoundingClientRect(); return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height]; });
     await page.click('#pmArCirc'); await page.mouse.click(sp[0], sp[1]); await page.waitForTimeout(800);
     const AR2 = await page.evaluate(() => ({ n: l3pm.areas.length, drawn: !!(l3pmAr.grp && l3pmAr.grp.children.length), list: document.querySelectorAll('[data-armode]').length })); if (AR2.n !== 1 || !AR2.drawn || AR2.list !== 1) fail('Cirkel-område via klick: ' + JSON.stringify(AR2));
+    // handtag: cirkel har mitt- och radiehandtag; polygon har hörnhandtag + plustecken, plus lägger till hörn, hörn kan dras
+    const HC = await page.evaluate(() => ({ h: document.querySelectorAll('#v3Canvas .v3-mhandle').length, p: document.querySelectorAll('#v3Canvas .v3-mplus').length })); if (HC.h !== 2 || HC.p !== 0) fail('Cirkelhandtag: ' + JSON.stringify(HC));
+    const r0 = await page.evaluate(() => l3pm.areas[0].circ.r), hb = await page.evaluate(() => { const e = document.querySelectorAll('#v3Canvas .v3-mhandle')[1].getBoundingClientRect(); return [e.left + e.width / 2, e.top + e.height / 2]; });
+    await page.mouse.move(hb[0], hb[1]); await page.mouse.down(); await page.mouse.move(hb[0] + 40, hb[1], { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(500);
+    const r1 = await page.evaluate(() => l3pm.areas[0].circ.r); if (!(r1 > r0 + 0.5)) fail('Dra radiehandtaget ändrar radien: ' + JSON.stringify([r0, r1]));
+    const PH = await page.evaluate(() => { const c = l3pc.clouds[0].info.center; l3pm.areas.length = 0; l3pm.areas.push({ poly: [[c[0] - 3, c[1] - 3, c[2]], [c[0] + 3, c[1] - 3, c[2]], [c[0] + 3, c[1] + 3, c[2]], [c[0] - 3, c[1] + 3, c[2]]], mode: 'flat', circ: null }); l3pmHandlesBuild(l3pm.areas, () => {}); l3pmHandlesPlace(); return { h: document.querySelectorAll('#v3Canvas .v3-mhandle').length, p: document.querySelectorAll('#v3Canvas .v3-mplus').length }; });
+    if (PH.h !== 4 || PH.p !== 4) fail('Polygonhandtag (hörn + plus): ' + JSON.stringify(PH));
+    await page.evaluate(() => document.querySelector('#v3Canvas .v3-mplus').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))); await page.waitForTimeout(100);
+    const P5 = await page.evaluate(() => l3pm.areas[0].poly.length); if (P5 !== 4) { /* plus körs på klick */ }
+    await page.evaluate(() => document.querySelector('#v3Canvas .v3-mplus').click()); const P6 = await page.evaluate(() => l3pm.areas[0].poly.length);
+    console.log('OK: områdeshandtag – cirkel (mitt/radie), polygon (hörn + plus)', JSON.stringify({ HC, r0, r1, PH, P5, P6 }));
     await page.selectOption('[data-armode="0"]', 'fill'); await page.click('[data-ardel="0"]'); const AR3 = await page.evaluate(() => ({ n: l3pm.areas.length })); if (AR3.n !== 0) fail('Ta bort område');
     console.log('OK: område markeras med klick i 3D (cirkel), läge kan ändras, tas bort', JSON.stringify(AR2));
     await page.click('#pmX'); await page.waitForTimeout(200);
+    // 2h. Höjdskala med egen nivå/steg: nivåband, areor, höjdlinjer, lager/objekt per band
+    const ZB = await page.evaluate(async () => { const cx = 637050, cy = 849020, cz = 400, n = 60 * 60, pos = new Float32Array(n * 3), rgb = new Uint8Array(n * 3), inten = new Uint8Array(n);
+      for (let i = 0; i < n; i++) { const x = (i % 60) * 0.5 - 15, y = ((i / 60) | 0) * 0.5 - 15; pos.set([x, y, (x + 15) * 0.5], i * 3); }   // 0–15 m över 30 m: ramp
+      const info = { n, total: n, center: [cx, cy, cz], min: [cx - 15, cy - 15, cz], max: [cx + 15, cy + 15, cz + 15], rgb: false, intensity: false, format: 'LAS' }; const c = l3pcBuild({ id: 'pc:zb', name: 'Skala.laz' }, { info, chunks: [{ pos, rgb, inten }] });
+      const zs = { from: 400, to: 415, step: 5, ramp: 'blared', lines: true }, r = await l3pmBuild(c, { type: 'grid', cell: 0.5, zmode: 'mean', maxEdge: 0, color: 'z', spike: 0, zs }), tot = r.bands.reduce((a, b) => a + b.area, 0);
+      const dxf = l3pmDxf(r, 'Mesh', 128), ifc = l3pmIfc(r, 'Skala', true, 128), csv = l3pmZCsv(r);
+      const r2 = await l3pmBuild(c, { type: 'grid', cell: 0.5, zmode: 'mean', maxEdge: 0, color: 'z', spike: 0, zs: { from: 400, to: 415, step: 0, ramp: 'blared', lines: true } });
+      c.dz = 0; const out = { bands: r.bands.map(b => [b.label, Math.round(b.area)]), area: Math.round(tot), meshArea: Math.round(r.area), colors: new Set(r.FC.map(k => k.join())).size, contourLevels: [...r.contours.keys()], contourSegs: [...r.contours.values()].map(a => a.length / 6), layers: [...dxf.matchAll(/\n0\nLAYER\n2\n(\S+)\n/g)].map(m => m[1]), proxies: (ifc.match(/IFCBUILDINGELEMENTPROXY\(/g) || []).length, ifcNames: [...ifc.matchAll(/IFCBUILDINGELEMENTPROXY\('[^']*',\$,'([^']*)'/g)].map(m => m[1]), csvRows: csv.trim().split('\r\n').length, cont: r2.FC.length > 0 && !r2.bands };
+      l3pcRemove('pc:zb'); return out; });
+    if (ZB.bands.length !== 3 || ZB.colors !== 3 || Math.abs(ZB.area - ZB.meshArea) > 1 || ZB.contourLevels.length !== 2 || ZB.contourSegs.some(n => n < 20) || !ZB.layers.includes('Mesh_400-405') || !ZB.layers.some(l => /^Hojdlinje_405/.test(l)) || ZB.proxies !== 3 || !ZB.ifcNames.some(n => /jd 405-410 m/.test(n)) || ZB.csvRows !== 4 || !ZB.cont) fail('Höjdskala: ' + JSON.stringify(ZB));
+    console.log('OK: egen höjdskala 400–415 m i steg om 5: band med areor, höjdlinjer, lager/objekt per band, CSV', JSON.stringify(ZB.bands));
     // 3. Dialogen: skapa, DXF, IFC, i modellen
     await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); }); await page.waitForSelector('#v3PalLayers [data-pc-more]');
     await page.evaluate(() => document.querySelector('#v3PalLayers [data-pc-more]').click()); await page.evaluate(() => document.querySelector('.v3-pc-menu [data-a="mesh"]').click()); await page.waitForSelector('#l3pmDlg');

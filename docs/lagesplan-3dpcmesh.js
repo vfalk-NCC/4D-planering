@@ -49,9 +49,9 @@ async function l3pmGrid(c, o, onP) {
   const AR = l3pmAreasPrep(o.areas || []);   // områden som ska plattas ut/fyllas: punkterna inom dem (maskiner, skräp) tas inte med
   const pr = typeof l3Prefs === "function" ? l3Prefs() : null, old = pr ? pr.pcMode : undefined; let t0 = performance.now();
   try {
-    if (pr && o.color !== "none") pr.pcMode = o.color;
+    if (pr && o.color !== "none" && !o.zs) pr.pcMode = o.color;
     for await (const { o: pc, mask, f } of l3pcsPieces(c, [bb.min[0] - h, bb.min[1] - h, -1e9, bb.max[0] + h, bb.max[1] + h, 1e9])) {
-      const n = pc.pos.length / 3, P = pc.pos, col = o.color === "none" ? null : l3pcColorsBase(c, pc);
+      const n = pc.pos.length / 3, P = pc.pos, col = o.color === "none" || o.zs ? null : l3pcColorsBase(c, pc);
       for (let i = 0; i < n; i++) {
         if (mask && !mask[i]) continue; const x = P[i * 3] + ctr[0], y = P[i * 3 + 1] + ctr[1], z = P[i * 3 + 2] + ctr[2], ix = Math.floor((x - bb.min[0]) / h), iy = Math.floor((y - bb.min[1]) / h); if (ix < 0 || iy < 0 || ix >= nx || iy >= ny) continue; if (A) { if (x < A.bb[0] || x > A.bb[2] || y < A.bb[1] || y > A.bb[3]) continue; let inside = false; for (let q = 0; q < A.polys.length; q++) if (l3pcsIn(A.polys[q], x, y)) { inside = true; break; } if (!inside) continue; }
         if (AR.length && l3pmInAreas(AR, x, y)) continue; const k = iy * nx + ix, first = cnt[k] === 0, r = col ? col[i * 3] : 160, g = col ? col[i * 3 + 1] : 165, b = col ? col[i * 3 + 2] : 175;
@@ -106,7 +106,9 @@ async function l3pmBuild(c, o, onP) {
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2]; area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
   }
   if (!keep.length) throw new Error("Alla trianglar föll bort – öka största kantlängd eller välj större ruta.");
-  return { V: g.V, C: g.C, F: keep, FC, area, bb: g.bb, spikes: g.spikes, filledAreas: g.filledAreas || 0 };
+  const r = { V: g.V, C: g.C, F: keep, FC, area, bb: g.bb, spikes: g.spikes, filledAreas: g.filledAreas || 0 };
+  if (o.zs) l3pmZColors(r, o.zs, c.dz || 0);
+  return r;
 }
 /* Lägsta höjd utan spridning av miljontals värden (Math.min(...) ger "Maximum call stack size exceeded"). */
 function l3pmMinZ(r) { let m = Infinity; for (let i = 0; i < r.V.length; i++) if (r.V[i][2] < m) m = r.V[i][2]; return m; }
@@ -143,6 +145,34 @@ async function l3pmExportTiles(c, o, fmts, base, onP) {
   const blob = await sink.finish(); return { made, tri, blob, streaming: sink.streaming, tiles: plan.tiles.length };
 }
 const l3pmHex = c => "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+/* ---- Höjdskala (egen): nivå från/till/steg, färgskala eller egna band; höjdlinjer och areor per nivåband (höjdsammanställning) ----
+   zs = { from, to, step (0 = jämn skala), ramp (namn i L3PC_RAMPS) | custom: { b, c } (molnets egna färgband), lines (bool) } – nivåer i m ö.h. (samma höjder som molnets Höjd-skala). */
+function l3pmZBands(zs) {
+  if (zs.custom && zs.custom.b && zs.custom.c) { const b = zs.custom.b, c = zs.custom.c; return c.map((col, i) => ({ lo: i ? b[i - 1] : -Infinity, hi: i < b.length ? b[i] : Infinity, hex: col })); }
+  const step = Number(zs.step) || 0; if (!(step > 0)) return null; const from = Number(zs.from), to = Math.max(Number(zs.to), from + step), n = Math.max(1, Math.min(200, Math.ceil((to - from) / step - 1e-9))), out = [];
+  for (let i = 0; i < n; i++) { const lo = from + i * step, hi = Math.min(to, lo + step), t = n === 1 ? 0.5 : i / (n - 1); out.push({ lo: i ? lo : -Infinity, hi: i === n - 1 ? Infinity : hi, lo0: lo, hi0: hi, hex: l3pcHex(l3pcRamp(t, zs.ramp)) }); }
+  return out;
+}
+const l3pmFmtZ = v => String(Math.round(v * 100) / 100).replace(".", ",");
+function l3pmZColors(r, zs, dz) {
+  const bands = l3pmZBands(zs), nT = r.F.length / 3, from = Number(zs.from), to = Math.max(Number(zs.to), from + 1e-6); r.zs = zs;
+  const zOf = i => ((r.V[r.F[i * 3]][2] + r.V[r.F[i * 3 + 1]][2] + r.V[r.F[i * 3 + 2]][2]) / 3) + dz;
+  if (bands) {
+    const rgb = bands.map(b => parseInt(b.hex.slice(1), 16)), fb = new Uint16Array(nT), fc = new Array(nT); bands.forEach((b, i) => { b.area = 0; b.tris = 0; b.label = (b.lo0 != null ? `${l3pmFmtZ(b.lo0)}-${l3pmFmtZ(b.hi0)}` : `${l3pmFmtZ(Number.isFinite(b.lo) ? b.lo : b.hi - 1)}-`).replace(/,/g, "."); });
+    for (let i = 0; i < nT; i++) { const z = zOf(i); let k = 0; while (k < bands.length - 1 && z >= bands[k].hi) k++; fb[i] = k; const q = rgb[k]; fc[i] = [q >> 16 & 255, q >> 8 & 255, q & 255]; const a = r.V[r.F[i * 3]], b = r.V[r.F[i * 3 + 1]], d = r.V[r.F[i * 3 + 2]], ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2]; bands[k].area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2; bands[k].tris++; }
+    r.FC = fc; r.fb = fb; r.bands = bands.map((b, i) => ({ ...b, rgb: [rgb[i] >> 16 & 255, rgb[i] >> 8 & 255, rgb[i] & 255] }));
+  } else { const fc = new Array(nT); for (let i = 0; i < nT; i++) fc[i] = l3pcRamp((zOf(i) - from) / (to - from), zs.ramp); r.FC = fc; }
+  if (zs.lines !== false) r.contours = l3pmContours(r, zs, dz, bands);
+}
+/* Höjdlinjer vid bandgränserna (eller varje steg): segment [x1,y1,z1,x2,y2,z2,…] per nivå. */
+function l3pmContours(r, zs, dz, bands) {
+  const levels = bands ? (zs.custom ? zs.custom.b.slice() : bands.slice(0, -1).map(b => b.hi)) : (() => { const a = []; const n = 8; for (let i = 0; i <= n; i++) a.push(Number(zs.from) + (Number(zs.to) - Number(zs.from)) * i / n); return a; })(), out = new Map(); levels.forEach(L => out.set(L, []));
+  for (let i = 0; i < r.F.length; i += 3) { const P = [r.V[r.F[i]], r.V[r.F[i + 1]], r.V[r.F[i + 2]]], zz = P.map(p => p[2] + dz), lo = Math.min(...zz), hi = Math.max(...zz);
+    for (const L of levels) { const Le = L + 1e-6; if (Le < lo || Le >= hi) continue; const pts = []; for (let e = 0; e < 3; e++) { const a = P[e], b = P[(e + 1) % 3], za = zz[e], zb = zz[(e + 1) % 3]; if ((za < Le) !== (zb < Le)) { const t = (Le - za) / (zb - za); pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, L - dz]); } } if (pts.length === 2) out.get(L).push(pts[0][0], pts[0][1], pts[0][2], pts[1][0], pts[1][1], pts[1][2]); } }
+  return out;
+}
+/* CSV: höjdsammanställning per nivåband. */
+function l3pmZCsv(r) { if (!r.bands) return ""; const tot = r.bands.reduce((a, b) => a + b.area, 0) || 1; return "\ufeffNivåband (m ö.h.);Från;Till;Yta m²;Andel %;Trianglar\r\n" + r.bands.map(b => [b.label, Number.isFinite(b.lo0) ? b.lo0 : "", Number.isFinite(b.hi0) ? b.hi0 : "", Math.round(b.area * 10) / 10, Math.round(b.area / tot * 1000) / 10, b.tris].join(";").replace(/\./g, ",")).join("\r\n") + "\r\n"; }
 /* AutoCAD-färgindex (ACI 1–255) som RGB, för att välja närmaste indexfärg per lager. */
 let l3pmAciTab = null;
 function l3pmAci(rgb) {
@@ -153,15 +183,20 @@ function l3pmAci(rgb) {
 }
 /* DXF: ett lager per färg (lagerfärg = närmaste AutoCAD-index) så att färgen syns även i läsare som bara läser lagerfärger (som appens egen DXF-visning); varje 3DFACE bär dessutom sin exakta färg (kod 420) för CAD som läser äkta färg. */
 function l3pmDxf(r, layer, ncol) {
-  const num = v => (Math.round(v * 1000) / 1000).toFixed(3), { pal, idx } = l3pmPalette(r.FC, Math.max(2, Math.min(256, ncol || 128))), used = new Set(idx), out = ["0", "SECTION", "2", "TABLES", "0", "TABLE", "2", "LAYER", "70", String(used.size)];
-  const name = k => `${layer}_${String(k + 1).padStart(3, "0")}`; pal.forEach((c, k) => { if (used.has(k)) out.push("0", "LAYER", "2", name(k), "70", "0", "62", String(l3pmAci(c)), "6", "CONTINUOUS"); });
+  const num = v => (Math.round(v * 1000) / 1000).toFixed(3), { pal, idx, names } = l3pmPalette(r.FC, Math.max(2, Math.min(256, ncol || 128)), r), used = new Set(idx), cl = new Map();
+  const safe = t => String(t).replace(/[^A-Za-z0-9_.\-]/g, "_"), name = k => `${layer}_${names ? safe(names[k]) : String(k + 1).padStart(3, "0")}`;
+  if (r.contours) r.contours.forEach((seg, L) => { if (seg.length) cl.set(L, `Hojdlinje_${safe(l3pmFmtZ(L).replace(",", "."))}`); });
+  const out = ["0", "SECTION", "2", "TABLES", "0", "TABLE", "2", "LAYER", "70", String(used.size + cl.size)];
+  pal.forEach((c, k) => { if (used.has(k)) out.push("0", "LAYER", "2", name(k), "70", "0", "62", String(l3pmAci(c)), "6", "CONTINUOUS"); }); cl.forEach(n => out.push("0", "LAYER", "2", n, "70", "0", "62", "7", "6", "CONTINUOUS"));
   out.push("0", "ENDTAB", "0", "ENDSEC", "0", "SECTION", "2", "ENTITIES");
   for (let i = 0; i < r.F.length; i += 3) { const a = r.V[r.F[i]], b = r.V[r.F[i + 1]], c = r.V[r.F[i + 2]], k = r.FC[i / 3];
     out.push("0", "3DFACE", "8", name(idx[i / 3]), "420", String(k[0] << 16 | k[1] << 8 | k[2]), "10", num(a[0]), "20", num(a[1]), "30", num(a[2]), "11", num(b[0]), "21", num(b[1]), "31", num(b[2]), "12", num(c[0]), "22", num(c[1]), "32", num(c[2]), "13", num(c[0]), "23", num(c[1]), "33", num(c[2])); }
+  if (r.contours) r.contours.forEach((seg, L) => { const n = cl.get(L); for (let q = 0; q < seg.length; q += 6) out.push("0", "LINE", "8", n, "10", num(seg[q]), "20", num(seg[q + 1]), "30", num(seg[q + 2]), "11", num(seg[q + 3]), "21", num(seg[q + 4]), "31", num(seg[q + 5])); });
   out.push("0", "ENDSEC", "0", "EOF"); return out.join("\n");
 }
 /* Färgpalett för IFC: medianskärning av triangelfärgerna (5 bitar per kanal som underlag) till högst n färger. Returnerar { pal: [[r,g,b]…], idx: Uint16Array (palettindex per triangel) }. */
-function l3pmPalette(FC, n) {
+function l3pmPalette(FC, n, r) {
+  if (r && r.bands && r.fb) { return { pal: r.bands.map(b => b.rgb), idx: r.fb, names: r.bands.map(b => b.label) }; }   // höjdband: varje band är en färg
   const hist = new Map(); for (let i = 0; i < FC.length; i++) { const c = FC[i], k = (c[0] >> 3 << 10) | (c[1] >> 3 << 5) | (c[2] >> 3); hist.set(k, (hist.get(k) || 0) + 1); }
   const items = [...hist].map(([k, w]) => ({ k, w, c: [(k >> 10 & 31) * 8 + 4, (k >> 5 & 31) * 8 + 4, (k & 31) * 8 + 4] })); let boxes = [items];
   while (boxes.length < n) {
@@ -183,8 +218,8 @@ function l3pmIfc(r, name, colored, ncol) {
   const mk = (list, hex, label, n) => { const fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${list.join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${doc.style("mesh" + label, hex, "Mesh " + label)}),$)`);
     const el = doc.proxy(`${name} – ${label}`, "Mesh från punktmoln", "Punktmolnsmesh", place, doc.shape(fs, "Tessellation"), "pcmesh-" + label); doc.props(el, [["Källa", "Punktmoln"], ["Färg", hex], ["Trianglar", n], ["Yta m² (hela meshen)", Math.round(r.area * 10) / 10]], "Punktmolnsmesh"); elems.push(el); };
   if (colored) {
-    const { pal, idx } = l3pmPalette(r.FC, Math.max(2, Math.min(512, ncol || 128))), groups = pal.map(() => []); for (let i = 0; i < nT; i++) groups[idx[i]].push(tri(i));
-    groups.forEach((g, k) => { if (g.length) mk(g, l3pmHex(pal[k]), String(k + 1).padStart(3, "0"), g.length); });
+    const { pal, idx, names } = l3pmPalette(r.FC, Math.max(2, Math.min(512, ncol || 128)), r), groups = pal.map(() => []); for (let i = 0; i < nT; i++) groups[idx[i]].push(tri(i));
+    groups.forEach((g, k) => { if (g.length) mk(g, l3pmHex(pal[k]), names ? `Höjd ${names[k]} m` : String(k + 1).padStart(3, "0"), g.length); });
   } else mk(Array.from({ length: nT }, (_, i) => tri(i)), "#a3a8b4", "grå", nT);
   return doc.finish(elems, name + ".ifc");
 }
@@ -194,7 +229,7 @@ function l3pmToModel(r, name) {
   const org = [Math.floor(r.bb.min[0]), Math.floor(r.bb.min[1]), Math.floor(l3pmMinZ(r))], q = v => Math.round(v * 1000) / 1000;
   const avg = [0, 1, 2].map(k => r.FC.reduce((a, c) => a + c[k], 0) / r.FC.length);
   const m = { k: "mesh", pts: r.V.map(v => [q(v[0] - org[0]), q(v[1] - org[1]), q(v[2] - org[2])]), faces: Array.from({ length: r.F.length / 3 }, (_, i) => [r.F[i * 3] + 1, r.F[i * 3 + 1] + 1, r.F[i * 3 + 2] + 1]), closed: false };
-  if (r.opts && r.opts.color !== "none") { const { pal, idx } = l3pmPalette(r.FC, 128); let bin = ""; for (let i = 0; i < idx.length; i++) bin += String.fromCharCode(idx[i]); m.pal = pal.map(l3pmHex); m.fci = btoa(bin); }   // färg per triangel i ritobjektet (palett + index)
+  if (r.opts && r.opts.color !== "none") { const { pal, idx } = l3pmPalette(r.FC, 128, r); let bin = ""; for (let i = 0; i < idx.length; i++) bin += String.fromCharCode(idx[i]); m.pal = pal.map(l3pmHex); m.fci = btoa(bin); }   // färg per triangel i ritobjektet (palett + index)
   const p = modCreate(m, org, { name, color: l3pmHex(avg) }); if (typeof l3Changed === "function") l3Changed(); return p;
 }
 /* Förhandsvisning i 3D-editorn: meshen med trianglarnas färger (och valfritt nätet) ovanpå molnet; tas bort när dialogen stängs. Ingen plockning/markering av den. */
@@ -207,6 +242,7 @@ function l3pmPreview(r, wire) {
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(col, 3));
   const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })), grp = new THREE.Group(); grp.name = "pcMeshPreview"; m.raycast = () => {}; m.frustumCulled = false; grp.add(m);
   if (wire) { const w = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x0f172a, wireframe: true, transparent: true, opacity: 0.35 })); w.raycast = () => {}; w.frustumCulled = false; grp.add(w); }
+  if (r.contours) { const seg = []; r.contours.forEach(a => { for (let q = 0; q < a.length; q += 3) seg.push(a[q] - O[0], a[q + 1] - O[1], a[q + 2] - O[2] + 0.05); }); if (seg.length) { const lg = new THREE.BufferGeometry(); lg.setAttribute("position", new THREE.Float32BufferAttribute(seg, 3)); const ls = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x111827 })); ls.raycast = () => {}; ls.frustumCulled = false; grp.add(ls); } }   // höjdlinjer (markeringar)
   l3pmPrev.grp = grp; l3.scene.add(grp); l3Render();
 }
 /* ---- Markera områden i 3D att platta ut (maskiner, skräp) ---- */
@@ -230,7 +266,7 @@ function l3pmStartPick(kind, radius, done, onLive) {
   l3pmStopPick(); const dom = l3.renderer.domElement, pts = []; dom.style.cursor = "crosshair";
   const fin = ok => { const res = ok ? pts.map(p => [p[0], p[1], p[2]]) : null; l3pmStopPick(); done(res); };
   const down = e => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); const p = l3pmPickPoint(e); if (!p) { l3Status("Ingen punkt här – tryck på meshen eller molnet.", true); return; }
-    if (kind === "circle") { const poly = []; for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; poly.push([p[0] + Math.cos(a) * radius, p[1] + Math.sin(a) * radius, p[2]]); } l3pmStopPick(); done(poly); return; }
+    if (kind === "circle") { const poly = []; for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; poly.push([p[0] + Math.cos(a) * radius, p[1] + Math.sin(a) * radius, p[2]]); } l3pmStopPick(); done(poly, { c: p, r: radius }); return; }
     if (pts.length >= 3 && Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1]) < Math.max(0.5, radius * 0.2) ) { fin(true); return; }
     pts.push(p); onLive && onLive(pts); l3Status(`Område: ${pts.length} hörn. Fortsätt klicka, Enter eller klick vid första hörnet avslutar, Esc avbryter.`); };
   const key = e => { if (e.key === "Escape") { e.stopPropagation(); fin(false); } else if (e.key === "Enter") { e.stopPropagation(); e.preventDefault(); if (pts.length >= 3) fin(true); } };
@@ -238,10 +274,33 @@ function l3pmStartPick(kind, radius, done, onLive) {
   l3Status(kind === "circle" ? `Cirkel: tryck på mitten av maskinen/skräpet (radie ${radius} m). Esc avbryter.` : "Område: tryck hörnen runt maskinen/skräpet. Enter avslutar, Esc avbryter.");
 }
 function l3pmStopPick() { const p = l3pmAr.pick; if (!p) return; p.dom.style.cursor = ""; p.dom.removeEventListener("pointerdown", p.down, true); window.removeEventListener("keydown", p.key, true); l3pmAr.pick = null; }
+/* ---- Handtag på områdena: ＋ mellan hörnen lägger till ett hörn, hörnen dras för att flyttas (dubbelklick tar bort), cirklar har mitt- och radiehandtag ---- */
+const l3pmHd = { host: null, els: [], onChange: null };
+function l3pmHandlesClear() { l3pmHd.els.forEach(e => e.el.remove()); l3pmHd.els = []; }
+function l3pmCircPoly(c, r) { const poly = []; for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; poly.push([c[0] + Math.cos(a) * r, c[1] + Math.sin(a) * r, c[2]]); } return poly; }
+function l3pmHandlesBuild(areas, onChange) {
+  l3pmHandlesClear(); l3pmHd.onChange = onChange; const host = l3.renderer.domElement.parentElement; l3pmHd.host = host;
+  const mk = (cls, txt, title, pos, down, dbl) => { const el = document.createElement("button"); el.type = "button"; el.className = cls; if (txt) el.textContent = txt; el.title = title; el.onclick = e => e.stopPropagation(); el.onpointerdown = e => { e.stopPropagation(); e.preventDefault(); down(e, el); }; if (dbl) el.ondblclick = e => { e.stopPropagation(); dbl(); }; host.appendChild(el); l3pmHd.els.push({ el, pos }); return el; };
+  const drag = (e, el, move, done) => { el.classList.add("drag"); el.setPointerCapture && el.setPointerCapture(e.pointerId); const mv = ev => { const p = l3pmPickPoint(ev); if (p) { move(p); l3pmDrawAreas(areas, null); } }, up = () => { el.classList.remove("drag"); el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); done(); }; el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); };
+  areas.forEach((a, ai) => {
+    if (a.circ) {
+      mk("v3-mhandle", "", "Dra för att flytta cirkeln", () => a.circ.c, (e, el) => drag(e, el, p => { a.circ.c = p; a.poly = l3pmCircPoly(p, a.circ.r); }, () => onChange(true)));
+      mk("v3-mhandle", "", "Dra för att ändra radien", () => [a.circ.c[0] + a.circ.r, a.circ.c[1], a.circ.c[2]], (e, el) => drag(e, el, p => { a.circ.r = Math.max(0.3, Math.round(Math.hypot(p[0] - a.circ.c[0], p[1] - a.circ.c[1]) * 10) / 10); a.poly = l3pmCircPoly(a.circ.c, a.circ.r); }, () => onChange(true)));
+      return;
+    }
+    a.poly.forEach((pt, vi) => mk("v3-mhandle", "", "Dra för att flytta hörnet – dubbelklick tar bort det", () => a.poly[vi], (e, el) => drag(e, el, p => { a.poly[vi] = p; }, () => onChange(true)), () => { if (a.poly.length > 3) { a.poly.splice(vi, 1); onChange(true); } }));
+    a.poly.forEach((pt, vi) => mk("v3-mplus", "+", "Lägg till ett hörn här", () => { const q = a.poly[(vi + 1) % a.poly.length]; return [(pt[0] + q[0]) / 2, (pt[1] + q[1]) / 2, (pt[2] + q[2]) / 2]; }, () => { const q = a.poly[(vi + 1) % a.poly.length]; a.poly.splice(vi + 1, 0, [(pt[0] + q[0]) / 2, (pt[1] + q[1]) / 2, (pt[2] + q[2]) / 2]); onChange(false); }));
+  });
+  l3pmHandlesPlace();
+}
+function l3pmHandlesPlace() {
+  if (!l3pmHd.els.length || !l3) return; const O = l3.O, hide = !!l3pmAr.pick;
+  l3pmHd.els.forEach(h => { const p = h.pos(); if (!p || hide) { h.el.style.display = "none"; return; } const q = l3ToScreen(new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.15)); h.el.style.display = q.behind ? "none" : "block"; h.el.style.left = q.x + "px"; h.el.style.top = q.y + "px"; });
+}
 function l3pmDialog(id) {
   const c = l3pcGet(id); if (!c || l3pm.busy) return; l3pm.res = null;
   const bb = c.lod && c._sub == null ? { min: c.info.min, max: c.info.max } : l3pcsBounds(c), w = bb.max[0] - bb.min[0], h = bb.max[1] - bb.min[1], cell0 = Math.max(0.1, Math.round(Math.sqrt(w * h / 100000) * 20) / 20);   // ≈ 100 000 rutor som start
-  const zones = typeof l3pcsGroups === "function" ? l3pcsGroups("zone") : [], modes = [["auto", "Automatiskt"], ["rgb", "Skanningens färger"], ["int", "Intensitet (grå)"], ["z", "Höjd – färgskala"], ["solid", "Enfärgad (molnets färg)"], ["diff", "Skillnad (differentialanalys)"], ["none", "Ingen färg (grå mesh)"]], cur = typeof l3pcMode === "function" ? l3pcMode() : "auto";
+  const zones = typeof l3pcsGroups === "function" ? l3pcsGroups("zone") : [], modes = [["auto", "Automatiskt"], ["rgb", "Skanningens färger"], ["int", "Intensitet (grå)"], ["z", "Höjd – färgskala (egen nivå)"], ["solid", "Enfärgad (molnets färg)"], ["diff", "Skillnad (differentialanalys)"], ["none", "Ingen färg (grå mesh)"]], cur = typeof l3pcMode === "function" ? l3pcMode() : "auto";
   const ov = document.createElement("div"); ov.id = "l3pmDlg"; ov.style.cssText = "position:fixed;inset:0;z-index:9500;pointer-events:none;display:flex;align-items:flex-start;justify-content:flex-end;padding:80px 16px 16px";l3pmPrev.cloud = String(id).split("|")[0]; l3pmPreviewClear();
   const row = (l, ctl) => `<label style="display:flex;gap:8px;align-items:center;justify-content:space-between"><span>${l}</span>${ctl}</label>`;
   ov.innerHTML = `<div style="pointer-events:auto;max-height:calc(100vh - 100px);overflow:auto;background:#fff;color:#0f172a;border-radius:14px;max-width:400px;width:100%;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.4);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:9px">
@@ -256,6 +315,11 @@ function l3pmDialog(id) {
     <div id="pmAreas" style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>Platta ut områden</b><span style="color:#64748b;font-size:12px">maskiner och skräp</span></div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button type="button" id="pmArPoly" title="Klicka hörnen runt området i 3D">＋ Rita område</button><button type="button" id="pmArCirc" title="Klicka mitt på maskinen – området blir en cirkel">＋ Cirkel</button><label style="font-size:12px">radie <input type="number" id="pmArR" value="5" min="0.5" step="0.5" style="width:56px"> m</label></div>
       <div id="pmArList" style="display:flex;flex-direction:column;gap:4px"></div></div>
+    <div id="pmZBox" style="border:1px solid #e2e8f0;border-radius:10px;padding:8px;display:none;flex-direction:column;gap:6px"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>Höjdskala</b><span style="color:#64748b;font-size:12px">m ö.h.</span></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label style="font-size:12px">Från <input type="number" id="pmZFrom" step="0.1" style="width:72px"></label><button type="button" id="pmZPickF" title="Tryck på en punkt i 3D för att sätta nivån">⌖</button>
+        <label style="font-size:12px">Till <input type="number" id="pmZTo" step="0.1" style="width:72px"></label><button type="button" id="pmZPickT" title="Tryck på en punkt i 3D för att sätta nivån">⌖</button>
+        <label style="font-size:12px">Steg <input type="number" id="pmZStep" min="0" step="0.1" style="width:60px" title="0 = jämn skala utan band"> m</label></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select id="pmZRamp">${Object.entries(typeof L3PC_RAMPS !== "undefined" ? L3PC_RAMPS : {}).map(([k, v]) => `<option value="${k}">${escHtml(v[0])}</option>`).join("")}${typeof l3pcZCustom === "function" && l3pcZCustom() ? '<option value="__custom">Molnets egna färgband</option>' : ""}</select><label style="font-size:12px"><input type="checkbox" id="pmZLines" checked> Höjdlinjer</label></div></div>
     ${row("Färg", `<select id="pmCol">${modes.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
     <div style="color:#64748b;font-size:12px">Punkterna sammanfattas per ruta innan trianglarna bildas (miljoner punkter går inte att trianglera rakt av) – minska rutstorleken för mer detalj, ner till 0,1 m. För så fin ruta: välj en zon under Område (eller ett bortklippt lager) så att meshen blir hanterbar. Förhandsvisningen i 3D uppdateras direkt när du ändrar något. Varje triangel får medelfärgen av sina hörn. Spikfilter tar bort rutor som sticker iväg från grannarna så att inga taggar uppstår.</div>
     <div id="pmOut" style="color:#334155"></div>
@@ -269,12 +333,17 @@ function l3pmDialog(id) {
   q("#pmArea").addEventListener("change", est); q("#pmType").addEventListener("change", est); let edgeTouched = false; q("#pmEdge").oninput = () => { edgeTouched = true; };
   q("#pmCell").oninput = () => { est(); const v = Number(q("#pmCell").value); if (!edgeTouched && v > 0) q("#pmEdge").value = Math.round(v * 3 * 10) / 10; }; est();
   const areas = []; l3pm.areas = areas;
-  const drawAr = live => l3pmDrawAreas(areas, live), renderAr = () => { q("#pmArList").innerHTML = areas.length ? areas.map((a, i) => `<div style="display:flex;gap:6px;align-items:center"><span style="color:${a.mode === "fill" ? "#2563eb" : "#dc2626"}">▮</span><span style="flex:1">Område ${i + 1}</span><select data-armode="${i}" title="Plan yta på medelhöjden runt området, eller yta som följer kanten (lutning)"><option value="flat" ${a.mode === "flat" ? "selected" : ""}>Medelhöjd runt</option><option value="fill" ${a.mode === "fill" ? "selected" : ""}>Fyll mellan kanten</option></select><button type="button" data-ardel="${i}" title="Ta bort området">✕</button></div>`).join("") : `<span style="color:#94a3b8;font-size:12px">Inga områden. Punkterna inom ett område tas bort och ersätts med en yta härledd ur punkterna precis utanför.</span>`;
+  const drawAr = live => { l3pmDrawAreas(areas, live); if (!live) l3pmHandlesBuild(areas, rebuild => { drawAr(); if (rebuild) sched(150); }); },  renderAr = () => { q("#pmArList").innerHTML = areas.length ? areas.map((a, i) => `<div style="display:flex;gap:6px;align-items:center"><span style="color:${a.mode === "fill" ? "#2563eb" : "#dc2626"}">▮</span><span style="flex:1">Område ${i + 1}</span><select data-armode="${i}" title="Plan yta på medelhöjden runt området, eller yta som följer kanten (lutning)"><option value="flat" ${a.mode === "flat" ? "selected" : ""}>Medelhöjd runt</option><option value="fill" ${a.mode === "fill" ? "selected" : ""}>Fyll mellan kanten</option></select><button type="button" data-ardel="${i}" title="Ta bort området">✕</button></div>`).join("") : `<span style="color:#94a3b8;font-size:12px">Inga områden. Punkterna inom ett område tas bort och ersätts med en yta härledd ur punkterna precis utanför.</span>`;
     q("#pmArList").querySelectorAll("[data-armode]").forEach(el => el.onchange = () => { areas[+el.dataset.armode].mode = el.value; drawAr(); renderAr(); sched(150); }); q("#pmArList").querySelectorAll("[data-ardel]").forEach(el => el.onclick = () => { areas.splice(+el.dataset.ardel, 1); drawAr(); renderAr(); sched(150); }); };
-  const addArea = poly => { if (!poly) { drawAr(); l3Status("Avbrutet."); return; } areas.push({ poly, mode: "flat" }); drawAr(); renderAr(); l3Status(`Område ${areas.length} tillagt – meshen räknas om.`); sched(100); };
+  const addArea = (poly, circ) => { if (!poly) { drawAr(); l3Status("Avbrutet."); return; } areas.push({ poly, mode: "flat", circ: circ || null }); drawAr(); renderAr(); l3Status(`Område ${areas.length} tillagt – meshen räknas om.`); sched(100); };
   q("#pmArPoly").onclick = () => l3pmStartPick("poly", Number(q("#pmArR").value) || 5, addArea, live => drawAr(live)); q("#pmArCirc").onclick = () => l3pmStartPick("circle", Number(q("#pmArR").value) || 5, addArea);
   renderAr();
-  const closeAll = () => { l3pmStopPick(); l3pmDrawAreas([], null); clearTimeout(timer);  l3pmPreviewClear(); l3pmCloudHide(false); ov.remove(); l3Render(); }; q("#pmX").onclick = () => { if (!l3pm.busy) closeAll(); };
+  /* Höjdskala: förifylld med molnets skala; nivåerna kan sättas för hand eller genom att trycka på en punkt i 3D. */
+  { const Zp = typeof l3pcZParams === "function" ? l3pcZParams(c) : { lo: 0, hi: 1, z0: 0, step: 0, ramp: "blared", mn: 0, mx: 1 };
+    const f0 = Math.round((Zp.lo + Zp.z0) * 100) / 100, t0 = Math.round((Zp.hi + Zp.z0) * 100) / 100; q("#pmZFrom").value = f0; q("#pmZTo").value = t0; q("#pmZStep").value = Zp.step || Math.max(0.1, Math.round((t0 - f0) / 10 * 10) / 10); if (q("#pmZRamp").querySelector(`option[value="${Zp.ramp}"]`)) q("#pmZRamp").value = Zp.ramp; }
+  const zShow = () => { q("#pmZBox").style.display = q("#pmCol").value === "z" ? "flex" : "none"; }; q("#pmCol").addEventListener("change", zShow); zShow();
+  [["#pmZPickF", "#pmZFrom"], ["#pmZPickT", "#pmZTo"]].forEach(([b, f]) => { q(b).onclick = () => l3pmStartPick("circle", 0.01, poly => { if (poly) { q(f).value = Math.round(poly[0][2] * 100) / 100; q(f).dispatchEvent(new Event("input")); } }); });
+  const closeAll = () => { l3pmStopPick(); l3pmHandlesClear(); l3pmDrawAreas([], null); clearTimeout(timer);  l3pmPreviewClear(); l3pmCloudHide(false); ov.remove(); l3Render(); }; q("#pmX").onclick = () => { if (!l3pm.busy) closeAll(); };
   q("#pmHide").onchange = () => l3pmCloudHide(q("#pmHide").checked); q("#pmWire").onchange = () => { if (l3pm.res) l3pmPreview(l3pm.res, q("#pmWire").checked); };
   const base = () => `${l3pcsFile(String(c.name).replace(/\.[^.]+$/, ""))} – mesh`;
   /* Live: varje ändring av valen bygger om förhandsvisningen (väntar in att man slutat ändra, och en pågående körning avslutas först). */
@@ -283,14 +352,17 @@ function l3pmDialog(id) {
     if (l3pm.busy) return; l3pm.busy = true; q("#pmGo").disabled = true; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
     try {
       const o = { type: q("#pmType").value, cell: Math.max(0.1, Number(q("#pmCell").value) || cell0), zmode: q("#pmZ").value, maxEdge: Math.max(0, Number(q("#pmEdge").value) || 0), color: q("#pmCol").value, spike: Math.max(0, Number(q("#pmSpike").value) || 0), area: areaSel(), areas: areas.map(a => ({ poly: a.poly.map(p => [p[0], p[1]]), mode: a.mode })), ifcCols: Number(q("#pmIfcCols").value) || 128 };
+      if (o.color === "z") { const rv = q("#pmZRamp").value; o.zs = { from: Number(q("#pmZFrom").value), to: Number(q("#pmZTo").value), step: Number(q("#pmZStep").value) || 0, ramp: rv === "__custom" ? "blared" : rv, custom: rv === "__custom" ? l3pcZCustom() : null, lines: q("#pmZLines").checked }; if (!(o.zs.to > o.zs.from)) throw new Error("Höjdskalan: Till måste vara högre än Från."); }
       const ti = tiledInfo(); let oo = o;
       if (ti.tiled) { const [aw, ah] = areaWH(); oo = Object.assign({}, o, { cell: Math.max(o.cell, Math.round(Math.sqrt(aw * ah / 250000) * 20) / 20) }); }   // förhandsvisningen är grövre när meshen delas i flera modeller
       const r = await l3pmBuild(c, oo, (t, f) => { out.textContent = `${t} ${Math.round(f * 100)} %`; }); r.opts = oo; if (ti.tiled) r.tiled = { opts: o, tiles: ti.tiles, previewCell: oo.cell }; l3pm.res = r; l3pmPreview(r, q("#pmWire").checked); if (typeof l3Zoom === "function") { /* behåll vyn */ }
-      out.innerHTML = `${r.tiled ? `<b>Stor mesh – delas i cirka ${r.tiled.tiles} modeller</b> (${o.cell} m ruta). Förhandsvisningen är grövre (${r.tiled.previewCell} m). DXF/IFC-knapparna skriver alla modeller i en ZIP.<br>` : ""}<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta${r.tiled ? " (förhandsvisning)" : ""}.${r.spikes ? ` ${r.spikes.toLocaleString("sv-SE")} spikar/brus-rutor togs bort.` : ""}`; ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
+      const legend = r.bands ? `<table style="border-collapse:collapse;margin:6px 0;font-size:12px;width:100%"><tr style="color:#64748b"><td></td><td>Nivå (m ö.h.)</td><td style="text-align:right">Yta m²</td><td style="text-align:right">%</td></tr>${(() => { const tot = r.bands.reduce((a, b) => a + b.area, 0) || 1; return r.bands.map(b => `<tr><td style="width:18px"><i style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${b.hex};border:1px solid #cbd5e1"></i></td><td>${b.label}</td><td style="text-align:right">${Math.round(b.area).toLocaleString("sv-SE")}</td><td style="text-align:right">${(b.area / tot * 100).toFixed(1).replace(".", ",")}</td></tr>`).join(""); })()}</table><button type="button" id="pmCsv" title="Höjdsammanställningen (yta per nivåband) som CSV">⤓ CSV-sammanställning</button>` : r.zs ? `<div style="height:10px;border-radius:5px;margin:6px 0;background:linear-gradient(90deg,${[0, .25, .5, .75, 1].map(t => l3pmHex(l3pcRamp(t, r.zs.ramp))).join(",")})"></div><div style="display:flex;justify-content:space-between;font-size:12px;color:#475569"><span>${l3pmFmtZ(r.zs.from)} m</span><span>${l3pmFmtZ(r.zs.to)} m</span></div>` : "";
+      out.innerHTML = `${r.tiled ? `<b>Stor mesh – delas i cirka ${r.tiled.tiles} modeller</b> (${o.cell} m ruta). Förhandsvisningen är grövre (${r.tiled.previewCell} m). DXF/IFC-knapparna skriver alla modeller i en ZIP.<br>` : ""}<b>${(r.F.length / 3).toLocaleString("sv-SE")} trianglar</b>, ${r.V.length.toLocaleString("sv-SE")} hörn, ${Math.round(r.area).toLocaleString("sv-SE")} m² yta${r.tiled ? " (förhandsvisning)" : ""}.${r.spikes ? ` ${r.spikes.toLocaleString("sv-SE")} spikar/brus-rutor togs bort.` : ""}${legend}`;
+      { const cb = q("#pmCsv"); if (cb) cb.onclick = () => l3pmSave(l3pmZCsv(r), base() + " – höjdsammanställning.csv", "text/csv"); } ["#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = false; });
     } catch (e) { out.textContent = "⚠ " + e.message; }
     l3pm.busy = false; q("#pmGo").disabled = false; if (again && ov.isConnected) { again = false; sched(50); }
   };
-  ["#pmArea", "#pmType", "#pmCell", "#pmZ", "#pmEdge", "#pmSpike", "#pmCol"].forEach(id => { const el = q(id); el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => sched(el.tagName === "SELECT" ? 150 : 600)); });
+  ["#pmArea", "#pmType", "#pmCell", "#pmZ", "#pmEdge", "#pmSpike", "#pmCol", "#pmZFrom", "#pmZTo", "#pmZStep", "#pmZRamp", "#pmZLines"].forEach(id => { const el = q(id); el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => sched(el.tagName === "SELECT" ? 150 : 600)); });
   setTimeout(() => { if (ov.isConnected) sched(0); }, 50);
   const tiledGo = async fmt => {
     const r = l3pm.res; if (!r || !r.tiled || l3pm.busy) return; l3pm.busy = true; ["#pmGo", "#pmDxf", "#pmIfc", "#pmMod"].forEach(s => { q(s).disabled = true; });
