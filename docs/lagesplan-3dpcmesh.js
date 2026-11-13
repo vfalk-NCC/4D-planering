@@ -177,15 +177,16 @@ function l3pmPalette(FC, n) {
    IfcIndexedColourMap (färg per triangel) ignoreras av många läsare, och en grå standardstil över den gjorde att meshen blev grå. */
 function l3pmIfc(r, name, colored, ncol) {
   const doc = ifcDoc("4D-planering – " + name, "Mesh från punktmoln"), E = doc.E, org = [Math.floor(r.bb.min[0]), Math.floor(r.bb.min[1]), Math.floor(l3pmMinZ(r))];
-  const pl = E(`IFCCARTESIANPOINTLIST3D((${r.V.map(v => ifcPt([v[0] - org[0], v[1] - org[1], v[2] - org[2]])).join(",")}))`), nT = r.F.length / 3, items = [];
-  const tri = i => `(${r.F[i * 3] + 1},${r.F[i * 3 + 1] + 1},${r.F[i * 3 + 2] + 1})`;
+  const pl = E(`IFCCARTESIANPOINTLIST3D((${r.V.map(v => ifcPt([v[0] - org[0], v[1] - org[1], v[2] - org[2]])).join(",")}))`), nT = r.F.length / 3, elems = [];
+  const tri = i => `(${r.F[i * 3] + 1},${r.F[i * 3 + 1] + 1},${r.F[i * 3 + 2] + 1})`, place = doc.place(org);
+  /* Ett eget byggdelsobjekt per färg: appens 4D-visning (och andra läsare) färgar ett objekt med en enda färg, så flera färger i ett objekt blev en enda mörk färg. */
+  const mk = (list, hex, label, n) => { const fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${list.join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${doc.style("mesh" + label, hex, "Mesh " + label)}),$)`);
+    const el = doc.proxy(`${name} – ${label}`, "Mesh från punktmoln", "Punktmolnsmesh", place, doc.shape(fs, "Tessellation"), "pcmesh-" + label); doc.props(el, [["Källa", "Punktmoln"], ["Färg", hex], ["Trianglar", n], ["Yta m² (hela meshen)", Math.round(r.area * 10) / 10]], "Punktmolnsmesh"); elems.push(el); };
   if (colored) {
     const { pal, idx } = l3pmPalette(r.FC, Math.max(2, Math.min(512, ncol || 128))), groups = pal.map(() => []); for (let i = 0; i < nT; i++) groups[idx[i]].push(tri(i));
-    groups.forEach((g, k) => { if (!g.length) return; const fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${g.join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${doc.style("mesh" + k, l3pmHex(pal[k]), "Mesh " + (k + 1))}),$)`); items.push(fs); });
-  } else { const fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${Array.from({ length: nT }, (_, i) => tri(i)).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${doc.style("mesh", "#a3a8b4", "Mesh")}),$)`); items.push(fs); }
-  const el = doc.proxy(name, "Mesh från punktmoln", "Punktmolnsmesh", doc.place(org), doc.shape(items.join(","), "Tessellation"), "pcmesh");
-  doc.props(el, [["Källa", "Punktmoln"], ["Trianglar", nT], ["Hörn", r.V.length], ["Yta m²", Math.round(r.area * 10) / 10], ["Färger", colored ? items.length : 0]], "Punktmolnsmesh");
-  return doc.finish([el], name + ".ifc");
+    groups.forEach((g, k) => { if (g.length) mk(g, l3pmHex(pal[k]), String(k + 1).padStart(3, "0"), g.length); });
+  } else mk(Array.from({ length: nT }, (_, i) => tri(i)), "#a3a8b4", "grå", nT);
+  return doc.finish(elems, name + ".ifc");
 }
 function l3pmSave(text, name, type) { const u = URL.createObjectURL(new Blob([text], { type })), a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); }
 function l3pmToModel(r, name) {
