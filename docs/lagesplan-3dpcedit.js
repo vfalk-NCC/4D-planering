@@ -186,7 +186,8 @@ function l3peToggle(id, k) { const c = l3pc.clouds.find(x => x.id === id); if (!
 async function l3peOvData(c, k) {
   const e = c.edits[k]; if (e.ov) return e.ov; if (e.ovBusy) return e.ovBusy;
   e.ovBusy = (async () => { const P = [], R = [], I = []; let n = 0;
-    for await (const { o } of l3pxPieces(c)) { const m = l3pxMask(c, o, k), cnt = m.reduce((a, v) => a + v, 0); if (!cnt) continue; const pos = new Float32Array(cnt * 3), rgb = o.rgb ? new Uint8Array(cnt * 3) : undefined, inten = o.inten ? new Uint8Array(cnt) : undefined; let d = 0;
+    const bb0 = c.lod ? await l3peBB(c, k) : null;   // okträd: bara noderna runt det bortklippta läses
+    for await (const { o } of l3pxPieces(c, bb0)) { const m = l3pxMask(c, o, k), cnt = m.reduce((a, v) => a + v, 0); if (!cnt) continue; const pos = new Float32Array(cnt * 3), rgb = o.rgb ? new Uint8Array(cnt * 3) : undefined, inten = o.inten ? new Uint8Array(cnt) : undefined; let d = 0;
       for (let i = 0; i < m.length; i++) { if (!m[i]) continue; pos[d * 3] = o.pos[i * 3]; pos[d * 3 + 1] = o.pos[i * 3 + 1]; pos[d * 3 + 2] = o.pos[i * 3 + 2]; if (rgb) { rgb[d * 3] = o.rgb[i * 3]; rgb[d * 3 + 1] = o.rgb[i * 3 + 1]; rgb[d * 3 + 2] = o.rgb[i * 3 + 2]; } if (inten) inten[d] = o.inten[i]; d++; }
       P.push(pos); R.push(rgb); I.push(inten); n += cnt; }
     const pos = new Float32Array(n * 3), rgb = c.info.rgb ? new Uint8Array(n * 3) : undefined, inten = new Uint8Array(n); let at = 0;
@@ -198,7 +199,10 @@ async function l3peOverlay(c, k) {
   const e = c.edits[k]; c.ovPts = c.ovPts || new Map(); const old = c.ovPts.get(k);
   if (old) { c.group.remove(old); old.geometry.dispose(); c.ovPts.delete(k); }
   if (!e.off || e.del) { l3Render(); return; }
-  const d = await l3peOvData(c, k); if (!e.off || e.del || !d.pos.length) { l3Render(); return; }
+  let d; if (!e.ov) l3Status(`Läser in det bortklippta (${l3peLabel(e, k)})…`);
+  try { d = await l3peOvData(c, k); } catch (err) { l3Status("Kunde inte läsa in det bortklippta: " + (err && err.message || err), true); return; }
+  if (!e.off || e.del || !d.pos.length) { if (!d.pos.length) l3Status("Inga punkter hittades i det bortklippta lagret.", true); l3Render(); return; }
+  l3Status(`${l3peLabel(e, k)}: ${Number(d.pos.length / 3).toLocaleString("sv-SE")} punkter visas.`);
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(d.pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, d), 3, true));
   const pts = new THREE.Points(g, c.mat); pts.frustumCulled = false; pts.userData.noHit = true; pts.raycast = () => {}; c.group.add(pts); c.ovPts.set(k, pts); l3Render();
 }
@@ -228,4 +232,13 @@ async function l3peZoom(id, k) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c) return; l3Status("Söker det bortklippta…"); const bb = await l3peBB(c, k); if (!bb) { l3Status("Inga punkter är bortklippta i det här lagret.", true); return; }
   const O = l3.O, ctr = new THREE.Vector3((bb[0] + bb[3]) / 2 - O[0], (bb[1] + bb[4]) / 2 - O[1], (bb[2] + bb[5]) / 2 - O[2]);
   l3FlyTo(ctr, Math.max(5, Math.hypot(bb[3] - bb[0], bb[4] - bb[1], bb[5] - bb[2])) * 0.9);
+}
+
+/* Klick på ett tänt bortklippt lager markerar det (som huvudmolnet): närmaste punkt i bild inom px pixlar. Returnerar { cloud, k } eller null. */
+function l3peOvPick(e, px = 8) {
+  if (!l3 || !l3pc.clouds.length) return null; const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera, mx = e.clientX - r.left, my = e.clientY - r.top; let best = null; const v = new THREE.Vector3();
+  l3pc.clouds.forEach(c => { if (!c.visible || !c.ovPts) return; const gp = c.group.position;
+    c.ovPts.forEach((pts, k) => { const d = c.edits[k] && c.edits[k].ov; if (!d || !pts.visible) return; const P = d.pos;
+      for (let i = 0; i < P.length; i += 3) { v.set(P[i] + gp.x, P[i + 1] + gp.y, P[i + 2] + gp.z).project(cam); if (v.z < -1 || v.z > 1) continue; const dx = (v.x + 1) / 2 * r.width - mx, dy = (1 - v.y) / 2 * r.height - my, dd = dx * dx + dy * dy; if (dd <= px * px && (!best || v.z < best.z)) best = { cloud: c, k, z: v.z }; } }); });
+  return best;
 }

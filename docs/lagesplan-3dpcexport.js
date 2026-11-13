@@ -3,8 +3,15 @@
    Stora moln (okträd) läses nod för nod ur filen i webbläsarens lagring och skrivs direkt till disk (File System Access) så att inget behöver rymmas i minnet. Prefix l3px. */
 const L3PX_REC = 26, L3PX_HDR = 227, L3PX_BATCH = 100000;
 /* Molnets ursprungsdata bit för bit: okträdsnoder läses ur filen, vanliga moln ur de sparade originalen (före redigering). Positionerna är relativa molnets center. */
-async function* l3pxPieces(c) {
-  if (c.lod) { const L = c.lod; for (let i = 0; i < L.nodes.length; i++) { const n = L.nodes[i]; if (!n.n) continue; yield { o: await l3olRead(L, n), f: (i + 1) / L.nodes.length }; } return; }
+const l3pxOnly = async (c, mode) => (c.lod && typeof mode === "number" && typeof l3peBB === "function" ? await l3peBB(c, mode) : null);
+/* only = ytterpunkter [x0,y0,z0,x1,y1,z1] (absoluta): okträdsnoder som ligger utanför hoppas över (det bortklippta ligger ofta på ett litet område av ett moln med hundratals miljoner punkter). */
+async function* l3pxPieces(c, only) {
+  if (c.lod) {
+    const L = c.lod, ctr = c.info.center, ext = only ? Math.max(only[3] - only[0], only[4] - only[1], only[5] - only[2]) : 0, mg = ext * 0.05 + 2;
+    const hit = n => !only || !(n.x0 + ctr[0] > only[3] + mg || n.x0 + n.s + ctr[0] < only[0] - mg || n.y0 + ctr[1] > only[4] + mg || n.y0 + n.s + ctr[1] < only[1] - mg || n.z0 + ctr[2] > only[5] + mg || n.z0 + n.s + ctr[2] < only[2] - mg);
+    const list = L.nodes.filter(n => n.n && hit(n));
+    for (let i = 0; i < list.length; i++) yield { o: await l3olRead(L, list[i]), f: (i + 1) / list.length }; return;
+  }
   const src = c.orig || c.chunks; for (let i = 0; i < src.length; i++) yield { o: src[i], f: (i + 1) / src.length };
 }
 /* mode "kept": punkterna som är kvar efter alla aktiva redigeringar. mode = k (tal): punkterna som redigering k tar bort (av dem som tidigare aktiva redigeringar lämnat kvar). */
@@ -54,7 +61,7 @@ async function l3pxLaz(c, mode, name, onP, opts) {
   const w = await lib.createLasWriter(sink, { version: "1.2", pointFormat: 2, compress: true, scale: { x: 0.001, y: 0.001, z: 0.001 }, offset: { x: Math.floor(ctr[0]), y: Math.floor(ctr[1]), z: Math.floor(ctr[2]) } });
   let count = 0, t0 = performance.now();
   try {
-    for await (const { o, f } of l3pxPieces(c)) {
+    for await (const { o, f } of l3pxPieces(c, await l3pxOnly(c, mode))) {
       const mask = l3pxMask(c, o, mode), n = o.pos.length / 3; let m = 0; for (let i = 0; i < n; i++) m += mask[i]; if (!m) continue;
       const x = new Float64Array(m), y = new Float64Array(m), z = new Float64Array(m), it = new Uint16Array(m), r = new Uint16Array(m), g = new Uint16Array(m), b = new Uint16Array(m); let k = 0;
       for (let i = 0; i < n; i++) { if (!mask[i]) continue; x[k] = o.pos[i * 3] + ctr[0]; y[k] = o.pos[i * 3 + 1] + ctr[1]; z[k] = o.pos[i * 3 + 2] + ctr[2]; const inten = o.inten ? o.inten[i] : 0; it[k] = inten * 257;
@@ -75,7 +82,7 @@ async function l3pxExport(c, mode, name, onP, opts = {}) {
   const wr = l3pxWriter(c, name, sink);
   if (opts.stream) await opts.stream.write(new Uint8Array(L3PX_HDR)); else parts.push(new Uint8Array(L3PX_HDR));
   let t0 = performance.now();
-  for await (const { o, f } of l3pxPieces(c)) { await wr.add(o, l3pxMask(c, o, mode)); if (onP && performance.now() - t0 > 250) { onP(f, wr.count); t0 = performance.now(); await new Promise(r => setTimeout(r, 0)); } }
+  for await (const { o, f } of l3pxPieces(c, await l3pxOnly(c, mode))) { await wr.add(o, l3pxMask(c, o, mode)); if (onP && performance.now() - t0 > 250) { onP(f, wr.count); t0 = performance.now(); await new Promise(r => setTimeout(r, 0)); } }
   const h = await wr.finish();
   if (opts.stream) { await opts.stream.write({ type: "write", position: 0, data: h }); await opts.stream.close(); return { count: wr.count }; }
   parts[0] = h; return { count: wr.count, blob: new Blob(parts, { type: "application/octet-stream" }) };

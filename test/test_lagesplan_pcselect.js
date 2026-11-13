@@ -35,7 +35,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     });
     await page.evaluate(() => {
       const cx = 637050, cy = 849020, cz = 100, n = 2500, pos = new Float32Array(n * 3), rgb = new Uint8Array(n * 3), inten = new Uint8Array(n);
-      for (let i = 0; i < n; i++) { pos.set([(i % 50) * 0.2 - 5, ((i / 50) | 0) * 0.2 - 5, 0], i * 3); rgb.set([200, 100, 50], i * 3); }
+      for (let i = 0; i < n; i++) { pos.set([(i % 50) * 0.2 - 5, ((i / 50) | 0) * 0.2 - 5, i >= 2400 ? 5 : 0], i * 3); rgb.set([200, 100, 50], i * 3); }
       const info = { n, total: n, center: [cx, cy, cz], min: [-5, -5, -100].map((v, k) => v + [cx, cy, cz][k]), max: [5, 5, -100].map((v, k) => v + [cx, cy, cz][k]), rgb: true, intensity: false, format: 'LAS' };
       l3pcBuild({ id: 'pc:sel', name: 'Valbart.laz' }, { info, chunks: [{ pos, rgb, inten }] });
       l3FlyTo && 0; });
@@ -46,6 +46,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const S = await page.evaluate(() => ({ sel: l3ss.sel, ring: !!l3ss.ring, side: !!document.getElementById('v3PcMesh'), row: !!document.querySelector('.v3-lr-pcsel') }));
     if (!S.sel || S.sel.kind !== 'pc' || !S.ring || !S.side) fail('Klick på molnet markerar det: ' + JSON.stringify(S));
     await page.keyboard.press('Escape'); await page.waitForTimeout(200); if (await page.evaluate(() => !!l3ss.sel)) fail('Esc avmarkerar molnet');
+    // bortklippt lager: tänt lager går att markera på samma sätt
+    await page.evaluate(async () => { const c = l3pc.clouds[0]; l3peAddFilter(c, { t: 'z', mode: 'above', z0: 102 }); l3peToggle(c.id, 0); await l3peOverlay(c, 0); l3Render(); });
+    await page.waitForTimeout(300);
+    const pt2 = await page.evaluate(() => { const c = l3pc.clouds[0], d = c.edits[0].ov, p = new THREE.Vector3(d.pos[0] + c.group.position.x, d.pos[1] + c.group.position.y, d.pos[2] + c.group.position.z).project(l3.camera), r = l3.renderer.domElement.getBoundingClientRect(); return { n: d.pos.length / 3, xy: [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height] }; });
+    await page.mouse.click(pt2.xy[0], pt2.xy[1]); await page.waitForTimeout(400);
+    const S2 = await page.evaluate(() => ({ sel: l3ss.sel, btn: !!document.getElementById('v3LMesh'), del: !!document.getElementById('v3LDel') }));
+    if (!S2.sel || S2.sel.kind !== 'pc' || S2.sel.k !== 0 || !S2.btn || !S2.del || pt2.n !== 100) fail('Klick på bortklippt lager markerar lagret: ' + JSON.stringify([S2, pt2.n]));
+    console.log('OK: tänt bortklippt lager markeras med klick och får egen panel', JSON.stringify(S2));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(150);
     console.log('OK: klick på punktmolnet markerar det (ram, sidopanel, rad i listan)', JSON.stringify(S));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK test_lagesplan_pcselect');
