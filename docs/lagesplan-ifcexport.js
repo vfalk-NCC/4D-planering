@@ -14,7 +14,7 @@ function ifcReadDir() { const rr = dxfTextRotation() * Math.PI / 180; return { r
 
 /* Bygger IFC-filen för 3D-objekten. Returnerar { text, n } eller null om inga objekt syns. */
 function buildObjectsIfc(opts = {}) {
-  const marks = objExportMarkers();
+  const marks = typeof objExportFileMarkers === "function" ? objExportFileMarkers() : objExportMarkers();
   if (!marks.length) return null;
   const at = $("dateInput").value || todayIso();
   const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), opts.title || ("3D-objekt från Lägesplan " + at)), E = doc.E;

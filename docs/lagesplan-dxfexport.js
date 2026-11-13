@@ -63,6 +63,13 @@ function dxfTextRotation() {
 /* Egen färg på pricken (plan.dotColors, "byta färg manuellt") går alltid före statusfärgen – exporten följer exakt färgen som syns i vyn. */
 const exportDotColor = c => (/^#[0-9a-f]{6}$/i.test(c || "") ? String(c).toLowerCase() : null);
 const exportAciOf = hex => (typeof l3pmAci === "function" ? l3pmAci([1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))) : dxfAci(hex));
+/* Markeringarna som hamnar i filerna: punkter på 0,0 (saknar läge) utelämnas – de hamnade långt bort från allt annat när filen lästes in i 3D-editorn. */
+const exportIsOrigin = m => Math.abs(m.x) < 1e-6 && Math.abs(m.y) < 1e-6;
+function objExportFileMarkers() {
+  const all = objExportMarkers(), ok = all.filter(m => !exportIsOrigin(m)), skipped = all.length - ok.length;
+  if (skipped && typeof setSaveStatus === "function") setSaveStatus(`⚠ ${skipped} ${skipped === 1 ? "punkt" : "punkter"} på 0,0 (saknar läge) utelämnades ur exporten – justera dem i ✎ Justera höjder & kommentarer.`);
+  return ok;
+}
 function objExportMarkers() {
   const objs = (typeof objectShapesInPdf === "function" ? objectShapesInPdf() : null) || [];   // Excel-planeringens punkter tas med även när inga Powerproject-objekt syns
   const at = $("dateInput").value || todayIso();
@@ -126,7 +133,7 @@ function objLabelLayout(marks, { h, r, gap, widthOf }) {
 
 /* Bygger DXF-texten. Returnerar { text, n } eller null om inga objekt syns. */
 function buildObjectsDxf() {
-  const marks = objExportMarkers();
+  const marks = objExportFileMarkers();
   if (!marks.length) return null;
   const ents = [], used = new Set(["4D-NAMN"]), layerAciX = {};
   const rot = dxfTextRotation(), rr = rot * Math.PI / 180;

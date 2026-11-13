@@ -24,13 +24,14 @@ function xlsLoad() {
 function xlsObjects() {
   if (!xlsActive() || !plan || !plan.calib || !xls.items || !xls.positions) return [];
   const [z0, z1] = typeof levelRange === "function" ? levelRange() : [null, null];
-  const key = `${plan.id}|${JSON.stringify(plan.calib)}|${z0}|${z1}|${xls.positions.length}`;
+  const key = `${plan.id}|${JSON.stringify(plan.calib)}|${z0}|${z1}|${xls.positions.length}|${typeof exportAdjVer !== "undefined" ? exportAdjVer : 0}`;
   if (xls.posPdf && xls.posKey === key) return xls.posPdf;
   const byId = new Map(xls.positions.map(p => [p.id, p]));
   xls.posPdf = xls.items.filter(it => byId.has(it.id)).map(it => {
     const p = byId.get(it.id), zc = (p.z0 + p.z1) / 2;
     if ((z0 !== null && zc < z0) || (z1 !== null && zc > z1)) return null;
-    return { it, pt: modelToPdf(p.x, p.y), zc };
+    const a = plan.exportAdj && plan.exportAdj["xl:" + it.id], mx = a && Number.isFinite(a.x) && Number.isFinite(a.y);   // eget läge (dragen på kartan / justerad i exportpanelen)
+    return { it, pt: modelToPdf(mx ? a.x : p.x, mx ? a.y : p.y), zc };
   }).filter(Boolean).sort((a, b) => a.zc - b.zc);
   xls.posKey = key;
   return xls.posPdf;

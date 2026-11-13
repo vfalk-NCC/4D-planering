@@ -59,15 +59,45 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     exportAdjSet('xl:x1', { z: NaN, comment: '' }); exportAdjSave(); window.schedulePlanSave = orig; return { saves: sv1, inPlan, local, after: !!plan.exportAdj }; });
   if (SV.saves !== 1 || !SV.inPlan || SV.inPlan['xl:x1'].z !== 6.25 || SV.inPlan['xl:x1'].comment !== 'Spara mig' || SV.local !== 0) fail('Justeringarna sparas i projektets arbetsyta: ' + JSON.stringify(SV));
   console.log('OK: justeringarna sparas i arbetsytans data i projektet (inte lokalt)', JSON.stringify(SV));
-  // Dialogen: flera markerade ändras samtidigt
-  await page.evaluate(() => exportAdjOpen()); await page.waitForSelector('#exportAdjDlg');
-  await page.click('#eaAll'); await page.fill('#eaZ', '9'); await page.click('#eaZSet');
-  const z9 = await page.evaluate(() => objExportMarkers().map(m => [m.key, m.zTop, m.zManual]));
-  if (z9.length !== 3 || !z9.every(x => x[1] === 9 && x[2])) fail('Sätt höjd för alla markerade: ' + JSON.stringify(z9));
-  await page.fill('#eaDz', '-1.5'); await page.click('#eaDzSet'); const z75 = await page.evaluate(() => objExportMarkers().map(m => m.zTop)); if (!z75.every(v => v === 7.5)) fail('Höj/sänk markerade: ' + JSON.stringify(z75));
-  await page.fill('#eaC', 'Justerad'); await page.click('#eaCSet'); const cm = await page.evaluate(() => objExportMarkers().filter(m => m.adj && m.adj.comment === 'Justerad').length); if (cm !== 3) fail('Kommentar på alla markerade: ' + cm);
-  await page.click('#eaReset'); const rs = await page.evaluate(() => objExportMarkers().filter(m => m.zManual || m.adj).length); if (rs !== 0) fail('Återställ markerade: ' + rs);
-  console.log('OK: justeringsdialogen – markera alla, sätt höjd, höj/sänk, kommentar, återställ', JSON.stringify({ z9: z9.length, cm }));
+  // Panelen: dockad till vänster, sortering, kolumnbredd, flerval, fokus på kartan
+  await page.evaluate(() => { xls.items.push({ id: 'x3', object_name: 'FAR', activity: 'Akt x3', area: 'Hus', start_date: '2026-09-01', end_date: '2026-12-01', status: 'pagaende', progress: 50 }, { id: 'x4', object_name: 'ZERO', activity: 'Akt x4', area: 'Hus', start_date: '2026-09-01', end_date: '2026-12-01', status: 'pagaende', progress: 50 }, { id: 'x5', object_name: 'N5', activity: 'a', area: 'Hus', start_date: '2026-09-01', end_date: '2026-12-01', status: 'pagaende', progress: 50 }, { id: 'x6', object_name: 'N6', activity: 'a', area: 'Hus', start_date: '2026-09-01', end_date: '2026-12-01', status: 'pagaende', progress: 50 });
+    xls.positions.push({ id: 'x3', x: 5200, y: 40, z0: 1, z1: 3 }, { id: 'x4', x: 0, y: 0, z0: 1, z1: 3 }, { id: 'x5', x: 45, y: 25, z0: 1, z1: 3.2 }, { id: 'x6', x: 35, y: 25, z0: 1, z1: 3.1 }); xls.posPdf = null; exportAdjVer++; });
+  await page.evaluate(() => { viewport = { convertToViewportPoint: (x, y) => [x, y], convertToPdfPoint: (x, y) => [x, y] }; view.tx = 0; view.ty = 0; view.scale = 1; view.rot = 0; });
+  await page.evaluate(() => exportAdjOpen()); await page.waitForSelector('#adjPanel');
+  const PN = await page.evaluate(() => ({ docked: document.getElementById('adjPanel').parentNode === document.getElementById('layout') && document.getElementById('adjPanel').nextElementSibling.tagName === 'MAIN', rows: document.querySelectorAll('#adjT tbody tr[data-key]').length, warn: [...adj.warn.keys()], far: adj.warn.get('xl:x3') && adj.warn.get('xl:x3').text, zero: adj.warn.get('xl:x4') && adj.warn.get('xl:x4').text }));
+  if (!PN.docked || PN.rows < 5 || !PN.warn.includes('xl:x3') || !PN.warn.includes('xl:x4') || !/Förslag/.test(PN.far) || !/0,0/.test(PN.zero)) fail('Panelen dockad + varningar för punkter långt bort / på 0,0: ' + JSON.stringify(PN));
+  // 0,0 utelämnas ur filerna (spökade långt bort i 3D-editorn)
+  const FX = await page.evaluate(() => { const d = buildObjectsDxf(), i = buildObjectsIfc(); return { n: d.n, nIfc: i.n, zeroIn: /ZERO/.test(d.text) || /ZERO/.test(i.text) }; });
+  if (FX.zeroIn || FX.n !== FX.nIfc || FX.n < 6) fail('Punkter på 0,0 utelämnas ur DXF/IFC: ' + JSON.stringify(FX));
+  // Sortera på kolumn
+  await page.click('#adjT th[data-k="x"]'); const sx = await page.evaluate(() => [...document.querySelectorAll('#adjT tbody tr[data-key] td:nth-child(6)')].map(td => Number(td.textContent.replace(/\s/g, '').replace(',', '.')))); if (!sx.every((v, i) => i === 0 || v >= sx[i - 1])) fail('Sortera stigande på X: ' + JSON.stringify(sx));
+  await page.click('#adjT th[data-k="x"]'); const sd = await page.evaluate(() => [...document.querySelectorAll('#adjT tbody tr[data-key] td:nth-child(6)')].map(td => Number(td.textContent.replace(/\s/g, '').replace(',', '.')))); if (!sd.every((v, i) => i === 0 || v <= sd[i - 1])) fail('Sortera fallande på X: ' + JSON.stringify(sd));
+  // Kolumnbredd
+  const cw = await page.evaluate(() => { const h = document.querySelector('#adjT .adj-cr[data-r="name"]').getBoundingClientRect(), c = ADJ_COLS.find(x => x.k === 'name'); return { x: h.left + h.width / 2, y: h.top + h.height / 2, w0: c.w }; });
+  await page.mouse.move(cw.x, cw.y); await page.mouse.down(); await page.mouse.move(cw.x + 60, cw.y, { steps: 4 }); await page.mouse.up(); const w1 = await page.evaluate(() => ADJ_COLS.find(x => x.k === 'name').w); if (w1 < cw.w0 + 40) fail('Dra i kolumnkanten ändrar bredden: ' + JSON.stringify([cw.w0, w1]));
+  // Tryck på namn: markeras och kartan centreras
+  const FC = await page.evaluate(() => { const td = document.querySelector('#adjT td[data-nm="xl:x1"]'); td.click(); return { focus: adj.focus, sel: [...adj.sel], ring: !!document.querySelector('#adjRings .adj-ring') }; });
+  if (FC.focus !== 'xl:x1' || FC.sel.length !== 1 || !FC.ring) fail('Tryck på namn markerar punkten på kartan: ' + JSON.stringify(FC));
+  // Förslag på placering
+  await page.evaluate(() => adjApplySuggestion('xl:x3')); const SG = await page.evaluate(() => { const m = objExportMarkers().find(x => x.key === 'xl:x3'); return { x: m.x, y: m.y, man: m.xyManual }; });
+  if (!SG.man || Math.abs(SG.x) > 200) fail('Använd förslag flyttar punkten nära de andra: ' + JSON.stringify(SG));
+  // Dra Excel-prick på kartan -> X/Y uppdateras i tabellen
+  await page.evaluate(() => { adj.sel.clear(); adjRefresh(true); });
+  await page.addStyleTag({ content: '#empty, [class*="empty-"], .empty { display: none !important; }' });
+  const DR = await page.evaluate(() => { const o = xlsObjects().find(q => q.it.id === 'x1'), p0 = [...objExportMarkers().filter(m => m.key === 'xl:x1')][0]; const s = stageToScreen(toPx(o.pt)), r = document.getElementById('viewport').getBoundingClientRect(); return { x0: p0.x, y0: p0.y, sx: r.left + s[0], sy: r.top + s[1] }; });
+  await page.mouse.move(DR.sx, DR.sy); await page.mouse.down(); await page.mouse.move(DR.sx + 40, DR.sy + 30, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(700);
+  const DR2 = await page.evaluate(() => { const m = objExportMarkers().find(x => x.key === 'xl:x1'), cell = [...document.querySelectorAll('#adjT tr[data-key="xl:x1"] td')].map(t => t.textContent); return { x: m.x, y: m.y, man: m.xyManual, saved: !!(plan.exportAdj && plan.exportAdj['xl:x1'] && Number.isFinite(plan.exportAdj['xl:x1'].x)), cell: cell.slice(5, 7) }; });
+  if (!DR2.man || !DR2.saved || (Math.abs(DR2.x - DR.x0) < 0.5 && Math.abs(DR2.y - DR.y0) < 0.5)) fail('Dra Excel-pricken på kartan flyttar den (X/Y sparas): ' + JSON.stringify([DR, DR2]));
+  // Flerval + höjd
+  await page.evaluate(() => { adj.sel.clear(); adjRender(); }); await page.click('#adjAll'); await page.fill('#adjZ', '9'); await page.click('#adjZSet');
+  const z9 = await page.evaluate(() => objExportMarkers().map(m => [m.key, m.zTop, m.zManual])); if (!z9.every(x => x[1] === 9 && x[2])) fail('Sätt höjd för alla markerade: ' + JSON.stringify(z9));
+  await page.fill('#adjDz', '-1.5'); await page.click('#adjDzSet'); const z75 = await page.evaluate(() => objExportMarkers().map(m => m.zTop)); if (!z75.every(v => v === 7.5)) fail('Höj/sänk markerade: ' + JSON.stringify(z75));
+  await page.fill('#adjC', 'Justerad'); await page.click('#adjCSet'); const cm = await page.evaluate(() => objExportMarkers().filter(m => m.adj && m.adj.comment === 'Justerad').length); if (cm !== z9.length) fail('Kommentar på alla markerade: ' + cm);
+  await page.click('#adjReset'); const rs = await page.evaluate(() => objExportMarkers().filter(m => m.zManual || m.adj).length); if (rs !== 0) fail('Återställ markerade: ' + rs);
+  // Flytande läge och stäng
+  await page.click('#adjMode'); const fl = await page.evaluate(() => ({ float: document.getElementById('adjPanel').classList.contains('adj-float'), parent: document.getElementById('adjPanel').parentNode.tagName })); if (!fl.float || fl.parent !== 'BODY') fail('Flyt fritt: ' + JSON.stringify(fl));
+  await page.click('#adjClose'); if (await page.evaluate(() => !!document.getElementById('adjPanel') || !!document.getElementById('adjRings'))) fail('Stäng tar bort panel och ringar');
+  console.log('OK: panelen – dockad, varningar med förslag, sortering, kolumnbredd, tryck på namn, dra prick på kartan, flerval, flytande, 0,0 utelämnas ur filerna', JSON.stringify({ PN: PN.rows, FX, w1 }));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_objexport');
   await browser.close(); server.close();
