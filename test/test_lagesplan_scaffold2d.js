@@ -220,6 +220,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (w3 !== 0) fail('Högerklick på breddningens handtag ska ta bort den: ' + w3);
     console.log('OK: ⊕ med enkelklick, breddning med plattform (rita, dra, följer punkter, ta bort) och Ctrl+C/V/D', JSON.stringify({ px2, keep }));
   }
+  { // Ställningen snäpper i 5° som standard (Alt = fritt); en enda punkt kraschar inte ritningen
+    const r = await page.evaluate(() => { snapMark = null; const on = $('snapOn') ? $('snapOn').checked : null; if ($('snapOn')) $('snapOn').checked = false; const prev = [500, 500], pt = [600, 496], a = constrainPdf(pt, { shiftKey: false }, prev, undefined, true), f = constrainPdf(pt, { altKey: true }, prev, undefined, true), n = constrainPdf(pt, { shiftKey: false }, prev, undefined, false), sh = constrainPdf(pt, { shiftKey: true }, prev); if ($('snapOn')) $('snapOn').checked = on;
+      let threw = ''; try { const cv = document.createElement('canvas'); cv.width = 200; cv.height = 200; const x = { type: 'scaffold', pts: [[6512320, 150140]], w: 0.73, h: 8, fack: 2.57 }; drawScaffold2D(cv.getContext('2d'), x, siteStyle(x, 14), pxPerMeter(), '', ''); drawScaffold2D(cv.getContext('2d'), { ...x, pts: [] }, siteStyle(x, 14), pxPerMeter(), '', ''); } catch (e) { threw = String(e); }
+      return { a, f, n, sh, threw }; });
+    if (r.threw) fail('Ställning med en punkt ska inte krascha: ' + r.threw);
+    if (Math.abs(r.a[1] - 500) > 0.001 || Math.abs(r.f[1] - 496) > 0.001 || Math.abs(r.n[1] - 496) > 0.001 || Math.abs(r.sh[1] - 500) > 0.001) fail('5°-snäpp som standard för ställning, Alt = fritt, andra verktyg oförändrade: ' + JSON.stringify(r));
+    // hela flödet med musen: första klicket + rörelse (förhandsvisning med en punkt) ger inga sidfel
+    await page.evaluate(() => { closeSitePop(); selectedSiteId = null; document.querySelector('[data-site="scaffold"]').click(); });
+    await page.mouse.move(500, 420); await page.mouse.down(); await page.mouse.up(); await page.mouse.move(560, 428, { steps: 4 }); await page.waitForTimeout(200);
+    const t = await page.evaluate(() => { const ok = siteTool && siteTool.pts.length === 1 && siteTool.cursor; const ang = ok ? Math.atan2(siteTool.cursor[1] - siteTool.pts[0][1], siteTool.cursor[0] - siteTool.pts[0][0]) * 180 / Math.PI : null; stopSiteTool(); return { ok: !!ok, ang }; });
+    if (!t.ok || Math.abs(t.ang / 5 - Math.round(t.ang / 5)) > 0.01) fail('Förhandsvisningen ska snäppa i 5°: ' + JSON.stringify(t)); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)
   const pl = await page.evaluate(async () => {
     const o = {}; const top = document.getElementById('btnPlayTop'); o.has = !!top && top.getBoundingClientRect().width > 0; o.t0 = top.textContent;

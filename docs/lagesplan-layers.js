@@ -1204,6 +1204,7 @@ function drawScaffoldWid(ctx, x, q, st, ppm, col, lw) {
 }
 function scaffoldWidSum(x) { return (x.wid || []).reduce((a, q) => { const g = widCorners(x, q); return g ? { n: a.n + 1, area: a.area + (g.b - g.a) * g.d } : a; }, { n: 0, area: 0 }); }
 function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
+  if (!x.pts || x.pts.length < 2) return;   // första klicket: förhandsvisningen har bara en punkt än
   const P = x.pts.map(mToPx), I = scaffoldInfo(x), lw = Math.max(0.8, Math.min(st.lw, 2) * 0.55), wpx = Math.max(I.B * ppm, 4), hw = wpx / 2, col = st.color, posts = x.sPosts !== false;
   ctx.save(); ctx.lineJoin = "miter"; ctx.lineCap = "butt";
   // bandet (lätt fyllning) och en tunn kant
@@ -1664,9 +1665,10 @@ function snapPdf(pdfPt, e, excludeId) {
    (0°, 5°, 10° … räknat mot ritningens horisontella linjer). Längden tas från
    musen – eller från en fästpunkt, projicerad på den låsta riktningen. */
 const ANGLE_STEP = 5;
-function constrainPdf(pdfPt, e, prev, excludeId) {
+function constrainPdf(pdfPt, e, prev, excludeId, auto) {
   const snapped = snapPdf(pdfPt, e, excludeId);
-  if (!e || !e.shiftKey || !prev) return snapped;
+  // auto (ställning): 5°-steg som standard, Alt = fritt. Annars låser Shift riktningen.
+  if (!prev || !(auto ? !(e && e.altKey) : (e && e.shiftKey))) return snapped;
   const src = snapMark ? snapped : pdfPt;
   const dx = src[0] - prev[0], dy = src[1] - prev[1];
   if (!dx && !dy) return prev;
@@ -1806,7 +1808,8 @@ function onSiteDragMove(e) {
   d.free = e.shiftKey;
   // Fäst handtag (inte hela objektet) mot linjer och hörn.
   const raw = toPdf(stagePoint(e));
-  const m = pdfToModel(d.handle.kind === "move" || d.handle.kind === "rotate" || d.handle.kind === "label" ? raw : snapPdf(raw, e, d.orig.id));
+  const nb = d.handle.kind === "vertex" && d.orig.type === "scaffold" ? (d.orig.pts[d.handle.i - 1] || d.orig.pts[d.handle.i + 1]) : null;   // ställningens hörn: 5°-steg mot grannpunkten, Alt = fritt
+  const m = pdfToModel(d.handle.kind === "move" || d.handle.kind === "rotate" || d.handle.kind === "label" ? raw : nb ? constrainPdf(raw, e, modelToPdf(nb[0], nb[1]), d.orig.id, true) : snapPdf(raw, e, d.orig.id));
   d.work = applySiteDrag(d, m);
   const i = siteItems.findIndex(x => x.id === d.orig.id);
   if (i >= 0) siteItems[i] = d.work;
@@ -1861,7 +1864,7 @@ function updateSiteUi() {
     wxday: ["Klicka där dagens väder ska stå på planen."], wxweek: ["Klicka där veckans väder ska stå på planen."],
     sketch: ["Rita med fingret (eller musen). Varje drag sparas direkt – två fingrar zoomar/panorerar. Tryck på ✏️ igen när du är klar."]
   };
-  $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
+  $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? (siteTool.kind === "scaffold" ? " Vinklarna snäpper i 5° – håll Alt för fri placering." : " Håll Shift för rak linje (5°-steg).") : ""} Esc avbryter.`
     : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form, i ⊕ eller klicka på det för att lägga till en punkt (högerklicka på en punkt för att ta bort den), Ctrl+D duplicerar, Ctrl+C / Ctrl+V kopierar och klistrar in vid pekaren och i ↻ för att rotera (Shift = fritt). Texten kan dras fritt.";
   // Den allmänna förklaringen ligger bakom kortets ⓘ; verktygets instruktion syns alltid.
   $("siteHint").classList.toggle("sec-help", !k);
@@ -1934,7 +1937,7 @@ function layersClick(pdfPt) {
   if (!plan || !plan.calib) return false;
   if (siteTool && siteTool.kind === "sketch") return true; // frihand ritas med drag, inte klick
   if (siteTool) {
-    siteTool.pts.push(pdfToModel(constrainPdf(pdfPt, window.event, siteToolPrevPdf())));
+    siteTool.pts.push(pdfToModel(constrainPdf(pdfPt, window.event, siteToolPrevPdf(), undefined, siteTool.kind === "scaffold")));
     const need = SITE_KINDS[siteTool.kind].clicks;
     if (need && siteTool.pts.length >= need) finishSiteTool();
     else { updateSiteUi(); renderZones(); }
@@ -3054,7 +3057,7 @@ function bindLayers() {
   let raf = 0;
   window.addEventListener("mousemove", e => {
     if (!siteTool || !siteTool.pts.length || !viewport || !e.target.closest || !e.target.closest("#viewport")) return;
-    siteTool.cursor = pdfToModel(constrainPdf(toPdf(stagePoint(e)), e, siteToolPrevPdf()));
+    siteTool.cursor = pdfToModel(constrainPdf(toPdf(stagePoint(e)), e, siteToolPrevPdf(), undefined, siteTool.kind === "scaffold"));
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderZones(); });
   });
   // Klick utanför lagerlistan: Delete/Esc gäller inte längre lagren.
