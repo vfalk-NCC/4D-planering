@@ -22,7 +22,7 @@ function rdockWidth(w, save) {
   rdock.w = Math.max(320, Math.min(Math.round(w), window.innerWidth - asideW - 340)); rdock.el.style.width = rdock.w + "px"; rdock.el.style.flexBasis = rdock.w + "px";
   if (save) try { localStorage.setItem(RDOCK_W_KEY, String(rdock.w)); } catch (e) { /* privat läge */ }
 }
-function rdockResizeView() { window.dispatchEvent(new Event("resize")); if (typeof scheduleOrthoRender === "function") scheduleOrthoRender(); if (typeof renderZones === "function") setTimeout(() => renderZones(), 30); }
+function rdockResizeView() { window.__keepViewOnResize = true; try { window.dispatchEvent(new Event("resize")); } finally { window.__keepViewOnResize = false; } if (typeof scheduleOrthoRender === "function") scheduleOrthoRender(); if (typeof renderZones === "function") setTimeout(() => renderZones(), 30); }
 /* Lägger panelen i dockan (order: lägre först). home = där den bor när den inte är dockad. */
 function rdockAdd(el, order = 5) {
   if (!rdockAllowed()) return false; rdockEnsure();

@@ -2057,7 +2057,7 @@ function bindUI() {
   ts.oninput = () => { try { localStorage.setItem("lagesplan-textscale", ts.value); } catch (e) {} $("textScaleLabel").textContent = ts.value + " %"; renderZones(); };
   tf.onchange = () => { try { localStorage.setItem("lagesplan-textfixed", tf.checked ? "1" : "0"); } catch (e) {} renderZones(); };
   bindLayers();
-  window.addEventListener("resize", () => { if (viewport) fitView(); });
+  window.addEventListener("resize", () => { if (viewport && !window.__keepViewOnResize) fitView(); });   // docka/lösgör paneler ändrar bara ytan – användarens zoom och läge ska stå kvar
   bindSections();
   window.addEventListener("keydown", e => { if (e.key === "Escape" && drawMode) { setDrawMode(false); renderZones(); } });
 }

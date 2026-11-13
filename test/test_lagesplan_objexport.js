@@ -116,6 +116,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Flytande läge och stäng
   await page.click('#adjMode'); const fl = await page.evaluate(() => ({ float: document.getElementById('adjPanel').classList.contains('adj-float'), parent: document.getElementById('adjPanel').parentNode.tagName })); if (!fl.float || fl.parent !== 'BODY') fail('Flyt fritt: ' + JSON.stringify(fl));
   await page.click('#adjClose'); if (await page.evaluate(() => !!document.getElementById('adjPanel') || !!document.getElementById('adjRings'))) fail('Stäng tar bort panel och ringar');
+  { // Att docka/lösgöra paneler får inte zooma ut till hela planen
+    const r = await page.evaluate(async () => { view.scale = 2.37; view.tx = -123; view.ty = -77; applyView(); const b = { s: view.scale, x: view.tx, y: view.ty }; rdockResizeView(); adjResizeView(); await new Promise(r => setTimeout(r, 150)); return { before: b, after: { s: view.scale, x: view.tx, y: view.ty } }; });
+    if (r.after.s !== r.before.s || r.after.x !== r.before.x || r.after.y !== r.before.y) fail('Dockning ska inte ändra zoom/läge: ' + JSON.stringify(r)); }
   console.log('OK: panelen – dockad, varningar med förslag, sortering, kolumnbredd, tryck på namn, dra prick på kartan, flerval, flytande, 0,0 utelämnas ur filerna', JSON.stringify({ PN: PN.rows, FX, w1 }));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_objexport');

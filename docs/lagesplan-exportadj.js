@@ -109,7 +109,7 @@ function adjPlace() {
   const mb = el.querySelector("#adjMode"); mb.textContent = docked ? "⧉ Flyt" : "⇥ Docka"; mb.title = docked ? "Flyt panelen fritt över kartan" : "Docka panelen till höger";
   adjResizeView();
 }
-function adjResizeView() { window.dispatchEvent(new Event("resize")); if (typeof scheduleOrthoRender === "function") scheduleOrthoRender(); }
+function adjResizeView() { window.__keepViewOnResize = true; try { window.dispatchEvent(new Event("resize")); } finally { window.__keepViewOnResize = false; } if (typeof scheduleOrthoRender === "function") scheduleOrthoRender(); }
 function adjRender() {
   const el = adj.el; if (!el) return; const $$ = s => el.querySelector(s), A = exportAdjAll(), list = adjRows(), shown = list.slice(0, 400), nAdj = adj.marks.filter(m => A[m.key]).length, esc = escHtml;
   $$("#adjCount").textContent = `${adj.marks.length} punkter · ${nAdj} justerade`; $$("#adjSel").textContent = `${adj.sel.size} markerade`;
