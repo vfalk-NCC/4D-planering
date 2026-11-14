@@ -17,6 +17,15 @@ function l3rnHalton(i, b) { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (
 /* Solens riktning (mot solen) ur azimut (grader från norr, medurs) och höjd över horisonten. Projektets Y är norr, X öster, Z upp. */
 function l3rnSunDir(az, el) { const a = az * Math.PI / 180, e = el * Math.PI / 180; return new THREE.Vector3(Math.sin(a) * Math.cos(e), Math.cos(a) * Math.cos(e), Math.sin(e)).normalize(); }
 
+/* Himmelsfärger efter tid på dygnet, molnighet och dis. */
+function l3rnSky(E) {
+  const lerp = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t)), hex = c => "#" + c.map(v => v.toString(16).padStart(2, "0")).join(""), warm = E.warm || 0, c = E.clouds || 0, h = E.haze || 0;
+  let top = lerp([111, 163, 221], [74, 92, 150], warm * 0.7), mid = lerp([207, 224, 242], [236, 176, 140], warm * 0.8), low = lerp([243, 240, 234], [250, 214, 170], warm * 0.8);
+  top = lerp(top, [150, 162, 178], c * 0.75); mid = lerp(mid, [196, 204, 212], c * 0.7); low = lerp(low, [214, 216, 218], c * 0.6);
+  top = lerp(top, mid, h * 0.5); mid = lerp(mid, low, h * 0.4);
+  return { top: hex(top), mid: hex(mid), low: hex(low) };
+}
+
 /* Fullskärmsruta för att lägga ihop och tonmappa. */
 function l3rnQuad(frag, uniforms) {
   const m = new THREE.ShaderMaterial({ uniforms, depthTest: false, depthWrite: false, transparent: false, blending: THREE.NoBlending,
@@ -46,25 +55,31 @@ async function l3rnRender(opt = {}) {
   const asp = view.x / Math.max(1, view.y), maxT = Math.min(4096, r.capabilities.maxTextureSize || 4096);
   const W = Math.round(l3rnClamp(opt.width, 160, maxT, 1600)), H = Math.round(l3rnClamp(opt.height, 90, maxT, W / asp));
   const N = Math.round(l3rnClamp(opt.samples || L3RN_Q[opt.quality] || L3RN_Q.good, 1, 512, L3RN_Q.good));
-  const soft = l3rnClamp(opt.soft, 0, 15, 1.6), ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95), vig = l3rnClamp(opt.vignette, 0, 1, 0.25);
+  const E = typeof l3rmEnvResolved === "function" ? l3rmEnvResolved(opt.env || {}) : { az: null, el: null, warm: 0, clouds: 0, haze: 0, exposure: 1 };
+  const soft = l3rnClamp(opt.soft, 0, 15, 1.6) + E.clouds * 6, ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95) * E.exposure, vig = l3rnClamp(opt.vignette, 0, 1, 0.25);
   const t0 = performance.now();
   l3rn.busy = true; l3rn.cancel = false;
-  const S = { mode: l3vm.mode, aspect: cam.aspect, near: cam.near, far: cam.far, target: r.getRenderTarget(), sunDir: l3vm.sunDir ? l3vm.sunDir.clone() : null, lights: [], vis: [], env: new Map(), gizmo: l3.gizmo ? l3.gizmo.visible : null, autoClear: r.autoClear, clear: r.getClearColor(new THREE.Color()), clearA: r.getClearAlpha(), bg: scene.background };
+  const S = { mode: l3vm.mode, aspect: cam.aspect, near: cam.near, far: cam.far, target: r.getRenderTarget(), sunDir: l3vm.sunDir ? l3vm.sunDir.clone() : null, lights: [], vis: [], env: new Map(), gizmo: l3.gizmo ? l3.gizmo.visible : null, autoClear: r.autoClear, clear: r.getClearColor(new THREE.Color()), clearA: r.getClearAlpha(), bg: scene.background, fog: scene.fog, restore: [] };
   let sky = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
   try {
     // 1) Realistisk (material, himmelskarta, skuggor, skuggplan) – hör till motorn
     if (l3vm.mode !== "real") l3vmSet("real", true);
-    if (opt.sunAz != null || opt.sunEl != null) l3vm.sunDir = l3rnSunDir(l3rnClamp(opt.sunAz, -720, 720, 200), l3rnClamp(opt.sunEl, 1, 89, 45));
+    const az = opt.sunAz != null ? opt.sunAz : E.az, el = opt.sunEl != null ? opt.sunEl : E.el;
+    if (az != null || el != null) l3vm.sunDir = l3rnSunDir(l3rnClamp(az, -720, 720, 200), l3rnClamp(el, 1, 89, 45));
     l3vmShadows(true); l3vmSync(true);
     const sun = l3vmSun(); if (!sun) throw new Error("Ingen sol i scenen");
+    // 1b) renderingsmaterial, mark och miljö (eget lager – editorns material rörs inte; allt sätts tillbaka i slutet)
+    const RM = typeof l3rmBegin === "function" ? l3rmBegin(S, opt) : null;
     // 2) göm hjälpgrupper och CAD-konturer
     ["sel", "meas", "tmp"].forEach(k => { const g = l3.groups[k]; if (g) { S.vis.push([g, g.visible]); g.visible = false; } });
     if (l3.gizmo) l3.gizmo.visible = false;
+    scene.children.forEach(c => { if ((c.type === "Object3D" && c.children.length) || (c.userData && c.userData.spin)) { S.vis.push([c, c.visible]); c.visible = false; } });   // handtag, vridcirkel och rotationspunkt syns inte i bilden
     scene.traverse(o => { if (o.userData && o.userData.vmEdge) { S.vis.push([o, o.visible]); o.visible = false; } });
     if (!opt.edges) scene.traverse(o => { if (o.isLineSegments && o.userData.noVm && o.material && o.material.color && o.material.color.getHex() === 0x1f2937) { S.vis.push([o, o.visible]); o.visible = false; } });   // kroppars konturlinjer (CAD-utseendet)
     if (opt.background !== "keep") {   // himmel: mjuk gradient uppifrån och ned
       const g = document.createElement("canvas"); g.width = 2; g.height = 256; const gx = g.getContext("2d"), gr = gx.createLinearGradient(0, 0, 0, 256);
-      gr.addColorStop(0, "#6fa3dd"); gr.addColorStop(0.55, "#cfe0f2"); gr.addColorStop(1, "#f3f0ea"); gx.fillStyle = gr; gx.fillRect(0, 0, 2, 256);
+      const sk = l3rnSky(E); gr.addColorStop(0, sk.top); gr.addColorStop(0.55, sk.mid); gr.addColorStop(1, sk.low); gx.fillStyle = gr; gx.fillRect(0, 0, 2, 256);
+      if (E.haze > 0) scene.fog = new THREE.FogExp2(new THREE.Color(sk.mid), E.haze * 0.004);
       bgTex = new THREE.CanvasTexture(g); bgTex.minFilter = bgTex.magFilter = THREE.LinearFilter; bgTex.generateMipmaps = false; bgTex.encoding = r.outputEncoding; scene.background = bgTex;
     }
     // 3) ljus: solen mjukas upp, himmelsljus med skugga läggs till, grundljuset sänks så att skuggor kan bli mörka
@@ -77,10 +92,12 @@ async function l3rnRender(opt = {}) {
     sun.target.position.copy(sph.center); sun.castShadow = true; fit(sun);
     const hemi = scene.children.find(c => c.isHemisphereLight), fill = scene.children.find(c => c.isDirectionalLight && c !== sun);
     if (hemi) hemi.intensity = 0.08 + 0.12 * (1 - Math.min(1, ao)); if (fill) fill.intensity = 0.03;
-    sun.intensity = 0.95;
-    sky = new THREE.DirectionalLight(0xdbe8ff, 0.8 * ao); sky.castShadow = ao > 0; sky.shadow.mapSize.set(mapN, mapN); fit(sky);
+    const lowSun = el != null ? l3rnClamp(el / 14, 0.25, 1, 1) : 1;
+    sun.intensity = 0.95 * (1 - 0.7 * E.clouds) * lowSun; if (E.warm > 0) sun.color.setRGB(1, 1 - 0.22 * E.warm, 1 - 0.5 * E.warm);
+    if (hemi) hemi.intensity += E.clouds * 0.18;
+    sky = new THREE.DirectionalLight(E.warm > 0.5 ? 0xf0d8c8 : 0xdbe8ff, 0.8 * ao * (1 + 0.7 * E.clouds)); sky.castShadow = ao > 0; sky.shadow.mapSize.set(mapN, mapN); fit(sky);
     sky.target.position.copy(sph.center); scene.add(sky, sky.target);
-    scene.traverse(o => { if (o.isMesh && o.material) [].concat(o.material).forEach(m => { if (m.envMapIntensity != null && !S.env.has(m)) { S.env.set(m, m.envMapIntensity); m.envMapIntensity = 0.1 + 0.2 * (1 - Math.min(1, ao)); } }); });
+    scene.traverse(o => { if (o.isMesh && o.material) [].concat(o.material).forEach(m => { if (m.envMapIntensity != null && !S.env.has(m) && !(m.userData && m.userData.l3rm)) { S.env.set(m, m.envMapIntensity); m.envMapIntensity = 0.1 + 0.2 * (1 - Math.min(1, ao)); } }); });
     // 4) buffertar: delbild (HDR, halvflyttal), två summabuffertar (ping-pong, flyttal) och slutbilden (8 bit)
     rtS = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true });
     rtA = new THREE.WebGLRenderTarget(W, H, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false }); rtB = rtA.clone();
@@ -133,6 +150,8 @@ async function l3rnRender(opt = {}) {
     return l3rn.last;
   } finally {
     // 6) återställ allt
+    if (typeof l3rmEnd === "function") l3rmEnd(S);
+    scene.fog = S.fog;
     r.setRenderTarget(S.target); r.autoClear = S.autoClear; r.setClearColor(S.clear, S.clearA); scene.background = S.bg; if (bgTex) bgTex.dispose();
     if (cam.clearViewOffset) cam.clearViewOffset(); cam.aspect = S.aspect; cam.near = S.near; cam.far = S.far; cam.updateProjectionMatrix();
     if (sky) { scene.remove(sky, sky.target); if (sky.shadow && sky.shadow.map) sky.shadow.map.dispose(); }
@@ -149,40 +168,121 @@ async function l3rnRender(opt = {}) {
   if (typeof l3Render === "function") { const f = l3Render; l3Render = function () { if (l3rn.busy) return; return f.apply(this, arguments); }; }
 })();
 
-/* ---- Rutan "🎬 Rendera" ---- */
-function l3rnUi() {
+/* ---- Rutan "🎬 Rendera": flikarna Bild, Material, Mark och Miljö – med förhandsvisning som uppdateras när du ändrar ---- */
+const l3rnUi = { tab: "bild", grp: "Mark", mat: "asfalt", target: "", prevT: 0, areaMat: "gras", roadW: 6 };
+function l3rnBtn() {
   const host = document.getElementById("view3d"); if (!host) return;
   let btn = document.getElementById("v3RenderBtn");
-  if (!btn) { btn = document.createElement("button"); btn.type = "button"; btn.id = "v3RenderBtn"; btn.className = "v3-bridge v3-rnb"; btn.textContent = "🎬 Rendera"; btn.title = "Rendera en snygg bild av modellen (mjuka skuggor, ambient occlusion, kantutjämning)"; btn.onclick = l3rnOpen; host.appendChild(btn); }
+  if (!btn) { btn = document.createElement("button"); btn.type = "button"; btn.id = "v3RenderBtn"; btn.className = "v3-bridge v3-rnb"; btn.textContent = "🎬 Rendera"; btn.title = "Rendera en snygg bild av modellen – med egna renderingsmaterial, mark och miljö (påverkar inte editorns utseende)"; btn.onclick = l3rnOpen; host.appendChild(btn); }
+}
+const l3rnQ = (el, s) => el.querySelector(s);
+function l3rnOpts(el) {
+  const v = s => { const e = l3rnQ(el, s); return e ? e.value : undefined; };
+  return { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked };
+}
+function l3rnPreviewSoon() {   // lågupplöst bild efter varje ändring (hoppar över om en full rendering pågår)
+  const el = document.getElementById("v3Render"); if (!el) return; clearTimeout(l3rnUi.prevT);
+  l3rnUi.prevT = setTimeout(async () => {
+    if (l3rn.busy) { l3rnUi.prevT = setTimeout(l3rnPreviewSoon, 800); return; }
+    const cv = l3rnQ(el, "#rnCv"), msg = l3rnQ(el, "#rnMsg"); if (!cv) return;
+    try { msg.textContent = "Förhandsvisning …"; const o = l3rnOpts(el), res = await l3rnRender({ ...o, samples: 4, width: 560, ao: o.ao }); cv.width = res.width; cv.height = res.height; cv.getContext("2d").drawImage(res.canvas, 0, 0); msg.textContent = "Förhandsvisning (4 delbilder) – tryck Rendera för full kvalitet."; }
+    catch (e) { msg.textContent = "Förhandsvisning: " + e.message; }
+  }, 700);
+}
+function l3rmUiRefresh() { const el = document.getElementById("v3Render"); if (!el) return; l3rnTab(l3rnUi.tab, true); l3rnPreviewSoon(); }
+const l3rnSel = () => (typeof l3 !== "undefined" && l3.sel ? [...l3.sel] : []);
+function l3rnRuleLabel(r) {
+  if (r.t === "obj") { const p = placements.find(q => q.id === r.ref); return "Objekt: " + (p ? p.name : "(borttaget)"); }
+  if (r.t === "cls") return "IFC-klass " + r.ref; if (r.t === "guid") return "IFC-element"; return "Färg " + r.ref;
+}
+function l3rnGrid(sel, groupKey, onPick, withNone) {
+  const chips = L3RM_GROUPS.map(g => `<button type="button" class="rn-chip${l3rnUi[groupKey] === g ? " on" : ""}" data-g="${g}">${g}</button>`).join("");
+  const mats = L3RM_LIB.filter(m => m.group === l3rnUi[groupKey]);
+  return `<div class="rn-chips">${chips}</div><div class="rn-grid">${withNone ? `<button type="button" class="rn-mat${!sel ? " on" : ""}" data-m=""><span class="rn-none">Ingen</span><em>Ingen</em></button>` : ""}${mats.map(m => `<button type="button" class="rn-mat${sel === m.id ? " on" : ""}" data-m="${m.id}" title="${m.name} – ${m.size} m"><img src="${l3rmThumb(m.id)}" alt="" /><em>${m.name}</em></button>`).join("")}</div>`;
+}
+function l3rnTab(tab, keep) {
+  const el = document.getElementById("v3Render"); if (!el) return; l3rnUi.tab = tab; const body = l3rnQ(el, ".rn-body"), D = l3rmData(), esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  el.querySelectorAll(".rn-tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === tab));
+  const scr = body.scrollTop;
+  if (tab === "bild") {
+    body.innerHTML = `<div class="rn-g"><label>Kvalitet<select id="rnQ"><option value="fast">Snabb (12)</option><option value="good" selected>Bra (48)</option><option value="best">Bäst (160)</option></select></label>
+      <label>Storlek<select id="rnS"><option value="1280">1280 px</option><option value="1920" selected>1920 px (Full HD)</option><option value="2560">2560 px</option><option value="3840">3840 px (4K)</option></select></label>
+      <label>Mjuka skuggor <input id="rnSoft" type="range" min="0" max="8" step="0.5" value="1.6" /></label><label>Ambient occlusion <input id="rnAo" type="range" min="0" max="1.5" step="0.1" value="1" /></label>
+      <label>Exponering <input id="rnEx" type="range" min="0.5" max="2" step="0.05" value="0.95" /></label><label class="rn-chk"><input id="rnEdges" type="checkbox" /> Visa konturlinjer på kroppar</label></div>
+      <div class="rn-note">Material, mark och miljö väljs i flikarna bredvid och gäller bara renderingen – 3D-editorns utseende ändras inte.</div>`;
+    body.querySelectorAll("input,select").forEach(i => { i.onchange = i.oninput = () => { if (i.id !== "rnS") l3rnPreviewSoon(); }; });
+  } else if (tab === "material") {
+    const T = l3rmTargets(), sel = l3rnSel(), opts = [];
+    if (sel.length) opts.push([`sel`, `Markerade objekt i 3D (${sel.length})`]);
+    T.cls.forEach(([c, n]) => opts.push([`cls:${c}`, `IFC: ${c} (${n})`]));
+    T.colors.forEach(([c, n]) => opts.push([`color:${c}`, `Alla med färgen ${c} (${n})`]));
+    if (!opts.some(o => o[0] === l3rnUi.target)) l3rnUi.target = opts.length ? opts[0][0] : "";
+    body.innerHTML = `<div class="rn-row"><label>Lägg på<select id="rmT">${opts.length ? opts.map(o => `<option value="${esc(o[0])}"${o[0] === l3rnUi.target ? " selected" : ""}>${esc(o[1])}</option>`).join("") : "<option value=''>Inget att peka på – markera ett objekt i 3D</option>"}</select></label></div>
+      <div class="rn-row rn-sl"><label>Skala <input id="rmS" type="range" min="0.25" max="4" step="0.05" value="1" /></label><label>Vridning <input id="rmR" type="range" min="0" max="180" step="5" value="0" /></label><label>Tona <input id="rmTint" type="color" value="#ffffff" /></label></div>
+      <div class="rn-help">Klicka på ett material för att lägga det på det valda. Markera objekt i 3D-vyn först om du vill ändra just dem.</div>
+      ${l3rnGrid(l3rnUi.mat, "grp")}
+      <div class="rn-sub">Dina material (${D.rules.length})<button type="button" id="rmClear" ${D.rules.length ? "" : "disabled"}>Rensa alla</button></div>
+      <div class="rn-rules">${D.rules.map(r => { const d = l3rmDef(r.mat); return `<div class="rn-rule"><img src="${l3rmThumb(r.mat)}" alt="" /><span><b>${esc(d ? d.name : r.mat)}</b><small>${esc(l3rnRuleLabel(r))}${r.s && r.s !== 1 ? ` · skala ${r.s}` : ""}${r.tint ? ` · tona ${r.tint}` : ""}</small></span><button type="button" data-rm="${r.id}" title="Ta bort">✕</button></div>`; }).join("") || '<div class="rn-note">Inga än.</div>'}</div>`;
+    const tsel = l3rnQ(body, "#rmT"); if (tsel) tsel.onchange = () => { l3rnUi.target = tsel.value; };
+    body.querySelectorAll(".rn-chip").forEach(b => { b.onclick = () => { l3rnUi.grp = b.dataset.g; l3rnTab("material"); }; });
+    body.querySelectorAll(".rn-mat").forEach(b => { b.onclick = () => {
+      const t = l3rnQ(body, "#rmT").value, o = { s: +l3rnQ(body, "#rmS").value, r: +l3rnQ(body, "#rmR").value, tint: l3rnQ(body, "#rmTint").value === "#ffffff" ? "" : l3rnQ(body, "#rmTint").value }; l3rnUi.mat = b.dataset.m; l3rnUi.target = t;
+      try { if (t === "sel") l3rnSel().forEach(id => l3rmSetRule({ t: "obj", ref: id }, b.dataset.m, o)); else if (t.startsWith("cls:")) l3rmSetRule({ t: "cls", ref: t.slice(4) }, b.dataset.m, o); else if (t.startsWith("color:")) l3rmSetRule({ t: "color", ref: t.slice(6) }, b.dataset.m, o); else l3rnQ(el, "#rnMsg").textContent = "Markera ett objekt i 3D först."; } catch (e) { l3rnQ(el, "#rnMsg").textContent = e.message; }
+    }; });
+    body.querySelectorAll("[data-rm]").forEach(b => { b.onclick = () => l3rmRemoveRule(b.dataset.rm); });
+    const cl = l3rnQ(body, "#rmClear"); if (cl) cl.onclick = () => { l3rmData().rules = []; l3rmSave(); };
+  } else if (tab === "mark") {
+    const g = D.ground, base = g.base;
+    body.innerHTML = `<div class="rn-sub">Grundmaterial för marken</div>${l3rnGrid(base ? base.mat : "", "grp", null, true)}
+      <div class="rn-row rn-sl"><label>Skala <input id="gS" type="range" min="0.25" max="4" step="0.05" value="${base ? base.s : 1}" ${base ? "" : "disabled"} /></label><label>Vridning <input id="gR" type="range" min="0" max="180" step="5" value="${base ? base.r : 0}" ${base ? "" : "disabled"} /></label></div>
+      <div class="rn-help">Marken ersätter planens bild i renderingen och tar emot skuggor. Rita ytor och vägar i 3D-editorn (Rita → polygon/polylinje), markera dem här och lägg på ett material.</div>
+      <div class="rn-sub">Markytor och vägar (${g.areas.length})</div>
+      <div class="rn-rules">${g.areas.map(a => `<div class="rn-rule"><img src="${l3rmThumb(a.mat)}" alt="" /><span><b>${esc(a.name)}</b><small>${a.kind === "road" ? `Väg ${a.width} m bred` : "Markyta"} · ${esc((l3rmDef(a.mat) || {}).name || a.mat)}</small></span><select data-am="${a.id}">${L3RM_LIB.map(m => `<option value="${m.id}"${m.id === a.mat ? " selected" : ""}>${m.name}</option>`).join("")}</select><button type="button" data-ad="${a.id}" title="Ta bort">✕</button></div>`).join("") || '<div class="rn-note">Inga än.</div>'}</div>
+      <div class="rn-row rn-add"><button type="button" id="gArea">＋ Markyta av markerad yta</button><button type="button" id="gRoad">＋ Väg av markerad linje</button><label>Bredd <input id="gW" type="number" min="1" max="60" step="0.5" value="${l3rnUi.roadW}" /> m</label></div>`;
+    body.querySelectorAll(".rn-chip").forEach(b => { b.onclick = () => { l3rnUi.grp = b.dataset.g; l3rnTab("mark"); }; });
+    body.querySelectorAll(".rn-mat").forEach(b => { b.onclick = () => { l3rnUi.areaMat = b.dataset.m || l3rnUi.areaMat; l3rmSetGroundBase(b.dataset.m || null, { s: base ? base.s : 1, r: base ? base.r : 0, tint: base ? base.tint : "" }); }; });
+    const gs = l3rnQ(body, "#gS"), gr = l3rnQ(body, "#gR"); const upd = () => { if (l3rmData().ground.base) { const b = l3rmData().ground.base; b.s = +gs.value; b.r = +gr.value; l3rmSave(); } }; if (gs) gs.onchange = upd; if (gr) gr.onchange = upd;
+    body.querySelectorAll("[data-am]").forEach(s2 => { s2.onchange = () => l3rmSetAreaMat(s2.dataset.am, s2.value); });
+    body.querySelectorAll("[data-ad]").forEach(b => { b.onclick = () => l3rmRemoveArea(b.dataset.ad); });
+    const fromSel = road => { const id = l3rnSel()[0], p = id && placements.find(q => q.id === id); if (!p) { l3rnQ(el, "#rnMsg").textContent = "Markera en ritad yta" + (road ? "/linje" : "") + " i 3D först."; return; }
+      try { const pts = l3rmFootprint(p, road); l3rnUi.roadW = +l3rnQ(body, "#gW").value || 6; l3rmAddArea({ kind: road ? "road" : "area", pts, width: l3rnUi.roadW, mat: road ? "asfalt" : l3rnUi.areaMat, name: p.name, src: p.id }); } catch (e) { l3rnQ(el, "#rnMsg").textContent = e.message; } };
+    l3rnQ(body, "#gArea").onclick = () => fromSel(false); l3rnQ(body, "#gRoad").onclick = () => fromSel(true);
+  } else {
+    const e = l3rmEnvResolved(), T = L3RM_TIMES, cur = D.env.time || "";
+    body.innerHTML = `<div class="rn-sub">Tid på dygnet</div><div class="rn-chips">${Object.keys(T).map(k => `<button type="button" class="rn-chip${cur === k ? " on" : ""}" data-time="${k}">${T[k].name}</button>`).join("")}<button type="button" class="rn-chip" data-time="">Egen</button></div>
+      <div class="rn-g"><label>Sol, riktning <input id="eAz" type="range" min="0" max="360" value="${Math.round(e.az != null ? e.az : 200)}" /><em>${Math.round(e.az != null ? e.az : 200)}°</em></label><label>Sol, höjd <input id="eEl" type="range" min="3" max="85" value="${Math.round(e.el != null ? e.el : 45)}" /><em>${Math.round(e.el != null ? e.el : 45)}°</em></label>
+      <label>Moln <input id="eCl" type="range" min="0" max="1" step="0.05" value="${e.clouds}" /></label><label>Dis <input id="eHz" type="range" min="0" max="1" step="0.05" value="${e.haze}" /></label>
+      <label>Exponering <input id="eEx" type="range" min="0.5" max="2" step="0.05" value="${e.exposure}" /></label></div>
+      <div class="rn-help">Molnigt ger svagare, mjukare sol och gråare himmel. Dis tonar av det som är långt bort.</div>`;
+    body.querySelectorAll("[data-time]").forEach(b => { b.onclick = () => l3rmSetEnv({ time: b.dataset.time || null, az: b.dataset.time ? undefined : D.env.az, el: b.dataset.time ? undefined : D.env.el }); });
+    const sv = (id, k, f) => { const i = l3rnQ(body, id); i.onchange = () => l3rmSetEnv({ [k]: f(+i.value), ...(k === "az" || k === "el" ? { time: null, az: k === "az" ? +i.value : e.az, el: k === "el" ? +i.value : e.el } : {}) }); };
+    sv("#eAz", "az", v => v); sv("#eEl", "el", v => v); sv("#eCl", "clouds", v => v); sv("#eHz", "haze", v => v); sv("#eEx", "exposure", v => v);
+  }
+  if (keep) body.scrollTop = scr;
 }
 function l3rnOpen() {
   const host = document.getElementById("view3d"); if (!host) return; let el = document.getElementById("v3Render"); if (el) { el.remove(); return; }
   el = document.createElement("div"); el.id = "v3Render"; el.className = "v3-rn";
-  const sd = l3vm.sunDir, az0 = sd ? Math.round((Math.atan2(sd.x, sd.y) * 180 / Math.PI + 360) % 360) : 210, el0 = sd ? Math.round(Math.asin(Math.max(-1, Math.min(1, sd.clone().normalize().z))) * 180 / Math.PI) : 45;
-  el.innerHTML = `<div class="rn-h"><b>🎬 Rendera</b><button type="button" class="rn-x" title="Stäng">✕</button></div>
-    <div class="rn-g"><label>Kvalitet<select id="rnQ"><option value="fast">Snabb (12)</option><option value="good" selected>Bra (48)</option><option value="best">Bäst (160)</option></select></label>
-    <label>Storlek<select id="rnS"><option value="1280">1280 px</option><option value="1920" selected>1920 px (Full HD)</option><option value="2560">2560 px</option><option value="3840">3840 px (4K)</option></select></label>
-    <label>Sol, riktning <input id="rnAz" type="range" min="0" max="360" value="${az0}" /><em id="rnAzV">${az0}°</em></label>
-    <label>Sol, höjd <input id="rnEl" type="range" min="5" max="85" value="${Math.max(5, Math.min(85, el0 || 45))}" /><em id="rnElV">${el0 || 45}°</em></label>
-    <label>Mjuka skuggor <input id="rnSoft" type="range" min="0" max="8" step="0.5" value="1.6" /></label>
-    <label>Ambient occlusion <input id="rnAo" type="range" min="0" max="1.5" step="0.1" value="1" /></label>
-    <label>Exponering <input id="rnEx" type="range" min="0.5" max="2" step="0.05" value="1" /></label></div>
+  el.innerHTML = `<div class="rn-h"><b>🎬 Rendera</b><span class="rn-tabs"><button type="button" data-t="bild" class="on">Bild</button><button type="button" data-t="material">Material</button><button type="button" data-t="mark">Mark</button><button type="button" data-t="miljo">Miljö</button></span><button type="button" class="rn-x" title="Stäng">✕</button></div>
+    <div class="rn-body"></div>
     <div class="rn-a"><button type="button" id="rnGo" class="rn-go">Rendera</button><button type="button" id="rnSave" disabled>Spara PNG</button><span id="rnMsg">Vyn och kameran används som de är nu.</span></div>
     <div class="rn-p"><i id="rnBar"></i></div><div class="rn-v"><canvas id="rnCv" width="16" height="9"></canvas></div>`;
   host.appendChild(el); const q = s => el.querySelector(s);
-  q(".rn-x").onclick = () => { l3rn.cancel = true; el.remove(); };
-  q("#rnAz").oninput = () => { q("#rnAzV").textContent = q("#rnAz").value + "°"; }; q("#rnEl").oninput = () => { q("#rnElV").textContent = q("#rnEl").value + "°"; };
+  el.querySelectorAll(".rn-tabs button").forEach(b => { b.onclick = () => l3rnTab(b.dataset.t); });
+  q(".rn-x").onclick = () => { l3rn.cancel = true; clearTimeout(l3rnUi.prevT); el.remove(); };
+  l3rnTab(l3rnUi.tab || "bild");
   q("#rnGo").onclick = async () => {
     if (l3rn.busy) { l3rn.cancel = true; return; }
-    const go = q("#rnGo"); go.textContent = "Avbryt"; q("#rnSave").disabled = true; const cv = q("#rnCv"), bar = q("#rnBar"), msg = q("#rnMsg");
+    clearTimeout(l3rnUi.prevT); const go = q("#rnGo"); go.textContent = "Avbryt"; q("#rnSave").disabled = true; const cv = q("#rnCv"), bar = q("#rnBar"), msg = q("#rnMsg");
     try {
-      const W = +q("#rnS").value, res = await l3rnRender({ quality: q("#rnQ").value, width: W, height: Math.round(W * (l3.renderer.getSize(new THREE.Vector2()).y / l3.renderer.getSize(new THREE.Vector2()).x)), sunAz: +q("#rnAz").value, sunEl: +q("#rnEl").value, soft: +q("#rnSoft").value, ao: +q("#rnAo").value, exposure: +q("#rnEx").value,
-        onProgress: (d, n, c) => { bar.style.width = Math.round(d / n * 100) + "%"; msg.textContent = `Delbild ${d} av ${n} …`; cv.width = c.width; cv.height = c.height; cv.getContext("2d").drawImage(c, 0, 0); } });
+      const W = +((q("#rnS") || {}).value || 1920), vs = l3.renderer.getSize(new THREE.Vector2()), o = q("#rnQ") ? l3rnOpts(el) : { quality: "good", soft: 1.6, ao: 1, exposure: 0.95 };
+      const res = await l3rnRender({ ...o, width: W, height: Math.round(W * vs.y / vs.x), onProgress: (d, n, c) => { bar.style.width = Math.round(d / n * 100) + "%"; msg.textContent = `Delbild ${d} av ${n} …`; cv.width = c.width; cv.height = c.height; cv.getContext("2d").drawImage(c, 0, 0); } });
       bar.style.width = "100%"; msg.textContent = `Klar: ${res.width}×${res.height}, ${res.samples} delbilder, ${(res.ms / 1000).toFixed(1)} s.`; q("#rnSave").disabled = false;
       cv.width = res.width; cv.height = res.height; cv.getContext("2d").drawImage(res.canvas, 0, 0);
     } catch (e) { msg.textContent = "Kunde inte rendera: " + e.message; }
     go.textContent = "Rendera";
   };
   q("#rnSave").onclick = () => { const c = l3rn.last && l3rn.last.canvas; if (!c) return; c.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `rendering-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, "image/png"); };
+  l3rnPreviewSoon();
 }
-(function l3rnBoot() { const tick = () => { if (document.getElementById("view3d") && typeof l3 !== "undefined" && l3 && l3.renderer) l3rnUi(); else setTimeout(tick, 1500); }; setTimeout(tick, 1500); })();
+(function l3rnBoot() { const tick = () => { if (document.getElementById("view3d") && typeof l3 !== "undefined" && l3 && l3.renderer) l3rnBtn(); else setTimeout(tick, 1500); }; setTimeout(tick, 1500); })();

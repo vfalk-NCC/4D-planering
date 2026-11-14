@@ -898,6 +898,220 @@
             "keep"
           ],
           "description": "sky gradient (default) or the editor's own background"
+        },
+        "use_render_materials": {
+          "type": "boolean",
+          "description": "apply the stored render materials, ground and environment (default true)"
+        }
+      }
+    }
+  },
+  {
+    "name": "list_render_materials",
+    "description": "List the render material library (about 50 PBR materials: ground, concrete, masonry, wood, metal, glass & water, plaster/paint/roofing) with real tile size in metres, roughness, metalness and opacity. These materials are used ONLY by render_image – the editor's own look is never changed. Filter by group name.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "group": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_render_setup",
+    "description": "Current render setup stored in the project: material rules, ground material and areas, environment; plus the IFC classes and colours present in the scene that you can target.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "set_render_material",
+    "description": "Give objects a render material (like Twinmotion: pick target, pick material). Targets: object_id / object_ids (drawn or placed 3D objects), ifc_class (e.g. IFCWALL, IFCSLAB: all elements of that class in all IFC models), ifc_guid, or color (hex of the original colour, e.g. '#a8b3c4': everything with that colour). Priority: object > ifc_guid/ifc_class > color. scale multiplies the tile size, rotation in degrees, tint a hex colour multiplied onto the material. Only affects render_image.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "material": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "object_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ifc_class": {
+          "type": "string"
+        },
+        "ifc_guid": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "scale": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "tint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "material"
+      ]
+    }
+  },
+  {
+    "name": "remove_render_material",
+    "description": "Remove a render material rule (by the same target as set_render_material, rule_id, or all=true).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "object_id": {
+          "type": "string"
+        },
+        "ifc_class": {
+          "type": "string"
+        },
+        "ifc_guid": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "rule_id": {
+          "type": "string"
+        },
+        "all": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "set_ground_material",
+    "description": "Set the base ground material for renders (a large ground plane that receives shadows and replaces the plan drawing in the image). material omitted/null removes it. z = ground level in project coordinates (default: the plan's level).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "material": {
+          "type": "string"
+        },
+        "scale": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "tint": {
+          "type": "string"
+        },
+        "z": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  {
+    "name": "add_ground_area",
+    "description": "Add a ground area or road with its own material on top of the base ground. kind 'area' = polygon points [[x,y],...]; kind 'road' = centre line points with width (m). Or use from_object_id with a drawn face/solid (area) or drawn line (road) – the source object is then hidden in renders unless hide_source=false.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "area",
+            "road"
+          ]
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "from_object_id": {
+          "type": "string"
+        },
+        "width": {
+          "type": "number"
+        },
+        "material": {
+          "type": "string"
+        },
+        "scale": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "tint": {
+          "type": "string"
+        },
+        "z": {
+          "type": "number"
+        },
+        "name": {
+          "type": "string"
+        },
+        "hide_source": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "material"
+      ]
+    }
+  },
+  {
+    "name": "remove_ground_area",
+    "description": "Remove a ground area/road by id.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
+  },
+  {
+    "name": "set_render_environment",
+    "description": "Render environment: time of day (morgon/formiddag/dag/eftermiddag/kvall) or sun_azimuth/sun_elevation (degrees; azimuth from north clockwise), clouds 0-1 (softer, weaker sun, greyer sky), haze 0-1 (distance fog), exposure 0.5-2. Stored in the project; used by render_image.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "time": {
+          "type": "string"
+        },
+        "sun_azimuth": {
+          "type": "number"
+        },
+        "sun_elevation": {
+          "type": "number"
+        },
+        "clouds": {
+          "type": "number"
+        },
+        "haze": {
+          "type": "number"
+        },
+        "exposure": {
+          "type": "number"
         }
       }
     }

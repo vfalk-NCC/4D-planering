@@ -279,10 +279,45 @@ l3api.methods.set_sun = a => {
 };
 l3api.methods.render_image = async a => {
   l3apiReady(); if (typeof l3rnRender !== "function") throw new Error("Renderingsmotorn är inte inläst");
-  const res = await l3rnRender({ quality: a.quality, samples: a.samples, width: a.width || 1280, height: a.height, sunAz: a.sun_azimuth, sunEl: a.sun_elevation, soft: a.soft_shadows, ao: a.ambient_occlusion, exposure: a.exposure, vignette: a.vignette, edges: !!a.edges, background: a.background });
+  const res = await l3rnRender({ quality: a.quality, samples: a.samples, width: a.width || 1280, height: a.height, sunAz: a.sun_azimuth, sunEl: a.sun_elevation, soft: a.soft_shadows, ao: a.ambient_occlusion, exposure: a.exposure, vignette: a.vignette, edges: !!a.edges, background: a.background, materials: a.use_render_materials !== false });
   const url = res.canvas.toDataURL("image/png");
   return { image: { mime: "image/png", data: url.split(",")[1] }, size: [res.width, res.height], samples: res.samples, seconds: Math.round(res.ms / 100) / 10 };
 };
+/* ---- Renderingsmaterial, mark och miljö (lagesplan-3drmat.js) – gäller bara renderingen, editorns utseende ändras inte ---- */
+l3api.methods.list_render_materials = a => {
+  const g = String(a.group || "").toLowerCase();
+  return { groups: L3RM_GROUPS, materials: L3RM_LIB.filter(m => !g || m.group.toLowerCase().includes(g)).map(m => ({ id: m.id, name: m.name, group: m.group, tile_m: m.size, roughness: m.rough, metal: m.metal, opacity: m.op })) };
+};
+l3api.methods.get_render_setup = () => {
+  const d = l3rmData(); l3apiReady(); const T = l3rmTargets();
+  return { rules: d.rules.map(r => ({ id: r.id, target: r.t + ":" + r.ref, material: r.mat, scale: r.s, rotation: r.r, tint: r.tint || undefined })), ground: { base: d.ground.base, areas: d.ground.areas.map(x => ({ id: x.id, name: x.name, kind: x.kind, material: x.mat, width: x.width, points: x.pts.length })) }, environment: l3rmEnvResolved(), ifc_classes_in_scene: T.cls.map(x => ({ cls: x[0], parts: x[1] })), colors_in_scene: T.colors.map(x => ({ color: x[0], meshes: x[1] })) };
+};
+l3api.methods.set_render_material = a => {
+  l3apiReady(); const o = { s: a.scale, r: a.rotation, tint: a.tint }, made = [];
+  const ids = a.object_ids || (a.object_id ? [a.object_id] : []);
+  ids.forEach(id => { l3apiById(id); made.push(l3rmSetRule({ t: "obj", ref: id }, a.material, o)); });
+  if (a.ifc_class) made.push(l3rmSetRule({ t: "cls", ref: a.ifc_class }, a.material, o));
+  if (a.ifc_guid) made.push(l3rmSetRule({ t: "guid", ref: a.ifc_guid }, a.material, o));
+  if (a.color) made.push(l3rmSetRule({ t: "color", ref: a.color }, a.material, o));
+  if (!made.length) throw new Error("Ange object_id/object_ids, ifc_class, ifc_guid eller color som mål");
+  return { set: made.length, rules: made.map(r => ({ id: r.id, target: r.t + ":" + r.ref, material: r.mat })) };
+};
+l3api.methods.remove_render_material = a => {
+  const d = l3rmData(); let n = 0;
+  if (a.all) { n = d.rules.length; d.rules = []; l3rmSave(); return { removed: n }; }
+  const t = a.object_id ? "obj:" + a.object_id : a.ifc_class ? "cls:" + String(a.ifc_class).toUpperCase() : a.ifc_guid ? "guid:" + a.ifc_guid : a.color ? "color:" + String(a.color).toLowerCase() : a.rule_id || "";
+  if (!t) throw new Error("Ange mål (object_id, ifc_class, ifc_guid, color), rule_id eller all=true"); n = l3rmRemoveRule(t); return { removed: n };
+};
+l3api.methods.set_ground_material = a => { const b = l3rmSetGroundBase(a.material || null, { s: a.scale, r: a.rotation, tint: a.tint, z: a.z }); return { base: b }; };
+l3api.methods.add_ground_area = a => {
+  let pts = a.points; const road = a.kind === "road";
+  if (a.from_object_id) { l3apiReady(); pts = l3rmFootprint(l3apiById(a.from_object_id), road); }
+  const r = l3rmAddArea({ kind: a.kind, pts: (pts || []).map(q => [q[0], q[1]]), width: a.width, mat: a.material, s: a.scale, r: a.rotation, tint: a.tint, z: a.z, name: a.name, src: a.from_object_id && a.hide_source !== false ? a.from_object_id : undefined });
+  return { id: r.id, kind: r.kind, name: r.name, points: r.pts.length };
+};
+l3api.methods.remove_ground_area = a => { const n = l3rmRemoveArea(a.id); if (!n) throw new Error("Hittar ingen markyta med det id:t"); return { removed: n }; };
+l3api.methods.set_render_environment = a => l3rmSetEnv({ time: a.time, az: a.sun_azimuth, el: a.sun_elevation, clouds: a.clouds, haze: a.haze, exposure: a.exposure });
+
 /* ---- Fri JavaScript (utväg när verktygen inte räcker) – kräver ditt godkännande i sidan varje gång ---- */
 l3api.methods.eval_js = async a => {
   l3apiReady(); const code = String(a.code || ""); if (!code.trim()) throw new Error("code saknas");
