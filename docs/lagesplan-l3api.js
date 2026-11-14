@@ -341,7 +341,7 @@ l3api.methods.add_ground_area = a => {
   return { id: r.id, kind: r.kind, name: r.name, points: r.pts.length };
 };
 l3api.methods.remove_ground_area = a => { const n = l3rmRemoveArea(a.id); if (!n) throw new Error("Hittar ingen markyta med det id:t"); return { removed: n }; };
-l3api.methods.set_render_environment = a => l3rmSetEnv({ time: a.time, az: a.sun_azimuth, el: a.sun_elevation, clouds: a.clouds, haze: a.haze, exposure: a.exposure });
+l3api.methods.set_render_environment = a => l3rmSetEnv({ time: a.time, az: a.sun_azimuth, el: a.sun_elevation, clouds: a.clouds, haze: a.haze, exposure: a.exposure, rain: a.rain, snow: a.snow, wet: a.wet });
 
 /* ---- Fri JavaScript (utväg när verktygen inte räcker) – kräver ditt godkännande i sidan varje gång ---- */
 l3api.methods.eval_js = async a => {

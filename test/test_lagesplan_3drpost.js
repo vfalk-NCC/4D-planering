@@ -55,6 +55,22 @@ const PP = [
       const a = await l3rnRender({ ...base, bloom: 0 }), b = await l3rnRender({ ...base, bloom: 0.8 }), f1 = await l3rnRender({ ...base, bloom: 0, dof: 0 }), f2 = await l3rnRender({ ...base, bloom: 0, dof: 5, focus: 15 }), s2 = await l3rnRender({ ...base, bloom: 0, shadowSize: 2048 });
       return { lumA: lum(px(a.canvas)), lumB: lum(px(b.canvas)), edge0: edge(px(f1.canvas)), edge1: edge(px(f2.canvas)), cam0, cam1: l3.camera.position.toArray().map(v => +v.toFixed(5)), sh0, sh1: l3vmSun().shadow.mapSize.x, view: !!l3.camera.view && l3.camera.view.enabled, busy: l3rn.busy, env: !!l3.scene.environment, bg: l3.scene.children.some(c => c.userData && c.userData.l3skSky) };
     });
+    const W = await page.evaluate(async () => {
+      const O = l3.O, bx = placeNew('lada', [O[0] + 2, O[1] + 22, O[2]]); bx.L = 40; bx.B = 40; bx.H = 0.5; bx.color = '#6b6b6b'; placements.push(bx); l3AddPlacementMesh(bx);
+      l3.camera.position.set(2, 8, 55); l3.orbit.target.set(2, 22, 0.5); l3.orbit.update();
+      const own0 = []; l3.scene.traverse(o => { if (o.isMesh && o.material && !Array.isArray(o.material) && Object.prototype.hasOwnProperty.call(o.material, 'customProgramCacheKey')) own0.push(1); });
+      const lum = c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let s = 0, n = 0; for (let y = Math.round(c.height * 0.4); y < c.height * 0.6; y++) for (let x = Math.round(c.width * 0.4); x < c.width * 0.6; x++) { const i = (y * c.width + x) * 4; s += d[i] + d[i + 1] + d[i + 2]; n++; } return s / n / 3; };
+      const base = { width: 480, height: 270, samples: 6, bloom: 0, sunAz: 150, sunEl: 40 }, r0 = await l3rnRender({ ...base, env: {} }), rw = await l3rnRender({ ...base, env: { wet: 1 } }), rs = await l3rnRender({ ...base, env: { snow: 1 } }), rr = await l3rnRender({ ...base, env: { rain: 1 } });
+      const own = []; l3.scene.traverse(o => { if (o.isMesh && o.material && !Array.isArray(o.material) && Object.prototype.hasOwnProperty.call(o.material, 'customProgramCacheKey')) own.push(1); });
+      const t1 = await l3rnRender({ ...base, env: { rain: 1 }, time: 0 }), t2 = await l3rnRender({ ...base, env: { rain: 1 }, time: 3 }), da = t1.canvas.getContext('2d').getImageData(0, 0, 480, 270).data, db = t2.canvas.getContext('2d').getImageData(0, 0, 480, 270).data; let diff = 0; for (let i = 0; i < da.length; i += 4) diff += Math.abs(da[i] - db[i]);
+      return { l0: lum(r0.canvas), lw: lum(rw.canvas), ls: lum(rs.canvas), lr: lum(rr.canvas), leftover: own.length - own0.length, diff: diff / (da.length / 4) };
+    });
+    console.log('väder:', JSON.stringify(W)); if (process.env.WXPNG) { const im = await page.evaluate(async () => { const r = await l3rnRender({ width: 480, height: 270, samples: 6, bloom: 0, sunAz: 150, sunEl: 40, env: { snow: 1 } }); return r.canvas.toDataURL('image/png').split(',')[1]; }); require('fs').writeFileSync(process.env.WXPNG, Buffer.from(im, 'base64')); }
+    if (!(W.lw < W.l0 - 1)) fail('Blött underlag ska bli mörkare: ' + JSON.stringify(W));
+    if (!(W.ls > W.l0 + 8)) fail('Snö ska göra uppåtvända ytor ljusare: ' + JSON.stringify(W));
+    if (!(W.lr < W.l0 && W.diff > 0.1)) fail('Regn ska ritas och röra sig mellan bilderna: ' + JSON.stringify(W));
+    if (W.leftover) fail('Väderpatchen ska tas bort från materialen efteråt: ' + JSON.stringify(W));
+    console.log('OK: väder – blött underlag, snö på uppåtvända ytor, regn som rör sig, materialen återställda');
     const J = v => JSON.stringify(v);
     if (!(R.lumB > R.lumA + 0.2)) fail('Bloom ska ge glöd (ljusare bild): ' + J(R));
     if (!(R.edge1 < R.edge0 * 0.97)) fail('Skärpedjup ska göra det som ligger utanför fokus suddigare: ' + J(R));

@@ -1128,6 +1128,18 @@
         },
         "exposure": {
           "type": "number"
+        },
+        "rain": {
+          "type": "number",
+          "description": "Rain 0-1 (wet ground, grey sky, streaks)"
+        },
+        "snow": {
+          "type": "number",
+          "description": "Snow 0-1 (white on upward-facing surfaces, falling flakes)"
+        },
+        "wet": {
+          "type": "number",
+          "description": "Wet ground 0-1 (darker, glossier) without rain"
         }
       }
     }

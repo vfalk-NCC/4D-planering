@@ -139,9 +139,10 @@ function l3rmThumb(id) {
 }
 
 /* ---- Materialet: MeshStandardMaterial med triplanar yta (färg, relief, råhet) ---- */
+const L3RM_T = { value: 0 };   // filmens tid (s): rinnande vatten
 const L3RM_VERT = "varying vec3 vRmW; varying vec3 vRmN;";
-const L3RM_FRAG_PARS = `varying vec3 vRmW; varying vec3 vRmN; uniform sampler2D tRmA; uniform sampler2D tRmN; uniform float uRmScale; uniform float uRmRot; uniform vec3 uRmTint; uniform float uRmBump; uniform float uRmRv;
-  vec2 rmUV(vec2 p) { float c = cos(uRmRot), s = sin(uRmRot); return vec2(c * p.x - s * p.y, s * p.x + c * p.y) * uRmScale; }
+const L3RM_FRAG_PARS = `varying vec3 vRmW; varying vec3 vRmN; uniform sampler2D tRmA; uniform sampler2D tRmN; uniform float uRmScale; uniform float uRmRot; uniform vec3 uRmTint; uniform float uRmBump; uniform float uRmRv; uniform float uRmT; uniform float uRmFlow;
+  vec2 rmUV(vec2 p) { float c = cos(uRmRot), s = sin(uRmRot); return vec2(c * p.x - s * p.y, s * p.x + c * p.y) * uRmScale + uRmFlow * vec2(uRmT * 0.03, uRmT * 0.02); }
   vec2 rmUn(vec2 g) { float c = cos(uRmRot), s = sin(uRmRot); return vec2(c * g.x + s * g.y, -s * g.x + c * g.y); }
   vec3 rmW(vec3 n) { vec3 a = pow(abs(n), vec3(4.0)); return a / (a.x + a.y + a.z + 1e-5); }`;
 function l3rmMaterial(def, o = {}) {
@@ -150,7 +151,7 @@ function l3rmMaterial(def, o = {}) {
   const T = l3rmTextures(def), tc = new THREE.Color(tint);
   m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: def.rough, metalness: def.metal, side: THREE.DoubleSide, transparent: def.op < 1, opacity: def.op, depthWrite: def.op >= 1 || def.op > 0.6, envMapIntensity: def.metal > 0.5 ? 1.4 : def.op < 1 ? 1.6 : 0.55 });
   m.userData.l3rm = true;
-  const U = { tRmA: { value: T.alb }, tRmN: { value: T.nrm }, uRmScale: { value: 1 / (def.size * sc) }, uRmRot: { value: rot }, uRmTint: { value: new THREE.Vector3(tc.r, tc.g, tc.b) }, uRmBump: { value: def.bump ? 0.55 : 0 }, uRmRv: { value: def.metal > 0.5 ? 0.12 : 0.28 } };
+  const U = { tRmA: { value: T.alb }, tRmN: { value: T.nrm }, uRmScale: { value: 1 / (def.size * sc) }, uRmRot: { value: rot }, uRmTint: { value: new THREE.Vector3(tc.r, tc.g, tc.b) }, uRmBump: { value: def.bump ? 0.55 : 0 }, uRmRv: { value: def.metal > 0.5 ? 0.12 : 0.28 }, uRmT: L3RM_T, uRmFlow: { value: def.id === "vatten" ? 1 : 0 } };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\n" + L3RM_VERT).replace("#include <begin_vertex>", "#include <begin_vertex>\n vRmW = (modelMatrix * vec4(transformed, 1.0)).xyz; vRmN = normalize(mat3(modelMatrix) * objectNormal);");
@@ -217,10 +218,10 @@ const L3RM_TIMES = { morgon: { az: 95, el: 14, warm: 0.7, name: "Morgon" }, form
 function l3rmEnvResolved(over = {}) {
   const e = { ...(l3rmData().env || {}), ...over }, t = L3RM_TIMES[e.time] || null;
   const az = e.az != null ? Number(e.az) : t ? t.az : null, el = e.el != null ? Number(e.el) : t ? t.el : null;
-  return { az, el, warm: t ? t.warm : (el != null && el < 15 ? 0.6 : 0), clouds: Math.max(0, Math.min(1, Number(e.clouds) || 0)), haze: Math.max(0, Math.min(1, Number(e.haze) || 0)), exposure: Number(e.exposure) > 0 ? Number(e.exposure) : 1 };
+  return { az, el, warm: t ? t.warm : (el != null && el < 15 ? 0.6 : 0), clouds: Math.max(Math.max(0, Math.min(1, Number(e.clouds) || 0)), Math.min(1, Number(e.rain) > 0 ? 0.55 + 0.4 * Number(e.rain) : 0), Math.min(1, 0.35 * (Number(e.snow) || 0))), rain: Math.max(0, Math.min(1, Number(e.rain) || 0)), snow: Math.max(0, Math.min(1, Number(e.snow) || 0)), wet: Math.max(Math.max(0, Math.min(1, Number(e.wet) || 0)), Math.max(0, Math.min(1, Number(e.rain) || 0))), haze: Math.max(0, Math.min(1, Number(e.haze) || 0)), exposure: Number(e.exposure) > 0 ? Number(e.exposure) : 1 };
 }
 function l3rmSetEnv(p) {
-  const d = l3rmData(); ["time", "az", "el", "clouds", "haze", "exposure"].forEach(k => { if (p[k] === undefined) return; if (p[k] === null || p[k] === "") delete d.env[k]; else d.env[k] = p[k]; });
+  const d = l3rmData(); ["time", "az", "el", "clouds", "haze", "exposure", "rain", "snow", "wet"].forEach(k => { if (p[k] === undefined) return; if (p[k] === null || p[k] === "") delete d.env[k]; else d.env[k] = p[k]; });
   if (p.time && p.az === undefined) delete d.env.az; if (p.time && p.el === undefined) delete d.env.el;
   l3rmSave(); return l3rmEnvResolved();
 }

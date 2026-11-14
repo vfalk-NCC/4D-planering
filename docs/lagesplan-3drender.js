@@ -53,6 +53,35 @@ function l3rnLinearize(S, scene) {
   scene.traverse(o => { if (o.isLight && o.color) { const c0 = o.color.clone(); l3rnLinCol(o.color); S.linUndo.push(() => o.color.copy(c0)); if (o.groundColor) { const g0 = o.groundColor.clone(); l3rnLinCol(o.groundColor); S.linUndo.push(() => o.groundColor.copy(g0)); } } });
 }
 
+/* ---- Väder: blött underlag (mörkare, blankare) och snö (vitt på det som vetter uppåt) för alla standardmaterial ---- */
+const L3RN_WX = { wet: { value: 0 }, snow: { value: 0 } };
+const L3RN_WX_GLSL = `{ float wxUp = clamp(normalize((vec4(normal, 0.0) * viewMatrix).xyz).z, 0.0, 1.0);
+  float wxSn = uWxSnow * smoothstep(0.30, 0.80, wxUp);
+  diffuseColor.rgb *= 1.0 - 0.38 * uWxWet * (0.5 + 0.5 * wxUp); roughnessFactor = max(roughnessFactor * (1.0 - 0.75 * uWxWet), 0.05);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78), wxSn); roughnessFactor = mix(roughnessFactor, 0.9, wxSn); metalnessFactor *= 1.0 - wxSn; }`;
+function l3rnWeather(S, scene, E) {
+  L3RN_WX.wet.value = E.wet || 0; L3RN_WX.snow.value = E.snow || 0; if (!(E.wet > 0 || E.snow > 0)) return;
+  const seen = new Set();
+  scene.traverse(o => {
+    if (!o.isMesh || !o.material || (o.userData && o.userData.l3skSky)) return;
+    [].concat(o.material).forEach(m => {
+      if (!m || seen.has(m) || !m.isMeshStandardMaterial || m.isShaderMaterial || (m.transparent && m.opacity < 0.9)) return; seen.add(m);
+      const prev = m.onBeforeCompile, own = Object.prototype.hasOwnProperty.call(m, "customProgramCacheKey"), pk = m.customProgramCacheKey;
+      m.onBeforeCompile = function (sh, rr) { if (prev) prev.call(this, sh, rr); sh.uniforms.uWxWet = L3RN_WX.wet; sh.uniforms.uWxSnow = L3RN_WX.snow; sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform float uWxWet, uWxSnow;").replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\n" + L3RN_WX_GLSL); };
+      m.customProgramCacheKey = function () { return (prev ? prev.toString() : "") + "|wx"; }; m.needsUpdate = true;
+      S.linUndo.push(() => { m.onBeforeCompile = prev || (() => {}); if (own) m.customProgramCacheKey = pk; else delete m.customProgramCacheKey; m.needsUpdate = true; });
+    });
+  });
+}
+/* Regn och snöfall som streck/prickar över färdig bild (slumpen följer tiden, så filmen får rörelse). */
+function l3rnPrecip(ctx, W, H, E, time) {
+  if (!(E.rain > 0 || E.snow > 0)) return; let s = Math.floor((time || 0) * 24) * 7919 + 13; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+  ctx.save();
+  if (E.rain > 0) { const n = Math.round(E.rain * W * H / 2500), len = H / 22; ctx.lineWidth = Math.max(1, W / 1500); ctx.strokeStyle = "rgba(225,235,250,0.32)"; ctx.beginPath(); for (let i = 0; i < n; i++) { const x = rnd() * W, y = rnd() * H, l = len * (0.5 + rnd()); ctx.moveTo(x, y); ctx.lineTo(x - l * 0.18, y + l); } ctx.stroke(); }
+  if (E.snow > 0) { const n = Math.round(E.snow * W * H / 3500); ctx.fillStyle = "rgba(255,255,255,0.8)"; for (let i = 0; i < n; i++) { const r = Math.max(0.8, (0.6 + rnd() * 1.8) * W / 1500); ctx.globalAlpha = 0.35 + rnd() * 0.55; ctx.beginPath(); ctx.arc(rnd() * W, rnd() * H, r, 0, 6.283); ctx.fill(); } }
+  ctx.restore();
+}
+
 /* Fullskärmsruta för att lägga ihop och tonmappa. */
 function l3rnQuad(frag, uniforms) {
   const m = new THREE.ShaderMaterial({ uniforms, depthTest: false, depthWrite: false, transparent: false, blending: THREE.NoBlending,
@@ -149,6 +178,7 @@ async function l3rnRender(opt = {}) {
     sky.target.position.copy(sph.center); scene.add(sky, sky.target);
     scene.traverse(o => { if (o.isMesh && o.material) [].concat(o.material).forEach(m => { if (m.envMapIntensity != null && !S.env.has(m) && !(m.userData && m.userData.l3rm)) { S.env.set(m, m.envMapIntensity); m.envMapIntensity = physSky ? 0.3 : 0.1 + 0.2 * (1 - Math.min(1, ao)); } }); });
     l3rnLinearize(S, scene);   // linjär färgpipeline (sätts tillbaka i slutet)
+    L3RM_T.value = Number(opt.time) || 0; l3rnWeather(S, scene, E);
     // 4) buffertar: delbild (HDR, halvflyttal), två summabuffertar (ping-pong, flyttal) och slutbilden (8 bit)
     rtS = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true });
     rtA = new THREE.WebGLRenderTarget(W, H, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false }); rtB = rtA.clone();
@@ -172,7 +202,7 @@ async function l3rnRender(opt = {}) {
       }
       r.setRenderTarget(rtOut); r.render(toneQ.scene, toneQ.cam); r.readRenderTargetPixels(rtOut, 0, 0, W, H, px); r.setRenderTarget(S.target);
       for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);   // GL läser nerifrån och upp
-      octx.putImageData(img, 0, 0); return out;
+      octx.putImageData(img, 0, 0); l3rnPrecip(octx, W, H, E, Number(opt.time) || 0); return out;
     };
     // 5) delbilderna
     // skärpedjup: linsen = en skiva; varje delbild ser från en punkt på skivan men mot samma skärpeplan
@@ -245,7 +275,7 @@ function l3rnBtn() {
 const l3rnQ = (el, s) => el.querySelector(s);
 function l3rnOpts(el) {
   const v = s => { const e = l3rnQ(el, s); return e ? e.value : undefined; };
-  return { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), bloom: +(v("#rnBl") || 0.12), dof: +(v("#rnDof") || 0), shadowSize: +(v("#rnSh") || 4096), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked };
+  return l3rnUi.last = { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), bloom: +(v("#rnBl") || 0.12), dof: +(v("#rnDof") || 0), shadowSize: +(v("#rnSh") || 4096), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked };
 }
 function l3rnPreviewSoon() {   // lågupplöst bild efter varje ändring (hoppar över om en full rendering pågår)
   const el = document.getElementById("v3Render"); if (!el) return; clearTimeout(l3rnUi.prevT);
@@ -321,11 +351,12 @@ function l3rnTab(tab, keep) {
     body.innerHTML = `<div class="rn-sub">Tid på dygnet</div><div class="rn-chips">${Object.keys(T).map(k => `<button type="button" class="rn-chip${cur === k ? " on" : ""}" data-time="${k}">${T[k].name}</button>`).join("")}<button type="button" class="rn-chip" data-time="">Egen</button></div>
       <div class="rn-g"><label>Sol, riktning <input id="eAz" type="range" min="0" max="360" value="${Math.round(e.az != null ? e.az : 200)}" /><em>${Math.round(e.az != null ? e.az : 200)}°</em></label><label>Sol, höjd <input id="eEl" type="range" min="3" max="85" value="${Math.round(e.el != null ? e.el : 45)}" /><em>${Math.round(e.el != null ? e.el : 45)}°</em></label>
       <label>Moln <input id="eCl" type="range" min="0" max="1" step="0.05" value="${e.clouds}" /></label><label>Dis <input id="eHz" type="range" min="0" max="1" step="0.05" value="${e.haze}" /></label>
-      <label>Exponering <input id="eEx" type="range" min="0.5" max="2" step="0.05" value="${e.exposure}" /></label></div>
+      <label>Exponering <input id="eEx" type="range" min="0.5" max="2" step="0.05" value="${e.exposure}" /></label>
+      <label>Regn <input id="eRn" type="range" min="0" max="1" step="0.05" value="${e.rain}" /></label><label>Snö <input id="eSn" type="range" min="0" max="1" step="0.05" value="${e.snow}" /></label><label>Blött underlag <input id="eWt" type="range" min="0" max="1" step="0.05" value="${D.env.wet || 0}" /></label></div>
       <div class="rn-help">Molnigt ger svagare, mjukare sol och gråare himmel. Dis tonar av det som är långt bort.</div>`;
     body.querySelectorAll("[data-time]").forEach(b => { b.onclick = () => l3rmSetEnv({ time: b.dataset.time || null, az: b.dataset.time ? undefined : D.env.az, el: b.dataset.time ? undefined : D.env.el }); });
     const sv = (id, k, f) => { const i = l3rnQ(body, id); i.onchange = () => l3rmSetEnv({ [k]: f(+i.value), ...(k === "az" || k === "el" ? { time: null, az: k === "az" ? +i.value : e.az, el: k === "el" ? +i.value : e.el } : {}) }); };
-    sv("#eAz", "az", v => v); sv("#eEl", "el", v => v); sv("#eCl", "clouds", v => v); sv("#eHz", "haze", v => v); sv("#eEx", "exposure", v => v);
+    sv("#eAz", "az", v => v); sv("#eEl", "el", v => v); sv("#eCl", "clouds", v => v); sv("#eHz", "haze", v => v); sv("#eEx", "exposure", v => v); sv("#eRn", "rain", v => v); sv("#eSn", "snow", v => v); sv("#eWt", "wet", v => v);
   }
   if (keep) body.scrollTop = scr;
 }

@@ -80,7 +80,7 @@ async function l3rfFilm(o = {}) {
       for (let i = 0; i < frames && !st.stop; i++) {
         st.i = i; const t = t0 + (t1 - t0) * (frames > 1 ? i / (frames - 1) : 0), d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps, fs0 = performance.now();
         l3plSetDay(d); const c = l3plCamAt(keys, t); if (c) l3plCamApply(c); if (typeof l3animApply === "function") l3animApply(t); if (fx) l3fxFrame(fx, d, ft, t);
-        const res = await l3rnRender({ width: W, height: H, samples, sticky: true, edges: false, soft: o.soft, ao: o.ao, exposure: o.exposure });
+        const res = await l3rnRender({ width: W, height: H, samples, sticky: true, time: ft, edges: false, soft: o.soft, ao: o.ao, exposure: o.exposure, bloom: o.bloom, dof: o.dof, shadowSize: o.shadowSize });
         ctx.drawImage(res.canvas, 0, 0, W, H);
         if (typeof l3fsDrawFrame === "function" && pf.pearls !== false) l3fsDrawFrame(ctx, W, H, d);
         if (fx) l3fxDraw(ctx, W, H, d, ft, fx, caption, pf.pearls !== false); else if (title && typeof l3plOverlay === "function") l3plOverlay(ctx, W, H, d, caption);
@@ -140,7 +140,7 @@ function l3rfTab(body, el) {
     if (l3rf.st) { l3rfStop(); return; }
     l3rf.msg = ""; const msg = q("#rfMsg"), bar = q("#rfBar"), cv = el.querySelector("#rnCv"); q("#rfGo").textContent = "Stoppa"; q("#rfPause").disabled = false; q("#rfSave").disabled = true;
     try {
-      const r = await l3rfFilm({ from: q("#rfFrom").value, to: q("#rfTo").value, sec: +q("#rfSec").value, fps: +q("#rfFps").value, res: q("#rfRes").value, samples: +q("#rfQ").value, format: q("#rfFmt").value, caption: q("#rfCap").value,
+      const r = await l3rfFilm({ from: q("#rfFrom").value, to: q("#rfTo").value, sec: +q("#rfSec").value, fps: +q("#rfFps").value, res: q("#rfRes").value, samples: +q("#rfQ").value, format: q("#rfFmt").value, caption: q("#rfCap").value, soft: (l3rnUi.last || {}).soft, ao: (l3rnUi.last || {}).ao, exposure: (l3rnUi.last || {}).exposure, bloom: (l3rnUi.last || {}).bloom, dof: (l3rnUi.last || {}).dof, shadowSize: (l3rnUi.last || {}).shadowSize,
         onProgress: (i, n, c, inf) => { bar.style.width = Math.round(i / n * 100) + "%"; msg.textContent = `Bild ${i} av ${n} (${inf.day}) · ${(inf.ms / 1000).toFixed(1)} s/bild · ca ${l3rfFmtT(inf.eta / 1000)} kvar`; if (cv) { cv.width = Math.min(960, c.width); cv.height = Math.round(cv.width * c.height / c.width); cv.getContext("2d").drawImage(c, 0, 0, cv.width, cv.height); } } });
       bar.style.width = "100%"; l3rf.msg = `${r.stopped ? "Avbruten" : "Klar"}: ${r.name} – ${r.frames} bilder, ${(r.size / 1e6).toFixed(1).replace(".", ",")} MB, ${l3rfFmtT(r.ms / 1000)}.`; msg.textContent = l3rf.msg;
       if (r.blob && r.size && el.isConnected) { try { downloadBlob(r.blob, r.name); } catch (e) { /* sparas med knappen */ } }
