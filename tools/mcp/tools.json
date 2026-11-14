@@ -902,6 +902,22 @@
         "use_render_materials": {
           "type": "boolean",
           "description": "apply the stored render materials, ground and environment (default true)"
+        },
+        "bloom": {
+          "type": "number",
+          "description": "Glow around very bright areas, 0-1 (default 0.12)"
+        },
+        "depth_of_field": {
+          "type": "number",
+          "description": "Depth-of-field blur amount 0-10 (0 = everything sharp). Focus = the point the camera looks at, or focus_distance"
+        },
+        "focus_distance": {
+          "type": "number",
+          "description": "Focus distance in metres for depth_of_field"
+        },
+        "shadow_size": {
+          "type": "number",
+          "description": "Shadow map size 1024-8192 (default 4096)"
         }
       }
     }

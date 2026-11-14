@@ -9,7 +9,9 @@
    Hjälpgrupper (markering, mått, tillfälliga linjer, handtag) göms under renderingen. Punktmoln ritas inte (för tungt för många delbilder).
    Prefix l3rn. Används av knappen "🎬 Rendera" i 3D-vyn och av MCP-verktyget render_image (lagesplan-l3api.js). */
 
-const l3rn = { busy: false, cancel: false, last: null, ui: null };
+const l3rn = { busy: false, cancel: false, last: null, ui: null, sticky: null };
+/* Filmen (sticky) lämnar den stora skuggkartan kvar mellan bilderna; när filmen är klar sätts vyns egen storlek tillbaka. */
+function l3rnRelease() { const s = l3rn.sticky; l3rn.sticky = null; if (s) { const [L, n] = s; L.shadow.mapSize.set(n, n); if (L.shadow.map) { L.shadow.map.dispose(); L.shadow.map = null; } } }
 const L3RN_Q = { fast: 12, good: 48, best: 160 };
 const l3rnClamp = (v, a, b, d) => { const n = Number(v); return Number.isFinite(n) ? Math.max(a, Math.min(b, n)) : d; };
 function l3rnHalton(i, b) { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; }
@@ -59,11 +61,12 @@ function l3rnQuad(frag, uniforms) {
   const sc = new THREE.Scene(); sc.add(mesh); return { scene: sc, mat: m, mesh, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
 }
 const L3RN_ADD = "uniform sampler2D t, tAcc; uniform float w; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(tAcc, vUv).rgb + texture2D(t, vUv).rgb * w, 1.0); }";
-const L3RN_TONE = `uniform sampler2D t; uniform float ex, vig; varying vec2 vUv;
+const L3RN_TONE = `uniform sampler2D t, b0, b1, b2, b3, b4; uniform float ex, vig, bloom; varying vec2 vUv;
   vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
   vec3 oetf(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
   void main() {
     vec3 c = texture2D(t, vUv).rgb * ex;
+    if (bloom > 0.0) c += bloom * (texture2D(b0, vUv).rgb * 0.30 + texture2D(b1, vUv).rgb * 0.25 + texture2D(b2, vUv).rgb * 0.20 + texture2D(b3, vUv).rgb * 0.15 + texture2D(b4, vUv).rgb * 0.10);   // glöd runt det som är ljusare än vitt
     c = aces(c);                                                                  // filmisk tonkurva: ljusa partier mjukas av i stället för att klippas
     c = oetf(c);                                                                  // linjärt → sRGB
     c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);                                       // lite mer kontrast
@@ -71,6 +74,9 @@ const L3RN_TONE = `uniform sampler2D t; uniform float ex, vig; varying vec2 vUv;
     vec2 p = vUv - 0.5; c *= 1.0 - vig * smoothstep(0.25, 0.85, dot(p, p) * 2.0);    // lätt vinjett
     gl_FragColor = vec4(c, 1.0);
   }`;
+
+const L3RN_BRIGHT = "uniform sampler2D t; uniform float ex, thr; varying vec2 vUv; void main() { vec3 c = texture2D(t, vUv).rgb * ex; float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * max(0.0, l - thr) / max(l, 1e-4), 1.0); }";
+const L3RN_BLUR = "uniform sampler2D t; uniform vec2 d; varying vec2 vUv; void main() { vec3 s = texture2D(t, vUv).rgb * 0.2270270270; s += (texture2D(t, vUv + d * 1.3846153846).rgb + texture2D(t, vUv - d * 1.3846153846).rgb) * 0.3162162162; s += (texture2D(t, vUv + d * 3.2307692308).rgb + texture2D(t, vUv - d * 3.2307692308).rgb) * 0.0702702703; gl_FragColor = vec4(s, 1.0); }";
 
 /* Renderar en stillbild. opt: { width, height, samples|quality (fast/good/best), sunAz, sunEl (grader), soft (solens mjukhet, grader), ao (0–1.6), exposure, vignette (0–1), edges (behåll CAD-konturer), background ("sky"|"keep"), onProgress(done,total,canvas) }.
    Returnerar { canvas, width, height, samples, ms }. */
@@ -82,12 +88,13 @@ async function l3rnRender(opt = {}) {
   const W = Math.round(l3rnClamp(opt.width, 160, maxT, 1600)), H = Math.round(l3rnClamp(opt.height, 90, maxT, W / asp));
   const N = Math.round(l3rnClamp(opt.samples || L3RN_Q[opt.quality] || L3RN_Q.good, 1, 512, L3RN_Q.good));
   const E = typeof l3rmEnvResolved === "function" ? l3rmEnvResolved(opt.env || {}) : { az: null, el: null, warm: 0, clouds: 0, haze: 0, exposure: 1 };
-  const soft = l3rnClamp(opt.soft, 0, 15, 1.6) + E.clouds * 6, ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95) * E.exposure, vig = l3rnClamp(opt.vignette, 0, 1, 0.25);
+  const soft = l3rnClamp(opt.soft, 0, 15, 1.6) + E.clouds * 6, ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95) * E.exposure, vig = l3rnClamp(opt.vignette, 0, 1, 0.25), bloomAmt = l3rnClamp(opt.bloom, 0, 1, 0.12), dofAmt = l3rnClamp(opt.dof, 0, 10, 0);
   const t0 = performance.now();
   l3rn.busy = true; l3rn.cancel = false;
   const S = { mode: l3vm.mode, aspect: cam.aspect, near: cam.near, far: cam.far, target: r.getRenderTarget(), sunDir: l3vm.sunDir ? l3vm.sunDir.clone() : null, lights: [], vis: [], env: new Map(), gizmo: l3.gizmo ? l3.gizmo.visible : null, autoClear: r.autoClear, clear: r.getClearColor(new THREE.Color()), clearA: r.getClearAlpha(), bg: scene.background, fog: scene.fog, envMap: scene.environment, restore: [], linUndo: [] };
-  let sky = null, skyMesh = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
+  let camPos0 = null, blur = null, bloomQ = null, blurQ = null, sky = null, skyMesh = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
   try {
+    camPos0 = cam.position.clone();
     // 1) Realistisk (material, himmelskarta, skuggor, skuggplan) – hör till motorn
     if (l3vm.mode !== "real") l3vmSet("real", true);
     const az = opt.sunAz != null ? opt.sunAz : E.az, el = opt.sunEl != null ? opt.sunEl : E.el;
@@ -102,18 +109,36 @@ async function l3rnRender(opt = {}) {
     scene.children.forEach(c => { if ((c.type === "Object3D" && c.children.length) || (c.userData && c.userData.spin)) { S.vis.push([c, c.visible]); c.visible = false; } });   // handtag, vridcirkel och rotationspunkt syns inte i bilden
     scene.traverse(o => { if (o.userData && o.userData.vmEdge) { S.vis.push([o, o.visible]); o.visible = false; } });
     if (!opt.edges) scene.traverse(o => { if (o.isLineSegments && o.userData.noVm && o.material && o.material.color && o.material.color.getHex() === 0x1f2937) { S.vis.push([o, o.visible]); o.visible = false; } });   // kroppars konturlinjer (CAD-utseendet)
+    cam.aspect = W / H;
+    if (cam.isPerspectiveCamera) {   // snävt djupomfång för skärpa i djupbufferten
+      const bd = new THREE.Box3(); ["bldg", "places", "objs", "plan"].forEach(k => { const g = l3.groups[k]; if (g && g.visible) bd.expandByObject(g); });
+      if (!bd.isEmpty()) {
+        let far = 0; const cp = cam.position;
+        for (let i = 0; i < 8; i++) far = Math.max(far, new THREE.Vector3(i & 1 ? bd.max.x : bd.min.x, i & 2 ? bd.max.y : bd.min.y, i & 4 ? bd.max.z : bd.min.z).distanceTo(cp));
+        const dn = bd.containsPoint(cp) ? 0 : bd.distanceToPoint(cp); cam.far = Math.max(50, far * 1.05); cam.near = Math.max(0.2, Math.min(cam.far / 3000, dn * 0.6 || 0.2));
+        if (cam.far / cam.near > 6000) cam.near = cam.far / 6000;
+      }
+    }
+    cam.updateProjectionMatrix();
     const sunV = (() => { const a = l3vmSun(); return a.position.clone().sub(a.target.position).normalize(); })();
     const time = Number(opt.time) || 0, physSky = opt.background !== "keep";
     if (physSky) {   // fysikalisk himmel (lagesplan-3drsky.js) som bakgrund och som miljökarta
       const sk = l3rnSky(E); if (E.haze > 0) scene.fog = new THREE.FogExp2(l3rnLinCol(new THREE.Color(sk.mid)).multiplyScalar(0.8), E.haze * 0.004);
-      scene.background = null; skyMesh = l3skMesh(E, sunV, time, 1000); scene.add(skyMesh); scene.environment = l3skEnv(r, E, sunV, time);
+      scene.background = null; skyMesh = l3skMesh(E, sunV, time, Math.max(60, cam.far * 0.9)); scene.add(skyMesh); scene.environment = l3skEnv(r, E, sunV, time);
     }
     // 3) ljus: solen mjukas upp, himmelsljus med skugga läggs till, grundljuset sänks så att skuggor kan bli mörka
     scene.traverse(o => { if (o.isLight) S.lights.push([o, o.intensity, o.position.clone(), o.castShadow, o.color ? o.color.clone() : null]); });
     const d0 = sun.position.clone().sub(sun.target.position).normalize();
     const bb = new THREE.Box3(); ["bldg", "places", "objs"].forEach(k => { const g = l3.groups[k]; if (g && g.visible) bb.expandByObject(g); });
     if (bb.isEmpty()) bb.set(new THREE.Vector3(-30, -30, 0), new THREE.Vector3(30, 30, 10));
-    const sph = bb.getBoundingSphere(new THREE.Sphere()), R = Math.max(8, sph.radius * 1.08), dist = R * 2.4, mapN = sun.shadow.mapSize.x;
+    let sph = bb.getBoundingSphere(new THREE.Sphere());
+    { // skuggkartan läggs över det kameran ser av modellen (inte hela modellen) → skarpare skuggor vid närbilder
+      cam.updateMatrixWorld(); const fb = new THREE.Box3(), cp = new THREE.Vector3();
+      for (let i = 0; i < 8; i++) fb.expandByPoint(cp.set(i & 1 ? 1 : -1, i & 2 ? 1 : -1, i & 4 ? 1 : -1).unproject(cam));
+      const vb = bb.clone().intersect(fb); if (!vb.isEmpty()) { const vs = vb.getBoundingSphere(new THREE.Sphere()); if (vs.radius > 1 && vs.radius < sph.radius) sph = vs; }
+    }
+    const R = Math.max(8, sph.radius * 1.08), dist = R * 2.4, mapN = Math.min(maxT, Math.round(l3rnClamp(opt.shadowSize, 1024, 8192, 4096)));
+    [sun].forEach(L => { if (L.shadow.mapSize.x !== mapN) { if (!S.shadowSize) S.shadowSize = [L, L.shadow.mapSize.x]; L.shadow.mapSize.set(mapN, mapN); if (L.shadow.map) { L.shadow.map.dispose(); L.shadow.map = null; } } });
     const fit = L => { L.shadow.bias = -0.0003; L.shadow.normalBias = Math.max(0.02, (2 * R / mapN) * 1.3); Object.assign(L.shadow.camera, { left: -R, right: R, top: R, bottom: -R, near: dist - R * 1.15, far: dist + R * 1.15 }); L.shadow.camera.updateProjectionMatrix(); };   // skuggkartan följer modellen (inte hela marken)
     sun.target.position.copy(sph.center); sun.castShadow = true; fit(sun);
     const hemi = scene.children.find(c => c.isHemisphereLight), fill = scene.children.find(c => c.isDirectionalLight && c !== sun);
@@ -128,28 +153,32 @@ async function l3rnRender(opt = {}) {
     rtS = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true });
     rtA = new THREE.WebGLRenderTarget(W, H, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false }); rtB = rtA.clone();
     rtOut = new THREE.WebGLRenderTarget(W, H, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, depthBuffer: false });
+    if (bloomAmt > 0) { blur = []; for (let k = 0; k < 5; k++) { const bw = Math.max(2, W >> (k + 1)), bh = Math.max(2, H >> (k + 1)), mk = () => new THREE.WebGLRenderTarget(bw, bh, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false }); blur.push({ a: mk(), b: mk(), w: bw, h: bh }); } bloomQ = l3rnQuad(L3RN_BRIGHT, { t: { value: null }, ex: { value: 1 }, thr: { value: 1.2 } }); blurQ = l3rnQuad(L3RN_BLUR, { t: { value: null }, d: { value: new THREE.Vector2() } }); }
     addQ = l3rnQuad(L3RN_ADD, { t: { value: rtS.texture }, tAcc: { value: rtA.texture }, w: { value: 1 / N } });
-    toneQ = l3rnQuad(L3RN_TONE, { t: { value: rtA.texture }, ex: { value: exposure }, vig: { value: vig } });
+    toneQ = l3rnQuad(L3RN_TONE, { t: { value: rtA.texture }, ex: { value: exposure }, vig: { value: vig }, bloom: { value: bloomAmt }, b0: { value: rtA.texture }, b1: { value: rtA.texture }, b2: { value: rtA.texture }, b3: { value: rtA.texture }, b4: { value: rtA.texture } });
     r.autoClear = true; [rtA, rtB].forEach(t => { r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); });
-    cam.aspect = W / H;
-    if (cam.isPerspectiveCamera) {   // snävt djupomfång för skärpa i djupbufferten
-      const bd = new THREE.Box3(); ["bldg", "places", "objs", "plan"].forEach(k => { const g = l3.groups[k]; if (g && g.visible) bd.expandByObject(g); });
-      if (!bd.isEmpty()) {
-        let far = 0; const cp = cam.position;
-        for (let i = 0; i < 8; i++) far = Math.max(far, new THREE.Vector3(i & 1 ? bd.max.x : bd.min.x, i & 2 ? bd.max.y : bd.min.y, i & 4 ? bd.max.z : bd.min.z).distanceTo(cp));
-        const dn = bd.containsPoint(cp) ? 0 : bd.distanceToPoint(cp); cam.far = Math.max(50, far * 1.05); cam.near = Math.max(0.2, Math.min(cam.far / 3000, dn * 0.6 || 0.2));
-        if (cam.far / cam.near > 6000) cam.near = cam.far / 6000;
-      }
-    }
-    cam.updateProjectionMatrix(); if (skyMesh) skyMesh.scale.setScalar(Math.max(60, cam.far * 0.9));
     const out = document.createElement("canvas"); out.width = W; out.height = H; const octx = out.getContext("2d"), px = new Uint8Array(W * H * 4), img = octx.createImageData(W, H);
     const finish = (scale) => {
       toneQ.mat.uniforms.t.value = rtA.texture; toneQ.mat.uniforms.ex.value = exposure * (scale || 1);
+      if (blur) {
+        const pass = (q, tgt) => { r.setRenderTarget(tgt); r.render(q.scene, q.cam); };
+        bloomQ.mat.uniforms.t.value = rtA.texture; bloomQ.mat.uniforms.ex.value = exposure * (scale || 1); pass(bloomQ, blur[0].a);
+        blur.forEach((L, k) => {
+          const src = k ? blur[k - 1].a.texture : blur[0].a.texture;
+          if (k) { blurQ.mat.uniforms.t.value = src; blurQ.mat.uniforms.d.value.set(1 / blur[k - 1].w, 0); pass(blurQ, L.b); blurQ.mat.uniforms.t.value = L.b.texture; blurQ.mat.uniforms.d.value.set(0, 1 / L.h); pass(blurQ, L.a); }
+          else { blurQ.mat.uniforms.t.value = L.a.texture; blurQ.mat.uniforms.d.value.set(1 / L.w, 0); pass(blurQ, L.b); blurQ.mat.uniforms.t.value = L.b.texture; blurQ.mat.uniforms.d.value.set(0, 1 / L.h); pass(blurQ, L.a); }
+          toneQ.mat.uniforms["b" + k].value = L.a.texture;
+        });
+      }
       r.setRenderTarget(rtOut); r.render(toneQ.scene, toneQ.cam); r.readRenderTargetPixels(rtOut, 0, 0, W, H, px); r.setRenderTarget(S.target);
       for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);   // GL läser nerifrån och upp
       octx.putImageData(img, 0, 0); return out;
     };
     // 5) delbilderna
+    // skärpedjup: linsen = en skiva; varje delbild ser från en punkt på skivan men mot samma skärpeplan
+    let focus = Number(opt.focus) > 0 ? Number(opt.focus) : 0; const pos0 = camPos0, bx = new THREE.Vector3(), by = new THREE.Vector3(), bz = new THREE.Vector3();
+    if (dofAmt > 0 && !focus) { cam.updateMatrixWorld(); const tg = (l3.orbit && l3.orbit.target) || sph.center, fw = cam.getWorldDirection(new THREE.Vector3()); focus = Math.max(0.5, tg.clone().sub(cam.position).dot(fw)); }
+    const aperture = dofAmt > 0 ? focus * 0.02 * dofAmt : 0;
     const T = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), bg0 = S.clear;
     let done = 0;
     for (let i = 0; i < N; i++) {
@@ -158,6 +187,12 @@ async function l3rnRender(opt = {}) {
       e1.set(-d0.y, d0.x, 0); if (e1.lengthSq() < 1e-6) e1.set(1, 0, 0); e1.normalize(); e2.crossVectors(d0, e1).normalize();
       const rr = Math.tan(soft * Math.PI / 180) * Math.sqrt(l3rnHalton(i + 1, 5)), th = 2 * Math.PI * l3rnHalton(i + 1, 7);   // solen: en punkt på dess skiva
       T.copy(d0).addScaledVector(e1, rr * Math.cos(th)).addScaledVector(e2, rr * Math.sin(th)).normalize();
+      if (aperture > 0) {
+        cam.position.copy(pos0); cam.updateMatrixWorld(); cam.matrixWorld.extractBasis(bx, by, bz);
+        const la = Math.sqrt(l3rnHalton(i + 1, 17)) * aperture / 2, lt = 2 * Math.PI * l3rnHalton(i + 1, 19), ldx = la * Math.cos(lt), ldy = la * Math.sin(lt);
+        cam.position.copy(pos0).addScaledVector(bx, ldx).addScaledVector(by, ldy); cam.updateMatrixWorld();
+        const pe = cam.projectionMatrix.elements; pe[8] -= pe[0] * ldx / focus; pe[9] -= pe[5] * ldy / focus; cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+      }
       sun.position.copy(sph.center).addScaledVector(T, dist);
       const z = 0.08 + 0.92 * l3rnHalton(i + 1, 11), ph = 2 * Math.PI * l3rnHalton(i + 1, 13), s2 = Math.sqrt(1 - z * z);   // himmelsljuset: slumpad riktning över övre halvklotet (z upp)
       sky.position.set(sph.center.x + Math.cos(ph) * s2 * dist, sph.center.y + Math.sin(ph) * s2 * dist, sph.center.z + z * dist);
@@ -183,13 +218,15 @@ async function l3rnRender(opt = {}) {
     scene.environment = S.envMap;
     scene.fog = S.fog;
     r.setRenderTarget(S.target); r.autoClear = S.autoClear; r.setClearColor(S.clear, S.clearA); scene.background = S.bg; if (bgTex) bgTex.dispose();
+    if (camPos0) { cam.position.copy(camPos0); cam.updateMatrixWorld(); }
     if (cam.clearViewOffset) cam.clearViewOffset(); cam.aspect = S.aspect; cam.near = S.near; cam.far = S.far; cam.updateProjectionMatrix();
     if (sky) { scene.remove(sky, sky.target); if (sky.shadow && sky.shadow.map) sky.shadow.map.dispose(); }
+    if (S.shadowSize && !opt.sticky) { const [L, n] = S.shadowSize; L.shadow.mapSize.set(n, n); if (L.shadow.map) { L.shadow.map.dispose(); L.shadow.map = null; } } else if (S.shadowSize) l3rn.sticky = S.shadowSize;
     S.lights.forEach(([o, inten, pos, cs, col]) => { o.intensity = inten; o.position.copy(pos); o.castShadow = cs; if (col) o.color.copy(col); });
     S.env.forEach((v, m) => { m.envMapIntensity = v; });
     S.vis.forEach(([o, v]) => { o.visible = v; }); if (l3.gizmo && S.gizmo != null) l3.gizmo.visible = S.gizmo;
     l3vm.sunDir = S.sunDir; if (S.mode !== "real") { if (!opt.sticky) l3vmSet(S.mode, true); } else l3vmShadows(true);   // sticky: filmen låter Realistisk stå kvar mellan bilderna och sätter tillbaka läget i slutet
-    [rtS, rtA, rtB, rtOut].forEach(t => t && t.dispose()); [addQ, toneQ].forEach(q => { if (q) { q.mesh.geometry.dispose(); q.mat.dispose(); } });
+    (blur || []).forEach(L => { L.a.dispose(); L.b.dispose(); }); [rtS, rtA, rtB, rtOut].forEach(t => t && t.dispose()); [addQ, toneQ, bloomQ, blurQ].forEach(q => { if (q) { q.mesh.geometry.dispose(); q.mat.dispose(); } });
     l3rn.busy = false;
     l3Render();
   }
@@ -208,7 +245,7 @@ function l3rnBtn() {
 const l3rnQ = (el, s) => el.querySelector(s);
 function l3rnOpts(el) {
   const v = s => { const e = l3rnQ(el, s); return e ? e.value : undefined; };
-  return { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked };
+  return { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), bloom: +(v("#rnBl") || 0.12), dof: +(v("#rnDof") || 0), shadowSize: +(v("#rnSh") || 4096), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked };
 }
 function l3rnPreviewSoon() {   // lågupplöst bild efter varje ändring (hoppar över om en full rendering pågår)
   const el = document.getElementById("v3Render"); if (!el) return; clearTimeout(l3rnUi.prevT);
@@ -238,7 +275,7 @@ function l3rnTab(tab, keep) {
     body.innerHTML = `<div class="rn-g"><label>Kvalitet<select id="rnQ"><option value="fast">Snabb (12)</option><option value="good" selected>Bra (48)</option><option value="best">Bäst (160)</option></select></label>
       <label>Storlek<select id="rnS"><option value="1280">1280 px</option><option value="1920" selected>1920 px (Full HD)</option><option value="2560">2560 px</option><option value="3840">3840 px (4K)</option></select></label>
       <label>Mjuka skuggor <input id="rnSoft" type="range" min="0" max="8" step="0.5" value="1.6" /></label><label>Ambient occlusion <input id="rnAo" type="range" min="0" max="1.5" step="0.1" value="1" /></label>
-      <label>Exponering <input id="rnEx" type="range" min="0.5" max="2" step="0.05" value="0.95" /></label><label class="rn-chk"><input id="rnEdges" type="checkbox" /> Visa konturlinjer på kroppar</label></div>
+      <label>Exponering <input id="rnEx" type="range" min="0.5" max="2" step="0.05" value="0.95" /></label><label title="Glöd runt det som är ljusare än vitt (solen, blanka ytor)">Bloom <input id="rnBl" type="range" min="0" max="1" step="0.05" value="0.12" /></label><label title="Oskärpa före och bakom skärpeplanet (fokus ligger vid det du tittar mot). 0 = allt skarpt">Skärpedjup <input id="rnDof" type="range" min="0" max="5" step="0.25" value="0" /></label><label title="Skuggkartans storlek: större = skarpare skuggor men tyngre">Skuggor<select id="rnSh"><option value="2048">2048</option><option value="4096" selected>4096</option><option value="8192">8192 (kräver mycket grafikminne)</option></select></label><label class="rn-chk"><input id="rnEdges" type="checkbox" /> Visa konturlinjer på kroppar</label></div>
       <div class="rn-note">Material, mark och miljö väljs i flikarna bredvid och gäller bara renderingen – 3D-editorns utseende ändras inte.</div>`;
     body.querySelectorAll("input,select").forEach(i => { i.onchange = i.oninput = () => { if (i.id !== "rnS") l3rnPreviewSoon(); }; });
   } else if (tab === "material") {

@@ -103,7 +103,7 @@ async function l3rfFilm(o = {}) {
     // tillbaka som innan filmen
     $("dateInput").value = day0; $("dateInput").dispatchEvent(new Event("change")); l3plSetDay(day0); if (!keys.length) l3plCamApply(cam0); else l3plCamApply(cam0);
     if (l3vm.mode !== mode0) l3vmSet(mode0, true);
-    l3rf.st = null; l3Render();
+    l3rf.st = null; if (typeof l3rnRelease === "function") l3rnRelease(); l3Render();
   }
 }
 function l3rfStop() { if (l3rf.st) { l3rf.st.stop = true; l3rf.st.paused = false; return true; } return false; }
