@@ -26,6 +26,31 @@ function l3rnSky(E) {
   return { top: hex(top), mid: hex(mid), low: hex(low) };
 }
 
+
+/* ---- Linjär färgpipeline: materialens färger (sRGB) görs linjära medan bilden räknas och sätts tillbaka efteråt ---- */
+const l3rnLin = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+const l3rnLinCol = c => { c.r = l3rnLin(c.r); c.g = l3rnLin(c.g); c.b = l3rnLin(c.b); return c; };
+const l3rnLinCache = new WeakMap();   // geometri → { ver, attr }: hörnfärger i linjärt, räknas om först när de ändrats
+function l3rnLinearize(S, scene) {
+  const seenM = new Set(), seenG = new Set();
+  scene.traverse(o => {
+    if (!o.isMesh || !o.material || (o.userData && (o.userData.l3skSky || o.userData.vmEdge))) return;
+    [].concat(o.material).forEach(m => {
+      if (!m || seenM.has(m) || m.isShaderMaterial || m.userData && m.userData.l3rm) return; seenM.add(m);
+      if (m.color) { const c0 = m.color.clone(); l3rnLinCol(m.color); S.linUndo.push(() => m.color.copy(c0)); }
+      if (m.emissive) { const e0 = m.emissive.clone(); l3rnLinCol(m.emissive); S.linUndo.push(() => m.emissive.copy(e0)); }
+      if (m.map && m.map.encoding !== THREE.sRGBEncoding) { const t = m.map, e = t.encoding; t.encoding = THREE.sRGBEncoding; t.needsUpdate = true; m.needsUpdate = true; S.linUndo.push(() => { t.encoding = e; t.needsUpdate = true; m.needsUpdate = true; }); }
+    });
+    const g = o.geometry, ca = g && g.attributes && g.attributes.color;
+    if (ca && !seenG.has(g) && [].concat(o.material).some(m => m && m.vertexColors && !m.isShaderMaterial)) {
+      seenG.add(g); let c = l3rnLinCache.get(g);
+      if (!c || c.ver !== ca.version || c.src !== ca) { const n = ca.count, iz = ca.itemSize, arr = new Float32Array(n * iz); for (let i = 0; i < n; i++) { for (let k = 0; k < Math.min(3, iz); k++) arr[i * iz + k] = l3rnLin(ca.getX ? (k === 0 ? ca.getX(i) : k === 1 ? ca.getY(i) : ca.getZ(i)) : ca.array[i * iz + k]); if (iz > 3) arr[i * iz + 3] = ca.getW(i); } c = { ver: ca.version, src: ca, attr: new THREE.BufferAttribute(arr, iz) }; l3rnLinCache.set(g, c); }
+      g.setAttribute("color", c.attr); S.linUndo.push(() => g.setAttribute("color", ca));
+    }
+  });
+  scene.traverse(o => { if (o.isLight && o.color) { const c0 = o.color.clone(); l3rnLinCol(o.color); S.linUndo.push(() => o.color.copy(c0)); if (o.groundColor) { const g0 = o.groundColor.clone(); l3rnLinCol(o.groundColor); S.linUndo.push(() => o.groundColor.copy(g0)); } } });
+}
+
 /* Fullskärmsruta för att lägga ihop och tonmappa. */
 function l3rnQuad(frag, uniforms) {
   const m = new THREE.ShaderMaterial({ uniforms, depthTest: false, depthWrite: false, transparent: false, blending: THREE.NoBlending,
@@ -34,14 +59,15 @@ function l3rnQuad(frag, uniforms) {
   const sc = new THREE.Scene(); sc.add(mesh); return { scene: sc, mat: m, mesh, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
 }
 const L3RN_ADD = "uniform sampler2D t, tAcc; uniform float w; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(tAcc, vUv).rgb + texture2D(t, vUv).rgb * w, 1.0); }";
-const L3RN_TONE = `uniform sampler2D t; uniform float ex, vig, srgb; varying vec2 vUv;
+const L3RN_TONE = `uniform sampler2D t; uniform float ex, vig; varying vec2 vUv;
   vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+  vec3 oetf(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
   void main() {
     vec3 c = texture2D(t, vUv).rgb * ex;
     c = aces(c);                                                                  // filmisk tonkurva: ljusa partier mjukas av i stället för att klippas
-    c = mix(c, c * c * (3.0 - 2.0 * c), 0.28);                                       // lite mer kontrast
-    float l = dot(c, vec3(0.299, 0.587, 0.114)); c = clamp(mix(vec3(l), c, 1.14), 0.0, 1.0);   // och färgmättnad
-    if (srgb > 0.5) c = pow(c, vec3(1.0 / 2.2));
+    c = oetf(c);                                                                  // linjärt → sRGB
+    c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);                                       // lite mer kontrast
+    float l = dot(c, vec3(0.299, 0.587, 0.114)); c = clamp(mix(vec3(l), c, 1.08), 0.0, 1.0);   // och färgmättnad
     vec2 p = vUv - 0.5; c *= 1.0 - vig * smoothstep(0.25, 0.85, dot(p, p) * 2.0);    // lätt vinjett
     gl_FragColor = vec4(c, 1.0);
   }`;
@@ -59,8 +85,8 @@ async function l3rnRender(opt = {}) {
   const soft = l3rnClamp(opt.soft, 0, 15, 1.6) + E.clouds * 6, ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95) * E.exposure, vig = l3rnClamp(opt.vignette, 0, 1, 0.25);
   const t0 = performance.now();
   l3rn.busy = true; l3rn.cancel = false;
-  const S = { mode: l3vm.mode, aspect: cam.aspect, near: cam.near, far: cam.far, target: r.getRenderTarget(), sunDir: l3vm.sunDir ? l3vm.sunDir.clone() : null, lights: [], vis: [], env: new Map(), gizmo: l3.gizmo ? l3.gizmo.visible : null, autoClear: r.autoClear, clear: r.getClearColor(new THREE.Color()), clearA: r.getClearAlpha(), bg: scene.background, fog: scene.fog, restore: [] };
-  let sky = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
+  const S = { mode: l3vm.mode, aspect: cam.aspect, near: cam.near, far: cam.far, target: r.getRenderTarget(), sunDir: l3vm.sunDir ? l3vm.sunDir.clone() : null, lights: [], vis: [], env: new Map(), gizmo: l3.gizmo ? l3.gizmo.visible : null, autoClear: r.autoClear, clear: r.getClearColor(new THREE.Color()), clearA: r.getClearAlpha(), bg: scene.background, fog: scene.fog, envMap: scene.environment, restore: [], linUndo: [] };
+  let sky = null, skyMesh = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
   try {
     // 1) Realistisk (material, himmelskarta, skuggor, skuggplan) – hör till motorn
     if (l3vm.mode !== "real") l3vmSet("real", true);
@@ -76,14 +102,14 @@ async function l3rnRender(opt = {}) {
     scene.children.forEach(c => { if ((c.type === "Object3D" && c.children.length) || (c.userData && c.userData.spin)) { S.vis.push([c, c.visible]); c.visible = false; } });   // handtag, vridcirkel och rotationspunkt syns inte i bilden
     scene.traverse(o => { if (o.userData && o.userData.vmEdge) { S.vis.push([o, o.visible]); o.visible = false; } });
     if (!opt.edges) scene.traverse(o => { if (o.isLineSegments && o.userData.noVm && o.material && o.material.color && o.material.color.getHex() === 0x1f2937) { S.vis.push([o, o.visible]); o.visible = false; } });   // kroppars konturlinjer (CAD-utseendet)
-    if (opt.background !== "keep") {   // himmel: mjuk gradient uppifrån och ned
-      const g = document.createElement("canvas"); g.width = 2; g.height = 256; const gx = g.getContext("2d"), gr = gx.createLinearGradient(0, 0, 0, 256);
-      const sk = l3rnSky(E); gr.addColorStop(0, sk.top); gr.addColorStop(0.55, sk.mid); gr.addColorStop(1, sk.low); gx.fillStyle = gr; gx.fillRect(0, 0, 2, 256);
-      if (E.haze > 0) scene.fog = new THREE.FogExp2(new THREE.Color(sk.mid), E.haze * 0.004);
-      bgTex = new THREE.CanvasTexture(g); bgTex.minFilter = bgTex.magFilter = THREE.LinearFilter; bgTex.generateMipmaps = false; bgTex.encoding = r.outputEncoding; scene.background = bgTex;
+    const sunV = (() => { const a = l3vmSun(); return a.position.clone().sub(a.target.position).normalize(); })();
+    const time = Number(opt.time) || 0, physSky = opt.background !== "keep";
+    if (physSky) {   // fysikalisk himmel (lagesplan-3drsky.js) som bakgrund och som miljökarta
+      const sk = l3rnSky(E); if (E.haze > 0) scene.fog = new THREE.FogExp2(l3rnLinCol(new THREE.Color(sk.mid)).multiplyScalar(0.8), E.haze * 0.004);
+      scene.background = null; skyMesh = l3skMesh(E, sunV, time, 1000); scene.add(skyMesh); scene.environment = l3skEnv(r, E, sunV, time);
     }
     // 3) ljus: solen mjukas upp, himmelsljus med skugga läggs till, grundljuset sänks så att skuggor kan bli mörka
-    scene.traverse(o => { if (o.isLight) S.lights.push([o, o.intensity, o.position.clone(), o.castShadow]); });
+    scene.traverse(o => { if (o.isLight) S.lights.push([o, o.intensity, o.position.clone(), o.castShadow, o.color ? o.color.clone() : null]); });
     const d0 = sun.position.clone().sub(sun.target.position).normalize();
     const bb = new THREE.Box3(); ["bldg", "places", "objs"].forEach(k => { const g = l3.groups[k]; if (g && g.visible) bb.expandByObject(g); });
     if (bb.isEmpty()) bb.set(new THREE.Vector3(-30, -30, 0), new THREE.Vector3(30, 30, 10));
@@ -91,19 +117,19 @@ async function l3rnRender(opt = {}) {
     const fit = L => { L.shadow.bias = -0.0003; L.shadow.normalBias = Math.max(0.02, (2 * R / mapN) * 1.3); Object.assign(L.shadow.camera, { left: -R, right: R, top: R, bottom: -R, near: dist - R * 1.15, far: dist + R * 1.15 }); L.shadow.camera.updateProjectionMatrix(); };   // skuggkartan följer modellen (inte hela marken)
     sun.target.position.copy(sph.center); sun.castShadow = true; fit(sun);
     const hemi = scene.children.find(c => c.isHemisphereLight), fill = scene.children.find(c => c.isDirectionalLight && c !== sun);
-    if (hemi) hemi.intensity = 0.08 + 0.12 * (1 - Math.min(1, ao)); if (fill) fill.intensity = 0.03;
+    if (hemi) hemi.intensity = 0.0; if (fill) fill.intensity = 0.0;
     const lowSun = el != null ? l3rnClamp(el / 14, 0.25, 1, 1) : 1;
-    sun.intensity = 0.95 * (1 - 0.7 * E.clouds) * lowSun; if (E.warm > 0) sun.color.setRGB(1, 1 - 0.22 * E.warm, 1 - 0.5 * E.warm);
-    if (hemi) hemi.intensity += E.clouds * 0.18;
-    sky = new THREE.DirectionalLight(E.warm > 0.5 ? 0xf0d8c8 : 0xdbe8ff, 0.8 * ao * (1 + 0.7 * E.clouds)); sky.castShadow = ao > 0; sky.shadow.mapSize.set(mapN, mapN); fit(sky);
+    sun.intensity = 1.5 * (1 - 0.75 * E.clouds) * lowSun; if (E.warm > 0) sun.color.setRGB(1, 1 - 0.22 * E.warm, 1 - 0.5 * E.warm);
+        sky = new THREE.DirectionalLight(0xffffff, 0.55 * ao * (1 + 0.8 * E.clouds)); sky.castShadow = ao > 0; sky.shadow.mapSize.set(mapN, mapN); fit(sky);
     sky.target.position.copy(sph.center); scene.add(sky, sky.target);
-    scene.traverse(o => { if (o.isMesh && o.material) [].concat(o.material).forEach(m => { if (m.envMapIntensity != null && !S.env.has(m) && !(m.userData && m.userData.l3rm)) { S.env.set(m, m.envMapIntensity); m.envMapIntensity = 0.1 + 0.2 * (1 - Math.min(1, ao)); } }); });
+    scene.traverse(o => { if (o.isMesh && o.material) [].concat(o.material).forEach(m => { if (m.envMapIntensity != null && !S.env.has(m) && !(m.userData && m.userData.l3rm)) { S.env.set(m, m.envMapIntensity); m.envMapIntensity = physSky ? 0.3 : 0.1 + 0.2 * (1 - Math.min(1, ao)); } }); });
+    l3rnLinearize(S, scene);   // linjär färgpipeline (sätts tillbaka i slutet)
     // 4) buffertar: delbild (HDR, halvflyttal), två summabuffertar (ping-pong, flyttal) och slutbilden (8 bit)
     rtS = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true });
     rtA = new THREE.WebGLRenderTarget(W, H, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false }); rtB = rtA.clone();
     rtOut = new THREE.WebGLRenderTarget(W, H, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, depthBuffer: false });
     addQ = l3rnQuad(L3RN_ADD, { t: { value: rtS.texture }, tAcc: { value: rtA.texture }, w: { value: 1 / N } });
-    toneQ = l3rnQuad(L3RN_TONE, { t: { value: rtA.texture }, ex: { value: exposure }, vig: { value: vig }, srgb: { value: r.outputEncoding === THREE.sRGBEncoding ? 1 : 0 } });
+    toneQ = l3rnQuad(L3RN_TONE, { t: { value: rtA.texture }, ex: { value: exposure }, vig: { value: vig } });
     r.autoClear = true; [rtA, rtB].forEach(t => { r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); });
     cam.aspect = W / H;
     if (cam.isPerspectiveCamera) {   // snävt djupomfång för skärpa i djupbufferten
@@ -115,7 +141,7 @@ async function l3rnRender(opt = {}) {
         if (cam.far / cam.near > 6000) cam.near = cam.far / 6000;
       }
     }
-    cam.updateProjectionMatrix();
+    cam.updateProjectionMatrix(); if (skyMesh) skyMesh.scale.setScalar(Math.max(60, cam.far * 0.9));
     const out = document.createElement("canvas"); out.width = W; out.height = H; const octx = out.getContext("2d"), px = new Uint8Array(W * H * 4), img = octx.createImageData(W, H);
     const finish = (scale) => {
       toneQ.mat.uniforms.t.value = rtA.texture; toneQ.mat.uniforms.ex.value = exposure * (scale || 1);
@@ -136,6 +162,7 @@ async function l3rnRender(opt = {}) {
       const z = 0.08 + 0.92 * l3rnHalton(i + 1, 11), ph = 2 * Math.PI * l3rnHalton(i + 1, 13), s2 = Math.sqrt(1 - z * z);   // himmelsljuset: slumpad riktning över övre halvklotet (z upp)
       sky.position.set(sph.center.x + Math.cos(ph) * s2 * dist, sph.center.y + Math.sin(ph) * s2 * dist, sph.center.z + z * dist);
       sun.updateMatrixWorld(); sun.target.updateMatrixWorld(); sky.updateMatrixWorld(); sky.target.updateMatrixWorld();
+      if (skyMesh) skyMesh.position.copy(cam.position); skyMesh && skyMesh.updateMatrixWorld();
       r.setRenderTarget(rtS); r.setClearColor(bg0, 1); r.render(scene, cam);
       addQ.mat.uniforms.tAcc.value = rtA.texture; r.setRenderTarget(rtB); r.render(addQ.scene, addQ.cam); [rtA, rtB] = [rtB, rtA];
       done++;
@@ -150,12 +177,15 @@ async function l3rnRender(opt = {}) {
     return l3rn.last;
   } finally {
     // 6) återställ allt
+    S.linUndo.splice(0).reverse().forEach(f => { try { f(); } catch (e) { /* bara visning */ } });
     if (typeof l3rmEnd === "function") l3rmEnd(S);
+    if (skyMesh) { scene.remove(skyMesh); skyMesh.geometry.dispose(); skyMesh.material.dispose(); }
+    scene.environment = S.envMap;
     scene.fog = S.fog;
     r.setRenderTarget(S.target); r.autoClear = S.autoClear; r.setClearColor(S.clear, S.clearA); scene.background = S.bg; if (bgTex) bgTex.dispose();
     if (cam.clearViewOffset) cam.clearViewOffset(); cam.aspect = S.aspect; cam.near = S.near; cam.far = S.far; cam.updateProjectionMatrix();
     if (sky) { scene.remove(sky, sky.target); if (sky.shadow && sky.shadow.map) sky.shadow.map.dispose(); }
-    S.lights.forEach(([o, inten, pos, cs]) => { o.intensity = inten; o.position.copy(pos); o.castShadow = cs; });
+    S.lights.forEach(([o, inten, pos, cs, col]) => { o.intensity = inten; o.position.copy(pos); o.castShadow = cs; if (col) o.color.copy(col); });
     S.env.forEach((v, m) => { m.envMapIntensity = v; });
     S.vis.forEach(([o, v]) => { o.visible = v; }); if (l3.gizmo && S.gizmo != null) l3.gizmo.visible = S.gizmo;
     l3vm.sunDir = S.sunDir; if (S.mode !== "real") { if (!opt.sticky) l3vmSet(S.mode, true); } else l3vmShadows(true);   // sticky: filmen låter Realistisk stå kvar mellan bilderna och sätter tillbaka läget i slutet

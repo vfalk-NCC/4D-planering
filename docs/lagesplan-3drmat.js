@@ -155,7 +155,7 @@ function l3rmMaterial(def, o = {}) {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\n" + L3RM_VERT).replace("#include <begin_vertex>", "#include <begin_vertex>\n vRmW = (modelMatrix * vec4(transformed, 1.0)).xyz; vRmN = normalize(mat3(modelMatrix) * objectNormal);");
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n" + L3RM_FRAG_PARS)
-      .replace("#include <map_fragment>", "vec3 rmWt = rmW(vRmN); vec3 rmAlb = texture2D(tRmA, rmUV(vRmW.zy)).rgb * rmWt.x + texture2D(tRmA, rmUV(vRmW.xz)).rgb * rmWt.y + texture2D(tRmA, rmUV(vRmW.xy)).rgb * rmWt.z; vec3 rmAlb2 = texture2D(tRmA, rmUV(vRmW.zy + 7.3) * 0.173).rgb * rmWt.x + texture2D(tRmA, rmUV(vRmW.xz + 3.1) * 0.173).rgb * rmWt.y + texture2D(tRmA, rmUV(vRmW.xy + 5.7) * 0.173).rgb * rmWt.z; rmAlb = mix(rmAlb, rmAlb * (0.55 + 0.9 * dot(rmAlb2, vec3(0.3333))), 0.35); float rmLum = dot(rmAlb, vec3(0.299, 0.587, 0.114)); diffuseColor.rgb *= rmAlb * uRmTint;")
+      .replace("#include <map_fragment>", "vec3 rmWt = rmW(vRmN); vec3 rmAlb = texture2D(tRmA, rmUV(vRmW.zy)).rgb * rmWt.x + texture2D(tRmA, rmUV(vRmW.xz)).rgb * rmWt.y + texture2D(tRmA, rmUV(vRmW.xy)).rgb * rmWt.z; vec3 rmAlb2 = texture2D(tRmA, rmUV(vRmW.zy + 7.3) * 0.173).rgb * rmWt.x + texture2D(tRmA, rmUV(vRmW.xz + 3.1) * 0.173).rgb * rmWt.y + texture2D(tRmA, rmUV(vRmW.xy + 5.7) * 0.173).rgb * rmWt.z; rmAlb = mix(rmAlb, rmAlb * (0.55 + 0.9 * dot(rmAlb2, vec3(0.3333))), 0.35); float rmLum = dot(rmAlb, vec3(0.299, 0.587, 0.114)); diffuseColor.rgb *= pow(rmAlb, vec3(2.2)) * pow(uRmTint, vec3(2.2));")
       .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n roughnessFactor = clamp(roughnessFactor + (0.5 - rmLum) * uRmRv, 0.03, 1.0);")
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
       if (uRmBump > 0.0) {
@@ -167,7 +167,7 @@ function l3rmMaterial(def, o = {}) {
         normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
       }`);
   };
-  m.customProgramCacheKey = () => "l3rm-1";
+  m.customProgramCacheKey = () => "l3rm-2";
   l3rm.matCache.set(key, m); return m;
 }
 
