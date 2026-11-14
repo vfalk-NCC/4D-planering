@@ -1187,5 +1187,58 @@
       "type": "object",
       "properties": {}
     }
+  },
+  {
+    "name": "animate_object",
+    "description": "Animate a placed object on the film timeline with keyframes (position, rotation, height offset, visibility, and WORK for machines). Machines to place with place_library: mach:crane, mach:excavator, mach:truck, mach:loader, mach:human (animated models from the walk mode: wheels roll while driving, boom/arm/bed move while work=true). Between keys the object moves smoothly; work=true from a key onward lets the machine work (smoothly blended). x,y in model coordinates. follow_path turns the object along its direction of travel. The animation is played in the film and in render_film_start. clear=true removes the keys.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "object_id": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z_offset": {
+                "type": "number"
+              },
+              "rotation": {
+                "type": "number"
+              },
+              "work": {
+                "type": "boolean"
+              },
+              "visible": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "date"
+            ]
+          }
+        },
+        "follow_path": {
+          "type": "boolean"
+        },
+        "clear": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "object_id"
+      ]
+    }
   }
 ]

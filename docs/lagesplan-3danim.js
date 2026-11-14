@@ -34,7 +34,7 @@ function l3animCapture(iso) {
   list.forEach(p => {
     const pose = l3animPose(p); if (!pose) return;
     const keys = l3animKeys(p).filter(k => k.date !== iso);
-    keys.push({ date: iso, ...pose, ...(l3fs.vis === false ? { v: false } : {}) });
+    keys.push({ date: iso, ...pose, ...(l3fs.vis === false ? { v: false } : {}), ...(l3fs.work ? { w: 1 } : {}) });
     p.anim = keys.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 60);
     if (typeof placeTouch === "function") placeTouch(p);
   });
@@ -81,12 +81,12 @@ function l3animAt(keys, t, face) {
   for (let i = 0; i < n; i++) if (T[i] <= t) vis = keys[i].v !== false;
   const H = face && n > 1 ? l3animHeads(keys) : null, off = H ? (keys[0].rot || 0) - H[0] : 0;
   let pose;
-  if (t <= T[0] || n === 1) pose = { x: keys[0].x, y: keys[0].y, dz: keys[0].dz || 0, rot: keys[0].rot || 0 };
-  else if (t >= T[n - 1]) pose = { x: keys[n - 1].x, y: keys[n - 1].y, dz: keys[n - 1].dz || 0, rot: H ? H[n - 2] + off : keys[n - 1].rot || 0 };
+  if (t <= T[0] || n === 1) pose = { x: keys[0].x, y: keys[0].y, dz: keys[0].dz || 0, rot: keys[0].rot || 0, w: keys[0].w || 0 };
+  else if (t >= T[n - 1]) pose = { x: keys[n - 1].x, y: keys[n - 1].y, dz: keys[n - 1].dz || 0, rot: H ? H[n - 2] + off : keys[n - 1].rot || 0, w: keys[n - 1].w || 0 };
   else {
     let i = 0; while (i < n - 1 && t > T[i + 1]) i++;
     const u = T[i + 1] > T[i] ? (t - T[i]) / (T[i + 1] - T[i]) : 1, s = l3animSmooth(u), a = keys[i], b = keys[i + 1];
-    pose = { x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s, dz: (a.dz || 0) + ((b.dz || 0) - (a.dz || 0)) * s, rot: (a.rot || 0) + ((b.rot || 0) - (a.rot || 0)) * s };
+    pose = { x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s, dz: (a.dz || 0) + ((b.dz || 0) - (a.dz || 0)) * s, rot: (a.rot || 0) + ((b.rot || 0) - (a.rot || 0)) * s, w: (a.w || 0) + ((b.w || 0) - (a.w || 0)) * s };
     if (H) { // sväng över de första/sista 25 % av sträckan så att riktningen är jämn genom nyckeln
       const hc = H[i], hp = i ? H[i - 1] : hc, hn = i < n - 2 ? H[i + 1] : hc;
       pose.rot = (u < 0.25 ? l3animLerpAng(hp, hc, l3animSmooth(0.5 + u * 2)) : u > 0.75 ? l3animLerpAng(hc, hn, l3animSmooth((u - 0.75) * 2)) : hc) + off;
@@ -105,7 +105,7 @@ function l3animApply(t) {
   if (!l3 || !l3.placeMeshes) return;
   l3animAll().forEach(p => {
     const g = l3.placeMeshes.get(p.id), pose = g && l3animAt(l3animKeys(p), t, p.animFace === true);
-    if (g && pose) { l3animPlace(p, g, pose); g.visible = pose.v !== false && !(l3.hidden && l3.hidden.has(p.id)); g.userData.animOn = true; }
+    if (g && pose) { l3animPlace(p, g, pose); if (g.userData.mach && typeof l3machApply === "function") l3machApply(p, g, pose, l3animKeys(p), t, p.animFace === true); g.visible = pose.v !== false && !(l3.hidden && l3.hidden.has(p.id)); g.userData.animOn = true; }
   });
   if (l3.groups.anim) l3.groups.anim.visible = l3animPathOn(); // banan syns inte i uppspelning och film
 }
@@ -118,6 +118,7 @@ function l3animReset() {
     g.position.set(p.x - l3.O[0], p.y - l3.O[1], (Number(p.z) || 0) + (Number(p.dz) || 0) - l3.O[2]);
     g.rotation.z = (Number(p.rot) || 0) * Math.PI / 180;
     g.visible = !(l3.hidden && l3.hidden.has(p.id));
+    if (g.userData.mach && typeof l3machRest === "function") l3machRest(g);
   });
   l3animPaths();
   if (typeof l3Render === "function") l3Render();

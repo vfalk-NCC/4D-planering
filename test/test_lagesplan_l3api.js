@@ -193,6 +193,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     let stt = null; for (let i = 0; i < 400; i++) { stt = (await tool('render_film_status', {})).json; if (!stt.running) break; if (stt.frame >= 3) await tool('render_film_stop', {}); await new Promise(r => setTimeout(r, 150)); }
     if (stt.running || stt.error || !stt.result || stt.result.frames < 1 || !stt.result.stopped && stt.result.frames !== 24) fail('render_film_status/stop: ' + JSON.stringify(stt));
     const af = await page.evaluate(() => ({ st: !!l3rf.st, busy: l3rn.busy })); if (af.st || af.busy) fail('Filmen ska släppa motorn: ' + JSON.stringify(af));
+    const mp = await tool('place_library', { type: 'mach:excavator', x: O[0] + 3, y: O[1] + 3, z: O[2] }); if (mp.err) fail('place_library mach: ' + mp.text);
+    const an = await tool('animate_object', { object_id: mp.json.id, keys: [{ date: '2025-01-01', x: O[0] + 3, y: O[1] + 3 }, { date: '2025-01-05', x: O[0] + 23, y: O[1] + 3, work: true }], follow_path: true }); if (an.err || an.json.keys !== 2) fail('animate_object: ' + (an.text || ''));
+    const bad = await tool('animate_object', { object_id: mp.json.id, keys: [{ date: 'igår' }] }); if (!bad.err) fail('animate_object ska neka felaktigt datum');
+    await tool('animate_object', { object_id: mp.json.id, clear: true }); await tool('delete_objects', { ids: [mp.json.id] });
     console.log('OK: film via MCP – start, förlopp, stopp (' + stt.result.frames + ' bilder, ' + stt.result.format + ')'); }
 
   // --- rutan "Rendera" i 3D-vyn ---

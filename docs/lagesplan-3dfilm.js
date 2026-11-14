@@ -83,7 +83,7 @@ function l3fsRender() {
       <button type="button" class="v3-ic v3-fs-x" id="v3FsClose" title="Stäng tidslinjen">✕</button>
       <div class="v3-fs-date" id="v3FsDate"></div>
       <div class="v3-fs-range">${E(l3plShortIso(t0))} – ${E(l3plShortIso(t1))}</div>
-      <div class="v3-fs-opts" title="Gäller ◆ Nyckel (objektanimering)"><label title="Objektet syns från den här nyckeln och framåt (till nästa nyckel). Avbockad = det försvinner."><input type="checkbox" id="v3FsVis" ${l3fs.vis === false ? "" : "checked"} /> Synlig</label><label title="Visa objektens rörelsebanor som streckade linjer (syns inte i uppspelning och film)"><input type="checkbox" id="v3FsPath" ${(l3plPrefs().film || {}).animPath === false ? "" : "checked"} /> Bana</label><label title="De markerade objekten vrids efter färdriktningen"><input type="checkbox" id="v3FsFace" ${faceAll ? "checked" : ""} /> Följ banan</label></div>
+      <div class="v3-fs-opts" title="Gäller ◆ Nyckel (objektanimering)"><label title="Objektet syns från den här nyckeln och framåt (till nästa nyckel). Avbockad = det försvinner."><input type="checkbox" id="v3FsVis" ${l3fs.vis === false ? "" : "checked"} /> Synlig</label><label title="Maskinen arbetar från den här nyckeln och framåt (grävarm, kranbom, flak …) – mjuk övergång mellan nycklarna"><input type="checkbox" id="v3FsWork" ${l3fs.work ? "checked" : ""} /> Arbetar</label><label title="Visa objektens rörelsebanor som streckade linjer (syns inte i uppspelning och film)"><input type="checkbox" id="v3FsPath" ${(l3plPrefs().film || {}).animPath === false ? "" : "checked"} /> Bana</label><label title="De markerade objekten vrids efter färdriktningen"><input type="checkbox" id="v3FsFace" ${faceAll ? "checked" : ""} /> Följ banan</label></div>
     </div>
     <div class="v3-fs-track" id="v3FsTrack" style="--w:${W}px">
       <div class="v3-fs-days">${days.map(d => `<i class="${d.we ? "we" : ""}" style="left:${(d.u * W).toFixed(1)}px;width:${Math.max(1, dayPx).toFixed(1)}px"></i>`).join("")}</div>
@@ -111,6 +111,7 @@ function l3fsBind(el, t0, t1, W) {
     l3fsRender();
   };
   el.querySelector("#v3FsVis").onchange = e => { l3fs.vis = e.target.checked; };
+  el.querySelector("#v3FsWork").onchange = e => { l3fs.work = e.target.checked; };
   el.querySelector("#v3FsPath").onchange = e => { l3plSet("film", { ...l3plPrefs().film, animPath: e.target.checked }); l3animPaths(); l3Render(); };
   el.querySelector("#v3FsFace").onchange = e => { if (!l3animFaceSet(e.target.checked)) { e.target.checked = false; return; } l3animApply(l3fs.t); l3Render(); };
   el.querySelector("#v3FsAKey").onclick = () => {

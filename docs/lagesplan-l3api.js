@@ -283,6 +283,17 @@ l3api.methods.render_image = async a => {
   const url = res.canvas.toDataURL("image/png");
   return { image: { mime: "image/png", data: url.split(",")[1] }, size: [res.width, res.height], samples: res.samples, seconds: Math.round(res.ms / 100) / 10 };
 };
+/* ---- Animering på filmens tidslinje: nycklar med läge, vridning, synlighet och arbete (maskiner: lagesplan-3dmach.js) ---- */
+l3api.methods.animate_object = a => {
+  l3apiReady(); const p = placements.find(q => q.id === a.object_id); if (!p) throw new Error("Okänt object_id (animera placerade objekt, t.ex. mach:excavator)");
+  if (!Array.isArray(a.keys) && !a.clear) throw new Error("keys: [{date, x, y, z_offset?, rotation?, work?, visible?}] eller clear=true");
+  placeSnapshot();
+  if (a.clear) delete p.anim;
+  else p.anim = a.keys.slice(0, 60).map(k => { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(k.date))) throw new Error("date ska vara YYYY-MM-DD"); const o = { date: k.date, x: l3apiNum(k.x, p.x), y: l3apiNum(k.y, p.y), dz: l3apiNum(k.z_offset, 0), rot: l3apiNum(k.rotation, Number(p.rot) || 0) }; if (k.work) o.w = 1; if (k.visible === false) o.v = false; return o; }).sort((x, y) => x.date.localeCompare(y.date));
+  if (a.follow_path != null) { if (a.follow_path) p.animFace = true; else delete p.animFace; }
+  placeTouch(p); if (typeof l3animReset === "function" && !p.anim) l3animReset();
+  return { id: p.id, keys: (p.anim || []).length, follow_path: p.animFace === true };
+};
 /* ---- Film i renderingsläget (lagesplan-3drfilm.js): startas i bakgrunden, status hämtas separat ---- */
 l3api.methods.render_film_start = a => {
   l3apiReady(); if (typeof l3rfFilm !== "function") throw new Error("Filmmotorn är inte inläst"); if (l3rf.st) throw new Error("En film renderas redan");
