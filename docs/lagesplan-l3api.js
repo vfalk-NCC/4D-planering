@@ -186,6 +186,103 @@ l3api.methods.screenshot = a => {
 l3api.methods.undo = () => { l3apiReady(); l3Undo(); return { ok: true }; };
 l3api.methods.redo = () => { l3apiReady(); if (typeof l3Redo === "function") l3Redo(); return { ok: true }; };
 
+/* ---- Avancerad modellering (Victor 2026-11-14) ---- */
+const l3apiFlat = p => p && p.m && (p.m.k === "face" || p.m.k === "solid") && p.m.pl && MG.near(p.m.pl.u, [1, 0, 0], 1e-6) && MG.near(p.m.pl.v, [0, 1, 0], 1e-6);
+function l3apiNeedFlat(p) { if (!l3apiFlat(p)) throw new Error("Det här gäller ritade ytor och kroppar i ett vågrätt plan (skapade med create_box/prism/cylinder/wall). Objektet är inte det."); }
+l3api.methods.push_pull = a => {
+  l3apiReady(); const p = l3apiById(a.id), d = l3apiNum(a.distance, 0); if (!d) throw new Error("distance (meter, + uppåt / − nedåt) krävs");
+  if (!p.m || (p.m.k !== "face" && p.m.k !== "solid")) throw new Error("Push/Pull gäller ritade ytor och kroppar");
+  modEdit(p, m => {
+    const n = MG.normal(m.pl);
+    if (m.k === "face") { if (d < 0) m.pl = { ...m.pl, o: MG.round3(MG.add(m.pl.o, MG.mul(n, d))) }; m.k = "solid"; m.d = MG.r3(Math.abs(d)); }
+    else { const nd = m.d + d; if (nd < 0.001) throw new Error(`Kroppen är bara ${m.d} m hög – dra högst ${-m.d} m neråt (eller ta bort den)`); m.d = MG.r3(nd); }
+  });
+  l3apiAfter(p); return l3apiBrief(p);
+};
+l3api.methods.offset_outline = a => {
+  l3apiReady(); const p = l3apiById(a.id), d = l3apiNum(a.distance, 0); if (!d) throw new Error("distance (meter, + utåt / − inåt) krävs"); l3apiNeedFlat(p);
+  modEdit(p, m => { const o = MG.offsetLoop(m.loops[0], -d); if (!o || o.length < 3 || Math.abs(MG.area2(o)) < 1e-4) throw new Error("Konturen försvinner vid den förskjutningen"); m.loops[0] = MG.ccw(o).map(q => [MG.r3(q[0]), MG.r3(q[1])]); });
+  l3apiAfter(p); return l3apiBrief(p);
+};
+l3api.methods.transform_object = a => {
+  l3apiReady(); const p = l3apiById(a.id); placeSnapshot();
+  if (Array.isArray(a.move)) placeShift(p, l3apiNum(a.move[0], 0), l3apiNum(a.move[1], 0), l3apiNum(a.move[2], 0));
+  if (a.rotate != null) p.rot = (Number(p.rot) || 0) + l3apiNum(a.rotate, 0);
+  if (a.scale != null || a.mirror) {
+    l3apiNeedFlat(p); const sc = Array.isArray(a.scale) ? a.scale.map(Number) : [l3apiNum(a.scale, 1), l3apiNum(a.scale, 1), l3apiNum(a.scale, 1)];
+    if (sc.some(v => !(v > 0))) throw new Error("scale måste vara > 0 (använd mirror för spegling)");
+    modEdit(p, m => {
+      m.loops = m.loops.map(L => { let q = L.map(c => [c[0] * sc[0], c[1] * sc[1]]); if (a.mirror === "x") q = q.map(c => [-c[0], c[1]]); if (a.mirror === "y") q = q.map(c => [c[0], -c[1]]); return (a.mirror ? MG.ccw(q) : q).map(c => [MG.r3(c[0]), MG.r3(c[1])]); });
+      if (m.k === "solid") m.d = MG.r3(m.d * sc[2]);
+    }, { snapshot: false });
+  } else { placeTouch(p); l3RebuildOne(p); l3Changed(); }
+  l3apiAfter(p); return l3apiBrief(p);
+};
+l3api.methods.array_copy = a => {
+  l3apiReady(); const p = l3apiById(a.id), n = Math.round(l3apiNum(a.count, 0)); if (n < 1 || n > 200) throw new Error("count ska vara 1–200"); placeSnapshot();
+  const out = [], dx = l3apiNum(a.dx, 0), dy = l3apiNum(a.dy, 0), dz = l3apiNum(a.dz, 0);
+  for (let i = 1; i <= n; i++) { const c = JSON.parse(JSON.stringify(p)); c.id = ghNewId(); c.name = placeNextName(p.name); c.created_at = new Date().toISOString(); placements.push(c); placeShift(c, dx * i, dy * i, dz * i); placeTouch(c); l3AddPlacementMesh(c); out.push(c); }
+  l3SelectIds(out.map(c => c.id)); l3Changed(); return { created: out.length, ids: out.map(c => c.id) };
+};
+/* Vägg längs en linje: konturen runt linjen (tjocklek) dras upp till höjden. Hörn geras. */
+function l3apiWallOutline(P, t, closed) {
+  const n = P.length, L = [], R = [], h = t / 2, dir = i => { const a = P[i], b = P[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+  for (let i = 0; i < n; i++) {
+    const s0 = closed || i > 0 ? dir((i + n - 1) % n) : null, s1 = closed || i < n - 1 ? dir(i) : null, a = s0 || s1, b = s1 || s0;
+    let nx = -(a[1] + b[1]), ny = a[0] + b[0], nl = Math.hypot(nx, ny); if (nl < 1e-6) { nx = -a[1]; ny = a[0]; nl = 1; }
+    nx /= nl; ny /= nl; const cos = Math.max(0.35, nx * -a[1] + ny * a[0]), m = h / cos;
+    L.push([P[i][0] + nx * m, P[i][1] + ny * m]); R.push([P[i][0] - nx * m, P[i][1] - ny * m]);
+  }
+  return closed ? { outer: L, inner: R } : L.concat(R.reverse());
+}
+l3api.methods.create_wall = a => {
+  l3apiReady(); const P = (a.points || []).map(q => l3apiPt(q, 2)), t = l3apiNum(a.thickness, 0.2), H = l3apiNum(a.height, 0);
+  if (P.length < 2 || !(H > 0) || !(t > 0)) throw new Error("points (minst 2 punkter), thickness och height (meter) krävs");
+  const z = l3apiNum(a.z, 0), anchor = [P[0][0], P[0][1], z], rel = q => [q[0] - anchor[0], q[1] - anchor[1]];
+  if (a.closed && P.length >= 3) {   // sluten vägg (rum): yttre kontur med hål
+    const { outer, inner } = l3apiWallOutline(P, t, true), o = MG.ccw(outer.map(rel)), i2 = MG.cw(inner.map(rel));
+    const p = modCreate({ k: "solid", pl: { o: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, loops: [o.map(q => [MG.r3(q[0]), MG.r3(q[1])]), i2.map(q => [MG.r3(q[0]), MG.r3(q[1])])], d: MG.r3(H) }, anchor, { name: a.name || "Vägg", color: a.color });
+    l3apiAfter(p); return l3apiBrief(p);
+  }
+  const p = l3apiAnchoredSolid(l3apiWallOutline(P, t, false).map(rel), anchor, H, a.name || "Vägg", a.color); l3apiAfter(p); return l3apiBrief(p);
+};
+/* Lodrät profil (x,z) som dras längs y: sadeltak, trappor. */
+function l3apiProfile(profile, anchor, width, name, color) {
+  const L = MG.ccw(profile).map(q => [MG.r3(q[0]), MG.r3(q[1])]);
+  return modCreate({ k: "solid", pl: { o: [0, width, 0], u: [1, 0, 0], v: [0, 0, 1] }, loops: [L], d: MG.r3(width) }, anchor, { name, color });
+}
+l3api.methods.create_gable_roof = a => {
+  l3apiReady(); const L = l3apiNum(a.length, 0), W = l3apiNum(a.width, 0), rise = l3apiNum(a.rise, 0), ov = Math.max(0, l3apiNum(a.overhang, 0));
+  if (!(L > 0 && W > 0 && rise > 0)) throw new Error("length (längs nock), width (tvärs), rise (nockhöjd över takfot) krävs, meter");
+  const c = l3apiPt([a.x, a.y, a.z || 0]), l = L + 2 * ov, w = W + 2 * ov;   // nocken längs X; profilen i y-led läggs i en lodrät plan YZ: gör profilen i (y,z) och dra längs x
+  const prof = [[-w / 2, 0], [w / 2, 0], [0, rise]];
+  const p = modCreate({ k: "solid", pl: { o: [-l / 2, 0, 0], u: [0, 1, 0], v: [0, 0, 1] }, loops: [MG.ccw(prof).map(q => [MG.r3(q[0]), MG.r3(q[1])])], d: MG.r3(l) }, c, { name: a.name || "Sadeltak", color: a.color || "#a16207" });
+  if (a.rot) { p.rot = l3apiNum(a.rot, 0); l3RebuildOne(p); }
+  l3apiAfter(p); return l3apiBrief(p);
+};
+l3api.methods.create_stairs = a => {
+  l3apiReady(); const n = Math.round(l3apiNum(a.steps, 0)), rise = l3apiNum(a.rise, 0.175), run = l3apiNum(a.run, 0.28), W = l3apiNum(a.width, 1.2);
+  if (n < 2 || n > 80 || !(rise > 0 && run > 0 && W > 0)) throw new Error("steps (2–80), rise (steghöjd m), run (stegdjup m) och width (m) krävs");
+  const c = l3apiPt([a.x, a.y, a.z || 0]), prof = [[0, 0]]; for (let i = 0; i < n; i++) { prof.push([i * run, (i + 1) * rise], [(i + 1) * run, (i + 1) * rise]); } prof.push([n * run, 0]);
+  const L = MG.ccw(prof).map(q => [MG.r3(q[0]), MG.r3(q[1])]);
+  const p = modCreate({ k: "solid", pl: { o: [0, W / 2, 0], u: [1, 0, 0], v: [0, 0, 1] }, loops: [L], d: MG.r3(W) }, c, { name: a.name || "Trappa", color: a.color });
+  if (a.rot) { p.rot = l3apiNum(a.rot, 0); l3RebuildOne(p); }
+  l3apiAfter(p); return { ...l3apiBrief(p), total_rise: MG.r3(n * rise), total_run: MG.r3(n * run) };
+};
+l3api.methods.measure = a => { const A = l3apiPt(a.a), B = l3apiPt(a.b); return { distance: l3apiRound(MG.dist(A, B)), horizontal: l3apiRound(Math.hypot(B[0] - A[0], B[1] - A[1])), vertical: l3apiRound(B[2] - A[2]) }; };
+
+/* ---- Visning och rendering ---- */
+l3api.methods.set_view_mode = a => { l3apiReady(); const m = String(a.mode || ""); if (!["shaded", "wire", "xray", "real"].includes(m)) throw new Error("mode: shaded, wire, xray eller real"); l3vmSet(m, true); return { mode: l3vm.mode }; };
+l3api.methods.set_sun = a => {
+  l3apiReady(); l3vm.sunDir = l3rnSunDir(l3apiNum(a.azimuth, 200), Math.max(1, Math.min(89, l3apiNum(a.elevation, 45))));
+  if (l3vm.mode === "real") l3vmShadows(true); l3Render(); return { azimuth: l3apiNum(a.azimuth, 200), elevation: l3apiNum(a.elevation, 45) };
+};
+l3api.methods.render_image = async a => {
+  l3apiReady(); if (typeof l3rnRender !== "function") throw new Error("Renderingsmotorn är inte inläst");
+  const res = await l3rnRender({ quality: a.quality, samples: a.samples, width: a.width || 1280, height: a.height, sunAz: a.sun_azimuth, sunEl: a.sun_elevation, soft: a.soft_shadows, ao: a.ambient_occlusion, exposure: a.exposure, vignette: a.vignette, edges: !!a.edges, background: a.background });
+  const url = res.canvas.toDataURL("image/png");
+  return { image: { mime: "image/png", data: url.split(",")[1] }, size: [res.width, res.height], samples: res.samples, seconds: Math.round(res.ms / 100) / 10 };
+};
 /* ---- Fri JavaScript (utväg när verktygen inte räcker) – kräver ditt godkännande i sidan varje gång ---- */
 l3api.methods.eval_js = async a => {
   l3apiReady(); const code = String(a.code || ""); if (!code.trim()) throw new Error("code saknas");

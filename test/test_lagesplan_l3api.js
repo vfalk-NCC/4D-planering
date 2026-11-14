@@ -137,6 +137,64 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const sel = await tool('select', { ids: [box.json.id] }); if (sel.err || sel.json.selected[0] !== box.json.id) fail('select: ' + JSON.stringify(sel));
   console.log('OK: fly_to, set_camera, select och skärmdump (PNG ' + png.length + ' byte)');
 
+  // --- avancerad modellering ---
+  const bx = (await tool('create_box', { x: O[0] - 30, y: O[1] - 30, z: O[2], length: 6, width: 4, height: 2, name: 'Bas' })).json;
+  const dim = o => { const b = o.bbox; return [b[1][0] - b[0][0], b[1][1] - b[0][1], b[1][2] - b[0][2]].map(v => Math.round(v * 100) / 100); };
+  const pp = await tool('push_pull', { id: bx.id, distance: 1.5 }); if (pp.err || Math.abs(dim(pp.json)[2] - 3.5) > 0.05) fail('push_pull ska höja kroppen 1,5 m: ' + JSON.stringify(pp));
+  const pq = await tool('push_pull', { id: bx.id, distance: -5 }); if (!pq.err || !/dra högst/.test(pq.text)) fail('push_pull för långt neråt ska ge ett tydligt fel: ' + pq.text);
+  const of = await tool('offset_outline', { id: bx.id, distance: 0.5 }); const od = dim(of.json);
+  if (of.err || Math.abs(od[0] - 7) > 0.05 || Math.abs(od[1] - 5) > 0.05) fail('offset_outline +0,5 ska vidga konturen till 7 × 5: ' + JSON.stringify(of));
+  const of2 = await tool('offset_outline', { id: bx.id, distance: -1 }); if (of2.err || Math.abs(dim(of2.json)[0] - 5) > 0.05) fail('offset_outline −1 ska krympa: ' + JSON.stringify(of2));
+  const tr = await tool('transform_object', { id: bx.id, move: [2, 0, 1], scale: [2, 1, 1], mirror: 'x' }); const td = dim(tr.json);
+  if (tr.err || Math.abs(td[0] - 10) > 0.1 || Math.abs(td[1] - 3) > 0.1) fail('transform_object (flytta + skala + spegla): ' + JSON.stringify(tr));
+  const ar = await tool('array_copy', { id: bx.id, count: 3, dx: 20, dy: 0 }); const n0 = (await tool('list_objects', { name: 'Bas' })).json.total;
+  if (ar.err || ar.json.created !== 3 || n0 < 4) fail('array_copy: ' + JSON.stringify(ar) + ' / ' + n0);
+  const wl = await tool('create_wall', { points: [[O[0] + 40, O[1]], [O[0] + 50, O[1]], [O[0] + 50, O[1] + 8]], thickness: 0.3, height: 3, name: 'Vägg L' }); const wd = dim(wl.json);
+  if (wl.err || Math.abs(wd[2] - 3) > 0.05 || wd[0] < 10 || wd[1] < 8) fail('create_wall (öppen, vinklad): ' + JSON.stringify(wl));
+  const wr = await tool('create_wall', { points: [[O[0] + 60, O[1]], [O[0] + 70, O[1]], [O[0] + 70, O[1] + 6], [O[0] + 60, O[1] + 6]], thickness: 0.25, height: 2.6, closed: true, name: 'Rum' }); const rd = dim(wr.json);
+  if (wr.err || Math.abs(rd[0] - 10.25) > 0.1 || Math.abs(rd[1] - 6.25) > 0.1) fail('create_wall (sluten): ' + JSON.stringify(wr));
+  const hole = await page.evaluate(id => placements.find(p => p.id === id).m.loops.length, wr.json.id); if (hole !== 2) fail('Sluten vägg ska ha ett hål (rummet): ' + hole);
+  const gr = await tool('create_gable_roof', { x: O[0] + 80, y: O[1], z: O[2] + 3, length: 10, width: 6, rise: 2, overhang: 0.4, name: 'Tak' }); const gd = dim(gr.json);
+  if (gr.err || Math.abs(gd[0] - 10.8) > 0.1 || Math.abs(gd[1] - 6.8) > 0.1 || Math.abs(gd[2] - 2) > 0.05 || Math.abs(gr.json.bbox[0][2] - (O[2] + 3)) > 0.05) fail('create_gable_roof: ' + JSON.stringify(gr));
+  const stp = await tool('create_stairs', { x: O[0] + 90, y: O[1], z: O[2], steps: 10, rise: 0.18, run: 0.28, width: 1.2 }); const sd = dim(stp.json);
+  if (stp.err || Math.abs(sd[2] - 1.8) > 0.05 || Math.abs(sd[0] - 2.8) > 0.05 || Math.abs(sd[1] - 1.2) > 0.05) fail('create_stairs: ' + JSON.stringify(stp));
+  const ms = await tool('measure', { a: [0, 0, 0], b: [3, 4, 12] }); if (ms.json.distance !== 13 || ms.json.horizontal !== 5 || ms.json.vertical !== 12) fail('measure: ' + JSON.stringify(ms.json));
+  console.log('OK: avancerad modellering via MCP – push/pull, offset, flytta/skala/spegla, serie, vägg (öppen och sluten med hål), sadeltak, trappa, mått');
+
+  // --- vy, sol och renderingsmotorn ---
+  const vm = await tool('set_view_mode', { mode: 'wire' }); if (vm.err || vm.json.mode !== 'wire') fail('set_view_mode'); await tool('set_view_mode', { mode: 'shaded' });
+  const su = await tool('set_sun', { azimuth: 135, elevation: 30 }); if (su.err) fail('set_sun');
+  await tool('set_camera', { position: [O[0] + 55, O[1] - 45, O[2] + 28], target: [O[0] + 15, O[1] + 5, O[2] + 1] });
+  const before = await page.evaluate(() => ({ mode: l3vm.mode, pref: l3Prefs().vmode || null, lights: l3.scene.children.filter(c => c.isLight).length, asp: l3.camera.aspect, sel: l3.groups.sel.visible, sunInt: l3vmSun().intensity }));
+  const t0 = Date.now(); const rd1 = await tool('render_image', { samples: Number(process.env.L3RS) || 6, width: Number(process.env.L3RW) || 480, sun_azimuth: 220, sun_elevation: 40 });
+  if (rd1.err || !rd1.image || rd1.image.mimeType !== 'image/png') fail('render_image: ' + (rd1.text || '').slice(0, 300));
+  const after = await page.evaluate(() => ({ mode: l3vm.mode, pref: l3Prefs().vmode || null, lights: l3.scene.children.filter(c => c.isLight).length, asp: l3.camera.aspect, sel: l3.groups.sel.visible, sunInt: l3vmSun().intensity, busy: l3rn.busy, view: !!l3.camera.view && l3.camera.view.enabled }));
+  if (after.mode !== before.mode || after.pref !== before.pref || after.lights !== before.lights || Math.abs(after.asp - before.asp) > 1e-6 || after.sel !== before.sel || Math.abs(after.sunInt - before.sunInt) > 1e-6 || after.busy || after.view) fail('Renderingen ska lämna vyn som den var: ' + JSON.stringify({ before, after }));
+  const rinfo = await page.evaluate(async d => { const im = new Image(); im.src = 'data:image/png;base64,' + d; await im.decode(); const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const x = c.getContext('2d'); x.drawImage(im, 0, 0); const a = x.getImageData(0, 0, c.width, c.height).data, set = new Set(); let dark = 0, light = 0; for (let i = 0; i < a.length; i += 4) { const l = (a[i] + a[i + 1] + a[i + 2]) / 3; if (l < 90) dark++; if (l > 200) light++; if (i % 40 === 0) set.add((a[i] >> 4) + ',' + (a[i + 1] >> 4) + ',' + (a[i + 2] >> 4)); } return { w: im.width, h: im.height, colors: set.size, dark, light }; }, rd1.image.data);
+  if (rinfo.w !== (Number(process.env.L3RW) || 480) || rinfo.colors < 12 || rinfo.light < 1000) fail('Renderingen ska visa scenen: ' + JSON.stringify(rinfo));
+  if (process.env.L3RENDER) fs.writeFileSync(process.env.L3RENDER, Buffer.from(rd1.image.data, 'base64'));
+  const rd0 = await tool('render_image', { samples: 1, width: 480 }); if (rd0.err) fail('render_image 1 delbild: ' + rd0.text);
+  { // Summeringen över delbilderna får inte tappa något när vyn ritar medan renderingen väntar (en buffert som lämnades bunden gav mörka ovansidor): lådans ovansida ska vara minst lika ljus som en vägg
+    const b0 = (await tool('list_objects', { name: 'Bas' })).json.objects[0].bbox;
+    await tool('set_camera', { position: [b0[0][0] + 8, b0[0][1] - 14, b0[1][2] + 10], target: [(b0[0][0] + b0[1][0]) / 2, (b0[0][1] + b0[1][1]) / 2, b0[0][2] + 1] });
+    const lum = await page.evaluate(async () => {
+      const p = placements.find(q => q.name === 'Bas'), b = new THREE.Box3().setFromObject(l3.placeMeshes.get(p.id)), top = b.getCenter(new THREE.Vector3()); top.z = b.max.z; const front = b.getCenter(new THREE.Vector3()); front.y = b.min.y;
+      const r = await l3rnRender({ samples: 6, width: 640, soft: 0.5 }), at = v => { const q = v.clone().project(l3.camera), d = r.canvas.getContext('2d').getImageData(Math.round((q.x + 1) / 2 * r.canvas.width), Math.round((1 - q.y) / 2 * r.canvas.height), 1, 1).data; return Math.round((d[0] + d[1] + d[2]) / 3); };
+      return { top: at(top), front: at(front), busy: l3rn.busy };
+    });
+    if (lum.busy || lum.top < 70 || lum.top < lum.front * 0.7) fail('Lådans ovansida ska vara upplyst i renderingen: ' + JSON.stringify(lum)); }
+  console.log('OK: render_image – ' + rinfo.w + '×' + rinfo.h + ', ' + rinfo.colors + ' färgnivåer, vyn återställd (läge, ljus, kamera, markering), ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
+
+  // --- rutan "Rendera" i 3D-vyn ---
+  { await page.click('#v3RenderBtn'); await page.waitForSelector('#v3Render');
+    await page.selectOption('#rnQ', 'fast'); await page.selectOption('#rnS', '1280'); await page.fill('#rnSoft', '2'); await page.click('#rnGo');
+    await page.waitForFunction(() => { const b = document.getElementById('rnSave'); return b && !b.disabled; }, null, { timeout: 120000 });
+    const ui = await page.evaluate(() => ({ msg: document.getElementById('rnMsg').textContent, w: document.getElementById('rnCv').width, bar: document.getElementById('rnBar').style.width, last: l3rn.last && l3rn.last.samples, busy: l3rn.busy, go: document.getElementById('rnGo').textContent }));
+    if (!/Klar/.test(ui.msg) || ui.w !== 1280 || ui.bar !== '100%' || ui.last !== 12 || ui.busy || ui.go !== 'Rendera') fail('Rutan Rendera ska ge en färdig bild: ' + JSON.stringify(ui));
+    const dl = page.waitForEvent('download'); await page.click('#rnSave'); const d = await dl; if (!/^rendering-.*\.png$/.test(d.suggestedFilename())) fail('Spara PNG: ' + d.suggestedFilename());
+    await page.click('#v3Render .rn-x');
+    console.log('OK: 🎬 Rendera i 3D-vyn – kvalitet, storlek, sol och mjukhet, förhandsvisning, klar bild och nedladdning av PNG'); }
+
   // --- eval_js kräver godkännande ---
   await page.evaluate(() => { window.__ans = false; window.uiConfirm = async () => window.__ans; });
   const ev1 = await tool('eval_js', { code: 'return placements.length', reason: 'test' });
