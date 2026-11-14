@@ -30,7 +30,7 @@ Renderingsläget har ett eget utseende som **inte** påverkar 3D-editorns materi
 - **Mark:** grundmaterial för hela marken (ersätter planens bild i renderingen och tar emot skuggor) plus markytor och vägar. Rita en yta eller linje i editorn, markera den och klicka "Markyta av markerad yta" / "Väg av markerad linje" – ritobjektet göms i bilden.
 - **Miljö:** tid på dygnet (morgon … kväll), sol, moln (mjukare, svagare sol och gråare himmel), dis och exponering.
 - **Förhandsvisning:** uppdateras automatiskt efter varje ändring (4 delbilder, lågupplöst).
-- **MCP:** `list_render_materials`, `get_render_setup`, `set_render_material`, `remove_render_material`, `set_ground_material`, `add_ground_area`, `remove_ground_area`, `set_render_environment`. `render_image` använder lagret automatiskt (`use_render_materials: false` stänger av det).
+- **MCP:** `list_render_materials`, `get_render_setup`, `set_render_material`, `remove_render_material`, `set_ground_material`, `add_ground_area`, `remove_ground_area`, `set_render_environment`. `render_film_start` / `render_film_status` / `render_film_stop` renderar filmen bild för bild med samma motor (WebM eller JPEG-ZIP, körs i bakgrunden). `render_image` använder lagret automatiskt (`use_render_materials: false` stänger av det).
 
 ## Säkerhet
 - Bryggan lyssnar bara på `127.0.0.1` (din dator) och svarar bara webbplatser i `FOURD_ORIGINS` (standard: GitHub Pages och localhost). Ändra port med `FOURD_PORT`.

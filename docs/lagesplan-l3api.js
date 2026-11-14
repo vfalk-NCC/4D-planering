@@ -283,6 +283,20 @@ l3api.methods.render_image = async a => {
   const url = res.canvas.toDataURL("image/png");
   return { image: { mime: "image/png", data: url.split(",")[1] }, size: [res.width, res.height], samples: res.samples, seconds: Math.round(res.ms / 100) / 10 };
 };
+/* ---- Film i renderingsläget (lagesplan-3drfilm.js): startas i bakgrunden, status hämtas separat ---- */
+l3api.methods.render_film_start = a => {
+  l3apiReady(); if (typeof l3rfFilm !== "function") throw new Error("Filmmotorn är inte inläst"); if (l3rf.st) throw new Error("En film renderas redan");
+  l3rf.job = { running: true, msg: "", error: "" };
+  const job = l3rf.job; l3rfFilm({ from: a.from, to: a.to, sec: a.seconds, fps: a.fps, res: a.height, samples: a.samples, format: a.format, caption: a.caption, ao: a.ambient_occlusion, soft: a.soft_shadows, exposure: a.exposure })
+    .then(r => { job.running = false; job.result = { name: r.name, frames: r.n, format: r.format, size_mb: Math.round(r.size / 1e4) / 100, seconds: Math.round(r.ms / 100) / 10, stopped: r.stopped }; if (a.save !== false && r.blob) downloadBlob(r.blob, r.name); })
+    .catch(e => { job.running = false; job.error = e.message; });
+  return { started: true, note: "Hämta förloppet med render_film_status. Vyn återställs när filmen är klar." };
+};
+l3api.methods.render_film_status = () => {
+  const j = l3rf.job || null, st = l3rf.st;
+  return { running: !!st, frame: st ? st.done : undefined, frames: st ? st.frames : undefined, paused: st ? st.paused : undefined, result: j && j.result, error: j && j.error || undefined, last: l3rf.last ? { name: l3rf.last.name, frames: l3rf.last.frames, format: l3rf.last.format, size_mb: Math.round(l3rf.last.size / 1e4) / 100 } : undefined };
+};
+l3api.methods.render_film_stop = () => ({ stopped: l3rfStop() });
 /* ---- Renderingsmaterial, mark och miljö (lagesplan-3drmat.js) – gäller bara renderingen, editorns utseende ändras inte ---- */
 l3api.methods.list_render_materials = a => {
   const g = String(a.group || "").toLowerCase();

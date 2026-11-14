@@ -158,7 +158,7 @@ async function l3rnRender(opt = {}) {
     S.lights.forEach(([o, inten, pos, cs]) => { o.intensity = inten; o.position.copy(pos); o.castShadow = cs; });
     S.env.forEach((v, m) => { m.envMapIntensity = v; });
     S.vis.forEach(([o, v]) => { o.visible = v; }); if (l3.gizmo && S.gizmo != null) l3.gizmo.visible = S.gizmo;
-    l3vm.sunDir = S.sunDir; if (S.mode !== "real") l3vmSet(S.mode, true); else l3vmShadows(true);
+    l3vm.sunDir = S.sunDir; if (S.mode !== "real") { if (!opt.sticky) l3vmSet(S.mode, true); } else l3vmShadows(true);   // sticky: filmen låter Realistisk stå kvar mellan bilderna och sätter tillbaka läget i slutet
     [rtS, rtA, rtB, rtOut].forEach(t => t && t.dispose()); [addQ, toneQ].forEach(q => { if (q) { q.mesh.geometry.dispose(); q.mat.dispose(); } });
     l3rn.busy = false;
     l3Render();
@@ -183,13 +183,13 @@ function l3rnOpts(el) {
 function l3rnPreviewSoon() {   // lågupplöst bild efter varje ändring (hoppar över om en full rendering pågår)
   const el = document.getElementById("v3Render"); if (!el) return; clearTimeout(l3rnUi.prevT);
   l3rnUi.prevT = setTimeout(async () => {
-    if (l3rn.busy) { l3rnUi.prevT = setTimeout(l3rnPreviewSoon, 800); return; }
+    if (l3rn.busy || (typeof l3rf !== "undefined" && l3rf.st)) { l3rnUi.prevT = setTimeout(l3rnPreviewSoon, 1500); return; }
     const cv = l3rnQ(el, "#rnCv"), msg = l3rnQ(el, "#rnMsg"); if (!cv) return;
     try { msg.textContent = "Förhandsvisning …"; const o = l3rnOpts(el), res = await l3rnRender({ ...o, samples: 4, width: 560, ao: o.ao }); cv.width = res.width; cv.height = res.height; cv.getContext("2d").drawImage(res.canvas, 0, 0); msg.textContent = "Förhandsvisning (4 delbilder) – tryck Rendera för full kvalitet."; }
     catch (e) { msg.textContent = "Förhandsvisning: " + e.message; }
   }, 700);
 }
-function l3rmUiRefresh() { const el = document.getElementById("v3Render"); if (!el) return; l3rnTab(l3rnUi.tab, true); l3rnPreviewSoon(); }
+function l3rmUiRefresh() { const el = document.getElementById("v3Render"); if (!el || (typeof l3rf !== "undefined" && l3rf.st)) return; if (l3rnUi.tab !== "film") { l3rnTab(l3rnUi.tab, true); l3rnPreviewSoon(); } }
 const l3rnSel = () => (typeof l3 !== "undefined" && l3.sel ? [...l3.sel] : []);
 function l3rnRuleLabel(r) {
   if (r.t === "obj") { const p = placements.find(q => q.id === r.ref); return "Objekt: " + (p ? p.name : "(borttaget)"); }
@@ -247,6 +247,8 @@ function l3rnTab(tab, keep) {
     const fromSel = road => { const id = l3rnSel()[0], p = id && placements.find(q => q.id === id); if (!p) { l3rnQ(el, "#rnMsg").textContent = "Markera en ritad yta" + (road ? "/linje" : "") + " i 3D först."; return; }
       try { const pts = l3rmFootprint(p, road); l3rnUi.roadW = +l3rnQ(body, "#gW").value || 6; l3rmAddArea({ kind: road ? "road" : "area", pts, width: l3rnUi.roadW, mat: road ? "asfalt" : l3rnUi.areaMat, name: p.name, src: p.id }); } catch (e) { l3rnQ(el, "#rnMsg").textContent = e.message; } };
     l3rnQ(body, "#gArea").onclick = () => fromSel(false); l3rnQ(body, "#gRoad").onclick = () => fromSel(true);
+  } else if (tab === "film") {
+    if (typeof l3rfTab === "function") l3rfTab(body, el); else body.innerHTML = '<div class="rn-note">Filmen är inte inläst.</div>';
   } else {
     const e = l3rmEnvResolved(), T = L3RM_TIMES, cur = D.env.time || "";
     body.innerHTML = `<div class="rn-sub">Tid på dygnet</div><div class="rn-chips">${Object.keys(T).map(k => `<button type="button" class="rn-chip${cur === k ? " on" : ""}" data-time="${k}">${T[k].name}</button>`).join("")}<button type="button" class="rn-chip" data-time="">Egen</button></div>
@@ -263,13 +265,13 @@ function l3rnTab(tab, keep) {
 function l3rnOpen() {
   const host = document.getElementById("view3d"); if (!host) return; let el = document.getElementById("v3Render"); if (el) { el.remove(); return; }
   el = document.createElement("div"); el.id = "v3Render"; el.className = "v3-rn";
-  el.innerHTML = `<div class="rn-h"><b>🎬 Rendera</b><span class="rn-tabs"><button type="button" data-t="bild" class="on">Bild</button><button type="button" data-t="material">Material</button><button type="button" data-t="mark">Mark</button><button type="button" data-t="miljo">Miljö</button></span><button type="button" class="rn-x" title="Stäng">✕</button></div>
+  el.innerHTML = `<div class="rn-h"><b>🎬 Rendera</b><span class="rn-tabs"><button type="button" data-t="bild" class="on">Bild</button><button type="button" data-t="material">Material</button><button type="button" data-t="mark">Mark</button><button type="button" data-t="miljo">Miljö</button><button type="button" data-t="film">Film</button></span><button type="button" class="rn-x" title="Stäng">✕</button></div>
     <div class="rn-body"></div>
     <div class="rn-a"><button type="button" id="rnGo" class="rn-go">Rendera</button><button type="button" id="rnSave" disabled>Spara PNG</button><span id="rnMsg">Vyn och kameran används som de är nu.</span></div>
     <div class="rn-p"><i id="rnBar"></i></div><div class="rn-v"><canvas id="rnCv" width="16" height="9"></canvas></div>`;
   host.appendChild(el); const q = s => el.querySelector(s);
   el.querySelectorAll(".rn-tabs button").forEach(b => { b.onclick = () => l3rnTab(b.dataset.t); });
-  q(".rn-x").onclick = () => { l3rn.cancel = true; clearTimeout(l3rnUi.prevT); el.remove(); };
+  q(".rn-x").onclick = () => { l3rn.cancel = true; if (typeof l3rfStop === "function") l3rfStop(); clearTimeout(l3rnUi.prevT); el.remove(); };
   l3rnTab(l3rnUi.tab || "bild");
   q("#rnGo").onclick = async () => {
     if (l3rn.busy) { l3rn.cancel = true; return; }

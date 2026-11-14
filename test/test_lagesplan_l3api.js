@@ -185,6 +185,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (lum.busy || lum.top < 70 || lum.top < lum.front * 0.7) fail('Lådans ovansida ska vara upplyst i renderingen: ' + JSON.stringify(lum)); }
   console.log('OK: render_image – ' + rinfo.w + '×' + rinfo.h + ', ' + rinfo.colors + ' färgnivåer, vyn återställd (läge, ljus, kamera, markering), ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
 
+  { // film via MCP: startas i bakgrunden, status följs, stopp sparar det som hunnit renderas, vyn återställs
+    await page.evaluate(() => { window.showSaveFilePicker = undefined; });
+    const fs0 = await tool('render_film_start', { from: '2025-01-01', to: '2025-01-10', seconds: 1, fps: 24, height: 144, samples: 1, save: false });
+    if (fs0.err || !fs0.json.started) fail('render_film_start: ' + (fs0.text || '').slice(0, 300));
+    const dup = await tool('render_film_start', { from: '2025-01-01', to: '2025-01-10', seconds: 1 }); if (!dup.err) fail('En andra film ska nekas medan en renderas');
+    let stt = null; for (let i = 0; i < 400; i++) { stt = (await tool('render_film_status', {})).json; if (!stt.running) break; if (stt.frame >= 3) await tool('render_film_stop', {}); await new Promise(r => setTimeout(r, 150)); }
+    if (stt.running || stt.error || !stt.result || stt.result.frames < 1 || !stt.result.stopped && stt.result.frames !== 24) fail('render_film_status/stop: ' + JSON.stringify(stt));
+    const af = await page.evaluate(() => ({ st: !!l3rf.st, busy: l3rn.busy })); if (af.st || af.busy) fail('Filmen ska släppa motorn: ' + JSON.stringify(af));
+    console.log('OK: film via MCP – start, förlopp, stopp (' + stt.result.frames + ' bilder, ' + stt.result.format + ')'); }
+
   // --- rutan "Rendera" i 3D-vyn ---
   { await page.click('#v3RenderBtn'); await page.waitForSelector('#v3Render');
     await page.selectOption('#rnQ', 'fast'); await page.selectOption('#rnS', '1280'); await page.fill('#rnSoft', '2'); await page.click('#rnGo');

@@ -1115,5 +1115,77 @@
         }
       }
     }
+  },
+  {
+    "name": "render_film_start",
+    "description": "Render a film of the project's day-by-day progress frame by frame with the render engine (soft shadows, AO, tone mapping), using the film settings (camera keys, interval) of the 3D view. Runs in the background; poll render_film_status. Output WebM (VP9) via WebCodecs or a JPEG-sequence ZIP; saved as a download in the browser when done. The view is restored afterwards. from/to = YYYY-MM-DD (default: saved film interval), seconds 1-600, fps 24/25/30/60, height = 480-2160 (16:9), samples = 1-64 per frame.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "seconds": {
+          "type": "number"
+        },
+        "fps": {
+          "type": "number",
+          "enum": [
+            24,
+            25,
+            30,
+            60
+          ]
+        },
+        "height": {
+          "type": "number"
+        },
+        "samples": {
+          "type": "number"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "webm",
+            "zip"
+          ]
+        },
+        "caption": {
+          "type": "string"
+        },
+        "ambient_occlusion": {
+          "type": "number"
+        },
+        "soft_shadows": {
+          "type": "number"
+        },
+        "exposure": {
+          "type": "number"
+        },
+        "save": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "render_film_status",
+    "description": "Progress of the film started with render_film_start: running, frame/frames, result (name, frames, format, size_mb, seconds, stopped) or error.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "render_film_stop",
+    "description": "Stop the running render film; frames already rendered are saved.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {}
+    }
   }
 ]
