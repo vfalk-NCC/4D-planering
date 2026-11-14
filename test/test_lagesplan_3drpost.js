@@ -71,6 +71,29 @@ const PP = [
     if (!(W.lr < W.l0 && W.diff > 0.1)) fail('Regn ska ritas och röra sig mellan bilderna: ' + JSON.stringify(W));
     if (W.leftover) fail('Väderpatchen ska tas bort från materialen efteråt: ' + JSON.stringify(W));
     console.log('OK: väder – blött underlag, snö på uppåtvända ytor, regn som rör sig, materialen återställda');
+    const TL = await page.evaluate(async () => {
+      l3.camera.position.set(30, -45, 14); l3.orbit.target.set(2, 22, 3); l3.orbit.update();
+      const base = { width: 1100, height: 620, samples: 4, bloom: 0, sunAz: 150, sunEl: 40 }, one = await l3rnRender({ ...base, tile: 4096 }), prog = [], many = await l3rnRender({ ...base, tile: 512, onProgress: (d, n) => prog.push([d, n]) });
+      const a = one.canvas.getContext('2d').getImageData(0, 0, 1100, 620).data, b = many.canvas.getContext('2d').getImageData(0, 0, 1100, 620).data; let diff = 0, seam = 0, base0 = 0; const edge = x => { let s = 0; for (let y = 0; y < 620; y++) { const i = (y * 1100 + x) * 4, j = (y * 1100 + x - 1) * 4; s += Math.abs(b[i] - b[j]) + Math.abs(b[i + 1] - b[j + 1]) + Math.abs(b[i + 2] - b[j + 2]); } return s / 620 / 3; };
+      for (let i = 0; i < a.length; i += 4) diff += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+      const xs = [367, 734]; seam = Math.max(...xs.map(edge)); base0 = (edge(300) + edge(500) + edge(900)) / 3;
+      return { tiles: many.tiles, one: one.tiles, diff: diff / (a.length / 4) / 3, seam, base0, prog: prog.length, last: prog[prog.length - 1], w: many.canvas.width, h: many.canvas.height };
+    });
+    console.log('rutor:', JSON.stringify(TL));
+    if (TL.tiles !== 6 || TL.one !== 1 || TL.w !== 1100 || TL.h !== 620 || TL.last[0] !== TL.last[1]) fail('Stor bild ska delas i rutor (3×2) och sättas ihop: ' + JSON.stringify(TL));
+    if (!(TL.diff < 2.5) || !(TL.seam < TL.base0 + 4)) fail('Rutindelad bild ska se likadan ut som en hel och sakna skarvar: ' + JSON.stringify(TL));
+    console.log('OK: rutindelad rendering – 3×2 rutor ger samma bild som en hel (snittskillnad ' + TL.diff.toFixed(2) + ' nivåer), inga skarvar');
+    const PA = await page.evaluate(async () => {
+      l3.camera.position.set(30, -45, 14); l3.orbit.target.set(2, 22, 3); l3.orbit.update();
+      const pos0 = l3.camera.position.toArray().map(v => +v.toFixed(5)), r = await l3rnRender({ width: 1024, panorama: true, samples: 3, bloom: 0, sunAz: 150, sunEl: 40 }), c = r.canvas, d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let sx = 0, sy = 0, n = 0, top = [0, 0, 0], tn = 0; for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) { const i = (y * c.width + x) * 4; if (d[i] > 190 && d[i + 1] > 150 && d[i + 2] < 90) { sx += x; sy += y; n++; } if (y < 40) { top[0] += d[i]; top[1] += d[i + 1]; top[2] += d[i + 2]; tn++; } }
+      return { w: c.width, h: c.height, pano: r.panorama, n, cx: sx / Math.max(1, n), cy: sy / Math.max(1, n), top: top.map(v => Math.round(v / tn)), pos0, pos1: l3.camera.position.toArray().map(v => +v.toFixed(5)), busy: l3rn.busy };
+    });
+    console.log('panorama:', JSON.stringify(PA));
+    if (PA.w !== 1024 || PA.h !== 512 || !PA.pano || PA.n < 30) fail('Panorama ska bli 2:1 och visa kranen: ' + JSON.stringify(PA));
+    if (!(PA.cx > 512 && PA.cx < 590) || !(PA.cy > 262 && PA.cy < 330)) fail('Kranen ska ligga några grader till höger om mitten och under horisonten (inte spegelvänd): ' + JSON.stringify(PA));
+    if (!(PA.top[2] > PA.top[0]) || JSON.stringify(PA.pos0) !== JSON.stringify(PA.pos1) || PA.busy) fail('Himlen ska vara överst och kameran orörd: ' + JSON.stringify(PA));
+    console.log('OK: 360°-panorama – equirektangulär 1024×512, kranen på rätt plats (' + PA.cx.toFixed(0) + ',' + PA.cy.toFixed(0) + '), himmel överst');
     const J = v => JSON.stringify(v);
     if (!(R.lumB > R.lumA + 0.2)) fail('Bloom ska ge glöd (ljusare bild): ' + J(R));
     if (!(R.edge1 < R.edge0 * 0.97)) fail('Skärpedjup ska göra det som ligger utanför fokus suddigare: ' + J(R));

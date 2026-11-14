@@ -279,7 +279,7 @@ l3api.methods.set_sun = a => {
 };
 l3api.methods.render_image = async a => {
   l3apiReady(); if (typeof l3rnRender !== "function") throw new Error("Renderingsmotorn är inte inläst");
-  const res = await l3rnRender({ quality: a.quality, samples: a.samples, width: a.width || 1280, height: a.height, sunAz: a.sun_azimuth, sunEl: a.sun_elevation, soft: a.soft_shadows, ao: a.ambient_occlusion, exposure: a.exposure, vignette: a.vignette, bloom: a.bloom, dof: a.depth_of_field, focus: a.focus_distance, shadowSize: a.shadow_size, edges: !!a.edges, background: a.background, materials: a.use_render_materials !== false });
+  const res = await l3rnRender({ quality: a.quality, samples: a.samples, width: Math.min(4096, a.width || 1280), height: a.height, sunAz: a.sun_azimuth, sunEl: a.sun_elevation, soft: a.soft_shadows, ao: a.ambient_occlusion, exposure: a.exposure, vignette: a.vignette, panorama: !!a.panorama, bloom: a.bloom, dof: a.depth_of_field, focus: a.focus_distance, shadowSize: a.shadow_size, edges: !!a.edges, background: a.background, materials: a.use_render_materials !== false });
   const url = res.canvas.toDataURL("image/png");
   return { image: { mime: "image/png", data: url.split(",")[1] }, size: [res.width, res.height], samples: res.samples, seconds: Math.round(res.ms / 100) / 10 };
 };

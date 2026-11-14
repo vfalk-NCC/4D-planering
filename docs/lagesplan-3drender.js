@@ -90,7 +90,7 @@ function l3rnQuad(frag, uniforms) {
   const sc = new THREE.Scene(); sc.add(mesh); return { scene: sc, mat: m, mesh, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
 }
 const L3RN_ADD = "uniform sampler2D t, tAcc; uniform float w; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(tAcc, vUv).rgb + texture2D(t, vUv).rgb * w, 1.0); }";
-const L3RN_TONE = `uniform sampler2D t, b0, b1, b2, b3, b4; uniform float ex, vig, bloom; varying vec2 vUv;
+const L3RN_TONE = `uniform sampler2D t, b0, b1, b2, b3, b4; uniform float ex, vig, bloom; uniform vec2 tOrg, tSize, full; varying vec2 vUv;
   vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
   vec3 oetf(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
   void main() {
@@ -100,10 +100,14 @@ const L3RN_TONE = `uniform sampler2D t, b0, b1, b2, b3, b4; uniform float ex, vi
     c = oetf(c);                                                                  // linjärt → sRGB
     c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);                                       // lite mer kontrast
     float l = dot(c, vec3(0.299, 0.587, 0.114)); c = clamp(mix(vec3(l), c, 1.08), 0.0, 1.0);   // och färgmättnad
-    vec2 p = vUv - 0.5; c *= 1.0 - vig * smoothstep(0.25, 0.85, dot(p, p) * 2.0);    // lätt vinjett
+    vec2 p = (tOrg + vUv * tSize) / full - 0.5; c *= 1.0 - vig * smoothstep(0.25, 0.85, dot(p, p) * 2.0);    // lätt vinjett
     gl_FragColor = vec4(c, 1.0);
   }`;
 
+/* 360°-panorama: sex ytor (kubkarta) ritas från kamerans plats och läggs ut som en equirektangulär bild (mitten = kamerans blickriktning). */
+const L3RN_PANO = `uniform samplerCube tCube; uniform vec3 bR, bU, bF; uniform vec2 tOrg, tSize, full, jit; varying vec2 vUv;
+  void main() { vec2 g = (tOrg + vUv * tSize + jit) / full; float lon = (g.x - 0.5) * 6.2831853, lat = (g.y - 0.5) * 3.1415927;
+    vec3 d = cos(lat) * (sin(lon) * bR + cos(lon) * bF) + sin(lat) * bU; gl_FragColor = textureCube(tCube, d); }`;
 const L3RN_BRIGHT = "uniform sampler2D t; uniform float ex, thr; varying vec2 vUv; void main() { vec3 c = texture2D(t, vUv).rgb * ex; float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * max(0.0, l - thr) / max(l, 1e-4), 1.0); }";
 const L3RN_BLUR = "uniform sampler2D t; uniform vec2 d; varying vec2 vUv; void main() { vec3 s = texture2D(t, vUv).rgb * 0.2270270270; s += (texture2D(t, vUv + d * 1.3846153846).rgb + texture2D(t, vUv - d * 1.3846153846).rgb) * 0.3162162162; s += (texture2D(t, vUv + d * 3.2307692308).rgb + texture2D(t, vUv - d * 3.2307692308).rgb) * 0.0702702703; gl_FragColor = vec4(s, 1.0); }";
 
@@ -113,15 +117,16 @@ async function l3rnRender(opt = {}) {
   if (typeof l3 === "undefined" || !l3 || !l3.renderer) throw new Error("3D-editorn är inte öppen");
   if (l3rn.busy) throw new Error("En rendering pågår redan");
   const r = l3.renderer, scene = l3.scene, cam = l3.camera, view = r.getSize(new THREE.Vector2());
-  const asp = view.x / Math.max(1, view.y), maxT = Math.min(4096, r.capabilities.maxTextureSize || 4096);
-  const W = Math.round(l3rnClamp(opt.width, 160, maxT, 1600)), H = Math.round(l3rnClamp(opt.height, 90, maxT, W / asp));
+  const asp = view.x / Math.max(1, view.y), maxT = 8192, texMax = r.capabilities.maxTextureSize || 4096;
+  const pano = !!opt.panorama, W = Math.round(l3rnClamp(opt.width, 160, maxT, pano ? 4096 : 1600)), H = pano ? Math.round(W / 2) : Math.round(l3rnClamp(opt.height, 90, maxT, W / asp));
+  const tileMax = Math.max(512, Math.min(texMax, Math.round(l3rnClamp(opt.tile, 512, 4096, 2048)))), nx = Math.ceil(W / tileMax), ny = Math.ceil(H / tileMax), TW = Math.ceil(W / nx), TH = Math.ceil(H / ny), tiles = []; for (let yy = 0; yy < ny; yy++) for (let xx = 0; xx < nx; xx++) tiles.push([xx * TW, yy * TH]);   // stora bilder (8K) renderas i rutor och sätts ihop
   const N = Math.round(l3rnClamp(opt.samples || L3RN_Q[opt.quality] || L3RN_Q.good, 1, 512, L3RN_Q.good));
   const E = typeof l3rmEnvResolved === "function" ? l3rmEnvResolved(opt.env || {}) : { az: null, el: null, warm: 0, clouds: 0, haze: 0, exposure: 1 };
-  const soft = l3rnClamp(opt.soft, 0, 15, 1.6) + E.clouds * 6, ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95) * E.exposure, vig = l3rnClamp(opt.vignette, 0, 1, 0.25), bloomAmt = l3rnClamp(opt.bloom, 0, 1, 0.12), dofAmt = l3rnClamp(opt.dof, 0, 10, 0);
+  const soft = l3rnClamp(opt.soft, 0, 15, 1.6) + E.clouds * 6, ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95) * E.exposure, vig = pano ? 0 : l3rnClamp(opt.vignette, 0, 1, 0.25), bloomAmt = l3rnClamp(opt.bloom, 0, 1, 0.12), dofAmt = l3rnClamp(opt.dof, 0, 10, 0);
   const t0 = performance.now();
   l3rn.busy = true; l3rn.cancel = false;
   const S = { mode: l3vm.mode, aspect: cam.aspect, near: cam.near, far: cam.far, target: r.getRenderTarget(), sunDir: l3vm.sunDir ? l3vm.sunDir.clone() : null, lights: [], vis: [], env: new Map(), gizmo: l3.gizmo ? l3.gizmo.visible : null, autoClear: r.autoClear, clear: r.getClearColor(new THREE.Color()), clearA: r.getClearAlpha(), bg: scene.background, fog: scene.fog, envMap: scene.environment, restore: [], linUndo: [] };
-  let camPos0 = null, blur = null, bloomQ = null, blurQ = null, sky = null, skyMesh = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
+  let cubeRT = null, cubeCam = null, panoQ = null, camPos0 = null, blur = null, bloomQ = null, blurQ = null, sky = null, skyMesh = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
   try {
     camPos0 = cam.position.clone();
     // 1) Realistisk (material, himmelskarta, skuggor, skuggplan) – hör till motorn
@@ -181,16 +186,17 @@ async function l3rnRender(opt = {}) {
     l3rnLinearize(S, scene);   // linjär färgpipeline (sätts tillbaka i slutet)
     L3RM_T.value = Number(opt.time) || 0; l3rnWeather(S, scene, E);
     // 4) buffertar: delbild (HDR, halvflyttal), två summabuffertar (ping-pong, flyttal) och slutbilden (8 bit)
-    rtS = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true });
-    rtA = new THREE.WebGLRenderTarget(W, H, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false }); rtB = rtA.clone();
-    rtOut = new THREE.WebGLRenderTarget(W, H, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, depthBuffer: false });
-    if (bloomAmt > 0) { blur = []; for (let k = 0; k < 5; k++) { const bw = Math.max(2, W >> (k + 1)), bh = Math.max(2, H >> (k + 1)), mk = () => new THREE.WebGLRenderTarget(bw, bh, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false }); blur.push({ a: mk(), b: mk(), w: bw, h: bh }); } bloomQ = l3rnQuad(L3RN_BRIGHT, { t: { value: null }, ex: { value: 1 }, thr: { value: 1.2 } }); blurQ = l3rnQuad(L3RN_BLUR, { t: { value: null }, d: { value: new THREE.Vector2() } }); }
+    const bloomOn = bloomAmt > 0 && tiles.length === 1;   // glöden räknas inte per ruta (skarvar) – av vid rutindelad rendering
+    rtS = new THREE.WebGLRenderTarget(TW, TH, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true });
+    rtA = new THREE.WebGLRenderTarget(TW, TH, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false }); rtB = rtA.clone();
+    rtOut = new THREE.WebGLRenderTarget(TW, TH, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, depthBuffer: false });
+    if (bloomOn) { blur = []; for (let k = 0; k < 5; k++) { const bw = Math.max(2, TW >> (k + 1)), bh = Math.max(2, TH >> (k + 1)), mk = () => new THREE.WebGLRenderTarget(bw, bh, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false }); blur.push({ a: mk(), b: mk(), w: bw, h: bh }); } bloomQ = l3rnQuad(L3RN_BRIGHT, { t: { value: null }, ex: { value: 1 }, thr: { value: 1.2 } }); blurQ = l3rnQuad(L3RN_BLUR, { t: { value: null }, d: { value: new THREE.Vector2() } }); }
     addQ = l3rnQuad(L3RN_ADD, { t: { value: rtS.texture }, tAcc: { value: rtA.texture }, w: { value: 1 / N } });
-    toneQ = l3rnQuad(L3RN_TONE, { t: { value: rtA.texture }, ex: { value: exposure }, vig: { value: vig }, bloom: { value: bloomAmt }, b0: { value: rtA.texture }, b1: { value: rtA.texture }, b2: { value: rtA.texture }, b3: { value: rtA.texture }, b4: { value: rtA.texture } });
+    toneQ = l3rnQuad(L3RN_TONE, { t: { value: rtA.texture }, ex: { value: exposure }, vig: { value: vig }, bloom: { value: bloomOn ? bloomAmt : 0 }, tOrg: { value: new THREE.Vector2() }, tSize: { value: new THREE.Vector2(TW, TH) }, full: { value: new THREE.Vector2(W, H) }, b0: { value: rtA.texture }, b1: { value: rtA.texture }, b2: { value: rtA.texture }, b3: { value: rtA.texture }, b4: { value: rtA.texture } });
     r.autoClear = true; [rtA, rtB].forEach(t => { r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); });
-    const out = document.createElement("canvas"); out.width = W; out.height = H; const octx = out.getContext("2d"), px = new Uint8Array(W * H * 4), img = octx.createImageData(W, H);
-    const finish = (scale) => {
-      toneQ.mat.uniforms.t.value = rtA.texture; toneQ.mat.uniforms.ex.value = exposure * (scale || 1);
+    const out = document.createElement("canvas"); out.width = W; out.height = H; const octx = out.getContext("2d"), px = new Uint8Array(TW * TH * 4), img = octx.createImageData(TW, TH);
+    const finish = (scale, tx = 0, ty = 0) => {
+      toneQ.mat.uniforms.t.value = rtA.texture; toneQ.mat.uniforms.ex.value = exposure * (scale || 1); toneQ.mat.uniforms.tOrg.value.set(tx, H - ty - TH);
       if (blur) {
         const pass = (q, tgt) => { r.setRenderTarget(tgt); r.render(q.scene, q.cam); };
         bloomQ.mat.uniforms.t.value = rtA.texture; bloomQ.mat.uniforms.ex.value = exposure * (scale || 1); pass(bloomQ, blur[0].a);
@@ -201,9 +207,9 @@ async function l3rnRender(opt = {}) {
           toneQ.mat.uniforms["b" + k].value = L.a.texture;
         });
       }
-      r.setRenderTarget(rtOut); r.render(toneQ.scene, toneQ.cam); r.readRenderTargetPixels(rtOut, 0, 0, W, H, px); r.setRenderTarget(S.target);
-      for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);   // GL läser nerifrån och upp
-      octx.putImageData(img, 0, 0); l3rnPrecip(octx, W, H, E, Number(opt.time) || 0); return out;
+      r.setRenderTarget(rtOut); r.render(toneQ.scene, toneQ.cam); r.readRenderTargetPixels(rtOut, 0, 0, TW, TH, px); r.setRenderTarget(S.target);
+      for (let y = 0; y < TH; y++) img.data.set(px.subarray((TH - 1 - y) * TW * 4, (TH - y) * TW * 4), y * TW * 4);   // GL läser nerifrån och upp
+      octx.putImageData(img, tx, ty, 0, 0, Math.min(TW, W - tx), Math.min(TH, H - ty)); return out;
     };
     // 5) delbilderna
     // skärpedjup: linsen = en skiva; varje delbild ser från en punkt på skivan men mot samma skärpeplan
@@ -211,10 +217,19 @@ async function l3rnRender(opt = {}) {
     if (dofAmt > 0 && !focus) { cam.updateMatrixWorld(); const tg = (l3.orbit && l3.orbit.target) || sph.center, fw = cam.getWorldDirection(new THREE.Vector3()); focus = Math.max(0.5, tg.clone().sub(cam.position).dot(fw)); }
     const aperture = dofAmt > 0 ? focus * 0.02 * dofAmt : 0;
     const T = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), bg0 = S.clear;
-    let done = 0;
+    const pb = { R: new THREE.Vector3(), U: new THREE.Vector3(), F: new THREE.Vector3() };
+    if (pano) {
+      cam.updateMatrixWorld(); { const f = cam.getWorldDirection(new THREE.Vector3()); f.z = 0; if (f.lengthSq() < 1e-6) f.set(0, 1, 0); pb.F.copy(f.normalize()); pb.U.set(0, 0, 1); pb.R.crossVectors(pb.F, pb.U).normalize(); }   // vågrät horisont, mitten = blickriktningen i sidled
+      cubeRT = new THREE.WebGLCubeRenderTarget(Math.max(256, Math.min(texMax, 2048, Math.round(H / 2))), { type: THREE.HalfFloatType, format: THREE.RGBAFormat, generateMipmaps: false });
+      cubeCam = new THREE.CubeCamera(cam.near, cam.far, cubeRT); cubeCam.position.copy(camPos0); cubeCam.updateMatrixWorld();
+      panoQ = l3rnQuad(L3RN_PANO, { tCube: { value: cubeRT.texture }, bR: { value: pb.R }, bU: { value: pb.U }, bF: { value: pb.F }, tOrg: { value: new THREE.Vector2() }, tSize: { value: new THREE.Vector2(TW, TH) }, full: { value: new THREE.Vector2(W, H) }, jit: { value: new THREE.Vector2() } });
+    }
+    let done = 0, doneAll = 0;
+    for (let ti = 0; ti < tiles.length && !l3rn.cancel; ti++) {
+    const [tx, ty] = tiles[ti]; done = 0; if (ti) [rtA, rtB].forEach(t => { r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); });
     for (let i = 0; i < N; i++) {
       if (l3rn.cancel) break;
-      cam.setViewOffset(W, H, l3rnHalton(i + 1, 2) - 0.5, l3rnHalton(i + 1, 3) - 0.5, W, H);                    // kantutjämning: bråkdel av en bildpunkt
+      cam.setViewOffset(W, H, tx + l3rnHalton(i + 1, 2) - 0.5, ty + l3rnHalton(i + 1, 3) - 0.5, TW, TH);                    // kantutjämning: bråkdel av en bildpunkt
       e1.set(-d0.y, d0.x, 0); if (e1.lengthSq() < 1e-6) e1.set(1, 0, 0); e1.normalize(); e2.crossVectors(d0, e1).normalize();
       const rr = Math.tan(soft * Math.PI / 180) * Math.sqrt(l3rnHalton(i + 1, 5)), th = 2 * Math.PI * l3rnHalton(i + 1, 7);   // solen: en punkt på dess skiva
       T.copy(d0).addScaledVector(e1, rr * Math.cos(th)).addScaledVector(e2, rr * Math.sin(th)).normalize();
@@ -229,17 +244,23 @@ async function l3rnRender(opt = {}) {
       sky.position.set(sph.center.x + Math.cos(ph) * s2 * dist, sph.center.y + Math.sin(ph) * s2 * dist, sph.center.z + z * dist);
       sun.updateMatrixWorld(); sun.target.updateMatrixWorld(); sky.updateMatrixWorld(); sky.target.updateMatrixWorld();
       if (skyMesh) skyMesh.position.copy(cam.position); skyMesh && skyMesh.updateMatrixWorld();
-      r.setRenderTarget(rtS); r.setClearColor(bg0, 1); r.render(scene, cam);
+      if (pano) {
+        r.setClearColor(bg0, 1); cubeCam.update(r, scene);
+        panoQ.mat.uniforms.tOrg.value.set(tx, H - ty - TH); panoQ.mat.uniforms.jit.value.set(l3rnHalton(i + 1, 2) - 0.5, l3rnHalton(i + 1, 3) - 0.5);
+        r.setRenderTarget(rtS); r.render(panoQ.scene, panoQ.cam);
+      } else { r.setRenderTarget(rtS); r.setClearColor(bg0, 1); r.render(scene, cam); }
       addQ.mat.uniforms.tAcc.value = rtA.texture; r.setRenderTarget(rtB); r.render(addQ.scene, addQ.cam); [rtA, rtB] = [rtB, rtA];
-      done++;
+      done++; doneAll++;
       if (i % 3 === 2 || i === N - 1) {
-        if (typeof opt.onProgress === "function" && (done === N || done % Math.max(2, Math.round(N / 12)) === 0)) opt.onProgress(done, N, finish(N / done));
+        if (typeof opt.onProgress === "function" && (done === N || done % Math.max(2, Math.round(N / 12)) === 0)) opt.onProgress(doneAll, N * tiles.length, finish(N / done, tx, ty));
         r.setRenderTarget(S.target);   // ritar något annat i väntan (vyns egen ritloop) ska det inte hamna i våra buffertar
         await new Promise(res => setTimeout(res, 0));
       }
     }
-    const canvas = finish(N / Math.max(1, done));   // avbruten: det som hunnit läggas ihop skalas upp
-    l3rn.last = { canvas, width: W, height: H, samples: done, ms: Math.round(performance.now() - t0) };
+    finish(N / Math.max(1, done), tx, ty);   // avbruten: det som hunnit läggas ihop skalas upp
+    }
+    l3rnPrecip(octx, W, H, E, Number(opt.time) || 0); const canvas = out;
+    l3rn.last = { canvas, width: W, height: H, panorama: pano, samples: N, tiles: tiles.length, ms: Math.round(performance.now() - t0) };
     return l3rn.last;
   } finally {
     // 6) återställ allt
@@ -257,7 +278,7 @@ async function l3rnRender(opt = {}) {
     S.env.forEach((v, m) => { m.envMapIntensity = v; });
     S.vis.forEach(([o, v]) => { o.visible = v; }); if (l3.gizmo && S.gizmo != null) l3.gizmo.visible = S.gizmo;
     l3vm.sunDir = S.sunDir; if (S.mode !== "real") { if (!opt.sticky) l3vmSet(S.mode, true); } else l3vmShadows(true);   // sticky: filmen låter Realistisk stå kvar mellan bilderna och sätter tillbaka läget i slutet
-    (blur || []).forEach(L => { L.a.dispose(); L.b.dispose(); }); [rtS, rtA, rtB, rtOut].forEach(t => t && t.dispose()); [addQ, toneQ, bloomQ, blurQ].forEach(q => { if (q) { q.mesh.geometry.dispose(); q.mat.dispose(); } });
+    (blur || []).forEach(L => { L.a.dispose(); L.b.dispose(); }); [rtS, rtA, rtB, rtOut].forEach(t => t && t.dispose()); if (cubeRT) cubeRT.dispose(); [addQ, toneQ, bloomQ, blurQ, panoQ].forEach(q => { if (q) { q.mesh.geometry.dispose(); q.mat.dispose(); } });
     l3rn.busy = false;
     l3Render();
   }
@@ -276,7 +297,7 @@ function l3rnBtn() {
 const l3rnQ = (el, s) => el.querySelector(s);
 function l3rnOpts(el) {
   const v = s => { const e = l3rnQ(el, s); return e ? e.value : undefined; };
-  return l3rnUi.last = { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), bloom: +(v("#rnBl") || 0.12), dof: +(v("#rnDof") || 0), shadowSize: +(v("#rnSh") || 4096), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked };
+  return l3rnUi.last = { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), bloom: +(v("#rnBl") || 0.12), dof: +(v("#rnDof") || 0), shadowSize: +(v("#rnSh") || 4096), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked, panorama: !!(l3rnQ(el, "#rnPano") || {}).checked };
 }
 function l3rnPreviewSoon() {   // lågupplöst bild efter varje ändring (hoppar över om en full rendering pågår)
   const el = document.getElementById("v3Render"); if (!el) return; clearTimeout(l3rnUi.prevT);
@@ -304,9 +325,9 @@ function l3rnTab(tab, keep) {
   const scr = body.scrollTop;
   if (tab === "bild") {
     body.innerHTML = `<div class="rn-g"><label>Kvalitet<select id="rnQ"><option value="fast">Snabb (12)</option><option value="good" selected>Bra (48)</option><option value="best">Bäst (160)</option></select></label>
-      <label>Storlek<select id="rnS"><option value="1280">1280 px</option><option value="1920" selected>1920 px (Full HD)</option><option value="2560">2560 px</option><option value="3840">3840 px (4K)</option></select></label>
+      <label>Storlek<select id="rnS"><option value="1280">1280 px</option><option value="1920" selected>1920 px (Full HD)</option><option value="2560">2560 px</option><option value="3840">3840 px (4K)</option><option value="7680">7680 px (8K, delas i rutor)</option></select></label>
       <label>Mjuka skuggor <input id="rnSoft" type="range" min="0" max="8" step="0.5" value="1.6" /></label><label>Ambient occlusion <input id="rnAo" type="range" min="0" max="1.5" step="0.1" value="1" /></label>
-      <label>Exponering <input id="rnEx" type="range" min="0.5" max="2" step="0.05" value="0.95" /></label><label title="Glöd runt det som är ljusare än vitt (solen, blanka ytor)">Bloom <input id="rnBl" type="range" min="0" max="1" step="0.05" value="0.12" /></label><label title="Oskärpa före och bakom skärpeplanet (fokus ligger vid det du tittar mot). 0 = allt skarpt">Skärpedjup <input id="rnDof" type="range" min="0" max="5" step="0.25" value="0" /></label><label title="Skuggkartans storlek: större = skarpare skuggor men tyngre">Skuggor<select id="rnSh"><option value="2048">2048</option><option value="4096" selected>4096</option><option value="8192">8192 (kräver mycket grafikminne)</option></select></label><label class="rn-chk"><input id="rnEdges" type="checkbox" /> Visa konturlinjer på kroppar</label></div>
+      <label>Exponering <input id="rnEx" type="range" min="0.5" max="2" step="0.05" value="0.95" /></label><label title="Glöd runt det som är ljusare än vitt (solen, blanka ytor)">Bloom <input id="rnBl" type="range" min="0" max="1" step="0.05" value="0.12" /></label><label title="Oskärpa före och bakom skärpeplanet (fokus ligger vid det du tittar mot). 0 = allt skarpt">Skärpedjup <input id="rnDof" type="range" min="0" max="5" step="0.25" value="0" /></label><label title="Skuggkartans storlek: större = skarpare skuggor men tyngre">Skuggor<select id="rnSh"><option value="2048">2048</option><option value="4096" selected>4096</option><option value="8192">8192 (kräver mycket grafikminne)</option></select></label><label class="rn-chk"><input id="rnEdges" type="checkbox" /> Visa konturlinjer på kroppar</label><label class="rn-chk" title="Hela omgivningen runt kamerans plats som en equirektangulär bild (2:1) – kan läggas in i en 360°-visare. Storleken är bredden."><input id="rnPano" type="checkbox" /> 360°-panorama (från kamerans plats)</label></div>
       <div class="rn-note">Material, mark och miljö väljs i flikarna bredvid och gäller bara renderingen – 3D-editorns utseende ändras inte.</div>`;
     body.querySelectorAll("input,select").forEach(i => { i.onchange = i.oninput = () => { if (i.id !== "rnS") l3rnPreviewSoon(); }; });
   } else if (tab === "material") {
@@ -384,7 +405,7 @@ function l3rnOpen() {
     } catch (e) { msg.textContent = "Kunde inte rendera: " + e.message; }
     go.textContent = "Rendera";
   };
-  q("#rnSave").onclick = () => { const c = l3rn.last && l3rn.last.canvas; if (!c) return; c.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `rendering-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, "image/png"); };
+  q("#rnSave").onclick = () => { const c = l3rn.last && l3rn.last.canvas; if (!c) return; c.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `${l3rn.last.panorama ? "panorama" : "rendering"}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, "image/png"); };
   l3rnPreviewSoon();
 }
 (function l3rnBoot() { const tick = () => { if (document.getElementById("view3d") && typeof l3 !== "undefined" && l3 && l3.renderer) l3rnBtn(); else setTimeout(tick, 1500); }; setTimeout(tick, 1500); })();

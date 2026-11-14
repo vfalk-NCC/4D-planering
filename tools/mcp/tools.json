@@ -918,6 +918,10 @@
         "shadow_size": {
           "type": "number",
           "description": "Shadow map size 1024-8192 (default 4096)"
+        },
+        "panorama": {
+          "type": "boolean",
+          "description": "360° equirectangular panorama (2:1) from the camera position; width = image width (height ignored)"
         }
       }
     }
