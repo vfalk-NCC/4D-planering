@@ -1268,5 +1268,71 @@
         "object_id"
       ]
     }
+  },
+  {
+    "name": "define_render_material",
+    "description": "Create or update an OWN render material (max 12 per project): start from a library material (base = id from list_render_materials) or a plain colour, set tile_size (m per repeat), roughness 0-1, metalness 0-1, opacity 0.05-1, relief 0-2, and optionally your own PBR images as base64 (albedo_base64, normal_base64, roughness_base64; PNG/JPEG, downscaled to 768 px). normal_directx=true flips the green channel for DirectX normal maps. Pass id to update. Returns id for set_render_material / set_ground_material. Affects only renders, not the editor look.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "tile_size": {
+          "type": "number"
+        },
+        "roughness": {
+          "type": "number"
+        },
+        "metalness": {
+          "type": "number"
+        },
+        "opacity": {
+          "type": "number"
+        },
+        "relief": {
+          "type": "number"
+        },
+        "albedo_base64": {
+          "type": "string"
+        },
+        "normal_base64": {
+          "type": "string"
+        },
+        "roughness_base64": {
+          "type": "string"
+        },
+        "mime": {
+          "type": "string"
+        },
+        "normal_directx": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "delete_render_material",
+    "description": "Delete an own render material (id starting with c_) and the rules/ground areas that use it.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    }
   }
 ]

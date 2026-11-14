@@ -132,6 +132,7 @@ async function l3rnRender(opt = {}) {
     const sun = l3vmSun(); if (!sun) throw new Error("Ingen sol i scenen");
     // 1b) renderingsmaterial, mark och miljö (eget lager – editorns material rörs inte; allt sätts tillbaka i slutet)
     const RM = typeof l3rmBegin === "function" ? l3rmBegin(S, opt) : null;
+    if (typeof l3rmedReady === "function") await l3rmedReady();   // egna bilder (texturset) färdigladdade
     // 2) göm hjälpgrupper och CAD-konturer
     ["sel", "meas", "tmp"].forEach(k => { const g = l3.groups[k]; if (g) { S.vis.push([g, g.visible]); g.visible = false; } });
     if (l3.gizmo) l3.gizmo.visible = false;
@@ -293,8 +294,8 @@ function l3rnRuleLabel(r) {
   if (r.t === "cls") return "IFC-klass " + r.ref; if (r.t === "guid") return "IFC-element"; return "Färg " + r.ref;
 }
 function l3rnGrid(sel, groupKey, onPick, withNone) {
-  const chips = L3RM_GROUPS.map(g => `<button type="button" class="rn-chip${l3rnUi[groupKey] === g ? " on" : ""}" data-g="${g}">${g}</button>`).join("");
-  const mats = L3RM_LIB.filter(m => m.group === l3rnUi[groupKey]);
+  const chips = [...L3RM_GROUPS, "Egna"].map(g => `<button type="button" class="rn-chip${l3rnUi[groupKey] === g ? " on" : ""}" data-g="${g}">${g}</button>`).join("");
+  const mats = l3rnUi[groupKey] === "Egna" ? l3rmData().custom.map(c => l3rmDef(c.id)).filter(Boolean) : L3RM_LIB.filter(m => m.group === l3rnUi[groupKey]);
   return `<div class="rn-chips">${chips}</div><div class="rn-grid">${withNone ? `<button type="button" class="rn-mat${!sel ? " on" : ""}" data-m=""><span class="rn-none">Ingen</span><em>Ingen</em></button>` : ""}${mats.map(m => `<button type="button" class="rn-mat${sel === m.id ? " on" : ""}" data-m="${m.id}" title="${m.name} – ${m.size} m"><img src="${l3rmThumb(m.id)}" alt="" /><em>${m.name}</em></button>`).join("")}</div>`;
 }
 function l3rnTab(tab, keep) {
@@ -320,10 +321,11 @@ function l3rnTab(tab, keep) {
       ${l3rnGrid(l3rnUi.mat, "grp")}
       <div class="rn-sub">Dina material (${D.rules.length})<button type="button" id="rmClear" ${D.rules.length ? "" : "disabled"}>Rensa alla</button></div>
       <div class="rn-rules">${D.rules.map(r => { const d = l3rmDef(r.mat); return `<div class="rn-rule"><img src="${l3rmThumb(r.mat)}" alt="" /><span><b>${esc(d ? d.name : r.mat)}</b><small>${esc(l3rnRuleLabel(r))}${r.s && r.s !== 1 ? ` · skala ${r.s}` : ""}${r.tint ? ` · tona ${r.tint}` : ""}</small></span><button type="button" data-rm="${r.id}" title="Ta bort">✕</button></div>`; }).join("") || '<div class="rn-note">Inga än.</div>'}</div>`;
+    if (l3rnUi.grp === "Egna" && typeof l3rmedForm === "function") l3rmedForm(body);
     const tsel = l3rnQ(body, "#rmT"); if (tsel) tsel.onchange = () => { l3rnUi.target = tsel.value; };
     body.querySelectorAll(".rn-chip").forEach(b => { b.onclick = () => { l3rnUi.grp = b.dataset.g; l3rnTab("material"); }; });
     body.querySelectorAll(".rn-mat").forEach(b => { b.onclick = () => {
-      const t = l3rnQ(body, "#rmT").value, o = { s: +l3rnQ(body, "#rmS").value, r: +l3rnQ(body, "#rmR").value, tint: l3rnQ(body, "#rmTint").value === "#ffffff" ? "" : l3rnQ(body, "#rmTint").value }; l3rnUi.mat = b.dataset.m; l3rnUi.target = t;
+      const t = l3rnQ(body, "#rmT").value, o = { s: +l3rnQ(body, "#rmS").value, r: +l3rnQ(body, "#rmR").value, tint: l3rnQ(body, "#rmTint").value === "#ffffff" ? "" : l3rnQ(body, "#rmTint").value }; l3rnUi.mat = b.dataset.m; l3rnUi.target = t; if (String(b.dataset.m).startsWith("c_") && typeof l3rmedUi !== "undefined") l3rmedUi.id = b.dataset.m;
       try { if (t === "sel") l3rnSel().forEach(id => l3rmSetRule({ t: "obj", ref: id }, b.dataset.m, o)); else if (t.startsWith("cls:")) l3rmSetRule({ t: "cls", ref: t.slice(4) }, b.dataset.m, o); else if (t.startsWith("color:")) l3rmSetRule({ t: "color", ref: t.slice(6) }, b.dataset.m, o); else l3rnQ(el, "#rnMsg").textContent = "Markera ett objekt i 3D först."; } catch (e) { l3rnQ(el, "#rnMsg").textContent = e.message; }
     }; });
     body.querySelectorAll("[data-rm]").forEach(b => { b.onclick = () => l3rmRemoveRule(b.dataset.rm); });

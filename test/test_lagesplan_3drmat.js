@@ -73,6 +73,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const after = await page.evaluate(id => { const g = l3.placeMeshes.get(id), ms = []; g.traverse(o => { if (o.isMesh) ms.push(o); }); const o = ms[0], m = o.material; return { n: ms.length, uuid: m.uuid, color: m.color.getHex(), map: !!m.map, type: m.type, mat: !!m.userData.l3rm, total: (() => { let c = 0, tmp = 0; l3.scene.traverse(x => { c++; if (x.userData && x.userData.l3rmTmp) tmp++; }); return [c, tmp]; })(), busy: l3rn.busy }; }, S0.a);
   if (Math.abs(withMat[0] - base[0]) + Math.abs(withMat[1] - base[1]) + Math.abs(withMat[2] - base[2]) < 40 || !(withMat[0] > withMat[2] + 15)) fail('Tegelmaterialet ska synas i renderingen (rödaktigt): ' + J({ base, withMat }));
   if (after.uuid !== before.uuid || after.color !== before.color || after.map !== before.map || after.mat || after.total[1] !== 0 || after.busy) fail('Editorns material ska vara orörda efter renderingen: ' + J({ before, after }));
+  { // egna material (lagesplan-3drmed.js): enfärgat, egen färgbild, råhetskarta, ändring slår igenom, radering tar bort reglerna
+    const mkImg = (r, g, b) => page.evaluate(([r, g, b]) => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.fillStyle = `rgb(${r},${g},${b})`; x.fillRect(0, 0, 64, 64); return c.toDataURL('image/png'); }, [r, g, b]);
+    await page.evaluate(id => l3rmRemoveRule('obj:' + id), S0.a);
+    const cid = await page.evaluate(id => { const c = l3rmedSet({ color: '#10c010', name: 'Testgrön', rough: 0.6 }); l3rmSetRule({ t: 'obj', ref: id }, c.id, { s: 1 }); return c.id; }, S0.a);
+    const pg = await pxAt(0, 0, 3.0); if (!(pg[1] > pg[0] + 25 && pg[1] > pg[2] + 25)) fail('Enfärgat eget material ska synas grönt: ' + J(pg));
+    const red = await mkImg(210, 30, 30);
+    await page.evaluate(async ([cid, u]) => { l3rmedSet({ id: cid, maps: { alb: await l3rmedShrink(u) } }); }, [cid, red]);
+    const pr = await pxAt(0, 0, 3.0); if (!(pr[0] > pr[1] + 30 && pr[0] > pr[2] + 30)) fail('Egen färgbild ska ersätta färgen (rött): ' + J({ pg, pr }));
+    const grey = await mkImg(200, 200, 200);
+    await page.evaluate(async ([cid, u]) => { l3rmedSet({ id: cid, rough: 1, maps: { rgh: await l3rmedShrink(u) } }); }, [cid, grey]);
+    const prr = await pxAt(0, 0, 3.0); if (!(prr[0] > prr[1] + 30)) fail('Råhetskarta ska inte förstöra materialet: ' + J(prr));
+    const via = await page.evaluate(async u => { const o = await l3api.methods.define_render_material({ name: 'Via API', color: '#2040ff', roughness: 0.4, albedo_base64: u.split(',')[1] }); const lst = l3api.methods.list_render_materials({ group: 'egna' }); return { id: o.id, images: o.images, listed: lst.materials.map(m => m.id) }; }, red);
+    if (!via.listed.includes(via.id) || !via.listed.includes(cid) || via.images[0] !== 'alb') fail('define_render_material/list_render_materials: ' + J(via));
+    const rm = await page.evaluate(([cid, id2]) => { const n = l3rmedRemove(cid) + l3rmedRemove(id2); return { n, rules: l3rmData().rules.length, left: l3rmData().custom.length, def: !!l3rmDef(cid) }; }, [cid, via.id]);
+    if (rm.n !== 2 || rm.rules || rm.left || rm.def) fail('Radera egna material ska ta bort dem och deras regler: ' + J(rm));
+    console.log('OK: egna material – enfärgat, egen färgbild, råhetskarta, MCP-definition, radering');
+    await page.evaluate(id => l3rmSetRule({ t: 'obj', ref: id }, 'tegel_rod', { s: 1 }), S0.a); }
   const edit = await page.evaluate(id => { l3vmSet('shaded', true); const g = l3.placeMeshes.get(id); let m; g.traverse(o => { if (o.isMesh && !m) m = o.material; }); return { type: m.type, userData: !!m.userData.l3rm, hasMap: !!m.map }; }, S0.a);
   if (edit.userData || edit.hasMap) fail('Editorns material ska vara oförändrade: ' + J(edit));
   console.log('OK: renderingsmaterial syns i bilden men editorns material är orörda (samma material, färg, ingen textur, inga kvarlämnade nät)', J({ base, withMat }));
@@ -157,6 +174,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const ui = await page.evaluate(() => ({ t: document.getElementById('rmT').value, mats: document.querySelectorAll('#v3Render .rn-mat').length }));
   if (ui.t !== 'sel' || ui.mats < 10) fail('Materialfliken ska ha markerat objekt som mål och ett rutnät: ' + J(ui));
   if (process.env.L3UI) await page.screenshot({ path: process.env.L3UI });
+  await page.click('#v3Render .rn-chip[data-g="Egna"]'); await page.waitForSelector('#v3Render #edNew'); await page.click('#v3Render #edNew'); await page.waitForSelector('#v3Render #edName');
+  const ed = await page.evaluate(() => ({ fields: ['edName', 'edBase', 'edColor', 'edSize', 'edRough', 'edMetal', 'edOp', 'edBump', 'edAlb', 'edNrm', 'edRgh', 'edDel'].filter(i => document.getElementById(i)).length, n: l3rmData().custom.length, cards: document.querySelectorAll('#v3Render .rn-mat').length }));
+  if (ed.fields !== 12 || ed.n !== 1 || ed.cards !== 1) fail('Redigeraren för egna material ska visas med alla fält: ' + J(ed));
+  if (process.env.L3UI) await page.screenshot({ path: process.env.L3UI.replace('.png', '_ed.png') });
+  await page.fill('#v3Render #edName', 'Min betong'); await page.dispatchEvent('#v3Render #edName', 'change'); await page.waitForTimeout(250);
+  const nm = await page.evaluate(() => l3rmData().custom[0].name); if (nm !== 'Min betong') fail('Namnet ska sparas: ' + nm);
+  await page.evaluate(() => { l3rmedRemove(l3rmData().custom[0].id); }); await page.click('#v3Render .rn-chip[data-g="Mark"]');
   await page.click('#v3Render .rn-mat[data-m="asfalt"]'); await page.waitForTimeout(300);
   const r1 = await page.evaluate(() => ({ rules: l3rmData().rules.map(r => r.t + ':' + r.mat), listed: document.querySelectorAll('#v3Render .rn-rule').length }));
   if (r1.rules.length !== 1 || !/^obj:asfalt$/.test(r1.rules[0]) || r1.listed !== 1) fail('Klick på ett material ska lägga det på det markerade: ' + J(r1));

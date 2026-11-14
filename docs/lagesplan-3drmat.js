@@ -108,7 +108,7 @@ const L3RM_DEFS = [
   ["gummi", "Gummi", 6, 1, 0.9, 0, 1, 0.1, rmPlain([36, 36, 38])]
 ];
 const L3RM_LIB = L3RM_DEFS.map(d => ({ id: d[0], name: d[1], group: L3RM_GROUPS[d[2]], size: d[3], rough: d[4], metal: d[5], op: d[6], bump: d[7], f: d[8] }));
-const l3rmDef = id => L3RM_LIB.find(m => m.id === id) || null;
+function l3rmDef(id) { return L3RM_LIB.find(m => m.id === id) || (typeof l3rmCustomDef === "function" ? l3rmCustomDef(id) : null); }
 
 /* ---- Texturer (albedo + normalkarta) – byggs första gången ett material används ---- */
 function l3rmRaster(def, n) {
@@ -118,6 +118,11 @@ function l3rmRaster(def, n) {
 }
 function l3rmTextures(def) {
   let t = l3rm.texCache.get(def.id); if (t) return t;
+  if (def.custom && typeof l3rmCustomTextures === "function") { t = l3rmCustomTextures(def, l3rmProcedural); l3rm.texCache.set(def.id, t); return t; }
+  t = l3rmProcedural(def); l3rm.texCache.set(def.id, t); return t;
+}
+function l3rmProcedural(def) {
+  let t;
   const n = L3RM_TEX, { A, H } = l3rmRaster(def, n), cv = document.createElement("canvas"), cn = document.createElement("canvas"); cv.width = cv.height = cn.width = cn.height = n;
   cv.getContext("2d").putImageData(new ImageData(A, n), 0, 0);
   const N = new Uint8ClampedArray(n * n * 4), k = (def.bump || 0) * 3.2, hh = (x, y) => H[((y + n) % n) * n + ((x + n) % n)];
@@ -127,11 +132,11 @@ function l3rmTextures(def) {
   }
   cn.getContext("2d").putImageData(new ImageData(N, n), 0, 0);
   const mk = c => { const tx = new THREE.CanvasTexture(c); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.anisotropy = Math.min(8, (l3.renderer && l3.renderer.capabilities.getMaxAnisotropy()) || 4); tx.minFilter = THREE.LinearMipmapLinearFilter; tx.generateMipmaps = true; return tx; };
-  t = { alb: mk(cv), nrm: mk(cn) }; l3rm.texCache.set(def.id, t); return t;
+  t = { alb: mk(cv), nrm: mk(cn) }; return t;
 }
 /* Miniatyr (data-URL) till materialrutorna. */
 function l3rmThumb(id) {
-  let u = l3rm.thumbs.get(id); if (u) return u; const def = l3rmDef(id); if (!def) return "";
+  let u = l3rm.thumbs.get(id); if (u) return u; const def = l3rmDef(id); if (!def) return ""; if (def.custom && def.custom.thumb) return def.custom.thumb;
   const n = 72, { A } = l3rmRaster(def, n), cv = document.createElement("canvas"); cv.width = cv.height = n;
   if (def.op < 1) { const g = cv.getContext("2d"); g.fillStyle = "#e5e7eb"; g.fillRect(0, 0, n, n); g.fillStyle = "#f8fafc"; for (let y = 0; y < n; y += 12) for (let x = (y / 12) % 2 ? 0 : 12; x < n; x += 24) g.fillRect(x, y, 12, 12); const im = new ImageData(A, n); for (let i = 0; i < A.length; i += 4) A[i + 3] = 255 * Math.max(0.45, def.op + 0.3); const c2 = document.createElement("canvas"); c2.width = c2.height = n; c2.getContext("2d").putImageData(im, 0, 0); g.drawImage(c2, 0, 0); }
   else cv.getContext("2d").putImageData(new ImageData(A, n), 0, 0);
@@ -141,7 +146,7 @@ function l3rmThumb(id) {
 /* ---- Materialet: MeshStandardMaterial med triplanar yta (färg, relief, råhet) ---- */
 const L3RM_T = { value: 0 };   // filmens tid (s): rinnande vatten
 const L3RM_VERT = "varying vec3 vRmW; varying vec3 vRmN;";
-const L3RM_FRAG_PARS = `varying vec3 vRmW; varying vec3 vRmN; uniform sampler2D tRmA; uniform sampler2D tRmN; uniform float uRmScale; uniform float uRmRot; uniform vec3 uRmTint; uniform float uRmBump; uniform float uRmRv; uniform float uRmT; uniform float uRmFlow;
+const L3RM_FRAG_PARS = `varying vec3 vRmW; varying vec3 vRmN; uniform sampler2D tRmA; uniform sampler2D tRmN; uniform float uRmScale; uniform float uRmRot; uniform vec3 uRmTint; uniform float uRmBump; uniform float uRmRv; uniform float uRmT; uniform float uRmFlow; uniform sampler2D tRmR; uniform float uRmUseR;
   vec2 rmUV(vec2 p) { float c = cos(uRmRot), s = sin(uRmRot); return vec2(c * p.x - s * p.y, s * p.x + c * p.y) * uRmScale + uRmFlow * vec2(uRmT * 0.03, uRmT * 0.02); }
   vec2 rmUn(vec2 g) { float c = cos(uRmRot), s = sin(uRmRot); return vec2(c * g.x + s * g.y, -s * g.x + c * g.y); }
   vec3 rmW(vec3 n) { vec3 a = pow(abs(n), vec3(4.0)); return a / (a.x + a.y + a.z + 1e-5); }`;
@@ -151,13 +156,13 @@ function l3rmMaterial(def, o = {}) {
   const T = l3rmTextures(def), tc = new THREE.Color(tint);
   m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: def.rough, metalness: def.metal, side: THREE.DoubleSide, transparent: def.op < 1, opacity: def.op, depthWrite: def.op >= 1 || def.op > 0.6, envMapIntensity: def.metal > 0.5 ? 1.4 : def.op < 1 ? 1.6 : 0.55 });
   m.userData.l3rm = true;
-  const U = { tRmA: { value: T.alb }, tRmN: { value: T.nrm }, uRmScale: { value: 1 / (def.size * sc) }, uRmRot: { value: rot }, uRmTint: { value: new THREE.Vector3(tc.r, tc.g, tc.b) }, uRmBump: { value: def.bump ? 0.55 : 0 }, uRmRv: { value: def.metal > 0.5 ? 0.12 : 0.28 }, uRmT: L3RM_T, uRmFlow: { value: def.id === "vatten" ? 1 : 0 } };
+  const U = { tRmA: { value: T.alb }, tRmN: { value: T.nrm }, tRmR: { value: T.rgh || T.alb }, uRmUseR: { value: T.rgh ? Math.max(0.2, def.rough * 2) : 0 }, uRmScale: { value: 1 / (def.size * sc) }, uRmRot: { value: rot }, uRmTint: { value: new THREE.Vector3(tc.r, tc.g, tc.b) }, uRmBump: { value: def.bump ? 0.55 : 0 }, uRmRv: { value: def.metal > 0.5 ? 0.12 : 0.28 }, uRmT: L3RM_T, uRmFlow: { value: def.id === "vatten" ? 1 : 0 } };
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\n" + L3RM_VERT).replace("#include <begin_vertex>", "#include <begin_vertex>\n vRmW = (modelMatrix * vec4(transformed, 1.0)).xyz; vRmN = normalize(mat3(modelMatrix) * objectNormal);");
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\n" + L3RM_FRAG_PARS)
       .replace("#include <map_fragment>", "vec3 rmWt = rmW(vRmN); vec3 rmAlb = texture2D(tRmA, rmUV(vRmW.zy)).rgb * rmWt.x + texture2D(tRmA, rmUV(vRmW.xz)).rgb * rmWt.y + texture2D(tRmA, rmUV(vRmW.xy)).rgb * rmWt.z; vec3 rmAlb2 = texture2D(tRmA, rmUV(vRmW.zy + 7.3) * 0.173).rgb * rmWt.x + texture2D(tRmA, rmUV(vRmW.xz + 3.1) * 0.173).rgb * rmWt.y + texture2D(tRmA, rmUV(vRmW.xy + 5.7) * 0.173).rgb * rmWt.z; rmAlb = mix(rmAlb, rmAlb * (0.55 + 0.9 * dot(rmAlb2, vec3(0.3333))), 0.35); float rmLum = dot(rmAlb, vec3(0.299, 0.587, 0.114)); diffuseColor.rgb *= pow(rmAlb, vec3(2.2)) * pow(uRmTint, vec3(2.2));")
-      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n roughnessFactor = clamp(roughnessFactor + (0.5 - rmLum) * uRmRv, 0.03, 1.0);")
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\n roughnessFactor = clamp(roughnessFactor + (0.5 - rmLum) * uRmRv, 0.03, 1.0); if (uRmUseR > 0.5) { float rmR = texture2D(tRmR, rmUV(vRmW.zy)).r * rmWt.x + texture2D(tRmR, rmUV(vRmW.xz)).r * rmWt.y + texture2D(tRmR, rmUV(vRmW.xy)).r * rmWt.z; roughnessFactor = clamp(rmR * uRmUseR * 0.5, 0.03, 1.0); }")
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
       if (uRmBump > 0.0) {
         vec3 nW = normalize((vec4(normal, 0.0) * viewMatrix).xyz);
@@ -168,7 +173,7 @@ function l3rmMaterial(def, o = {}) {
         normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
       }`);
   };
-  m.customProgramCacheKey = () => "l3rm-2";
+  m.customProgramCacheKey = () => "l3rm-3";
   l3rm.matCache.set(key, m); return m;
 }
 
@@ -176,12 +181,12 @@ function l3rmMaterial(def, o = {}) {
 function l3rmData() {
   const holder = typeof plan !== "undefined" && plan ? plan : (l3rm.mem = l3rm.mem || {});
   if (!holder.render) holder.render = { v: 1, rules: [], ground: { base: null, areas: [] }, env: {} };
-  const d = holder.render; d.rules = d.rules || []; d.ground = d.ground || { base: null, areas: [] }; d.ground.areas = d.ground.areas || []; d.env = d.env || {};
+  const d = holder.render; d.rules = d.rules || []; d.ground = d.ground || { base: null, areas: [] }; d.ground.areas = d.ground.areas || []; d.env = d.env || {}; d.custom = d.custom || [];
   return d;
 }
 function l3rmSave() {
   l3rm.matCache.forEach(() => {}); // materialen ligger kvar i minnet (de är små)
-  if (typeof plan !== "undefined" && plan && typeof schedulePlanSave === "function") { const d = plan.render; if (d && !d.rules.length && !d.ground.base && !d.ground.areas.length && !Object.keys(d.env).length) delete plan.render; schedulePlanSave(); }
+  if (typeof plan !== "undefined" && plan && typeof schedulePlanSave === "function") { const d = plan.render; if (d && !d.rules.length && !d.ground.base && !d.ground.areas.length && !Object.keys(d.env).length && !d.custom.length) delete plan.render; schedulePlanSave(); }
   if (typeof l3rmUiRefresh === "function") l3rmUiRefresh();
 }
 const l3rmId = () => (typeof ghNewId === "function" ? ghNewId() : Math.random().toString(36).slice(2, 10));

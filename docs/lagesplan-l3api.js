@@ -310,9 +310,17 @@ l3api.methods.render_film_status = () => {
 l3api.methods.render_film_stop = () => ({ stopped: l3rfStop() });
 /* ---- Renderingsmaterial, mark och miljö (lagesplan-3drmat.js) – gäller bara renderingen, editorns utseende ändras inte ---- */
 l3api.methods.list_render_materials = a => {
-  const g = String(a.group || "").toLowerCase();
-  return { groups: L3RM_GROUPS, materials: L3RM_LIB.filter(m => !g || m.group.toLowerCase().includes(g)).map(m => ({ id: m.id, name: m.name, group: m.group, tile_m: m.size, roughness: m.rough, metal: m.metal, opacity: m.op })) };
+  const g = String(a.group || "").toLowerCase(), cust = l3rmData().custom.map(c => l3rmDef(c.id)).filter(Boolean);
+  return { groups: [...L3RM_GROUPS, "Egna"], materials: [...L3RM_LIB, ...cust].filter(m => !g || m.group.toLowerCase().includes(g)).map(m => ({ id: m.id, name: m.name, group: m.group, tile_m: m.size, roughness: m.rough, metal: m.metal, opacity: m.op, own_images: m.custom ? Object.keys(m.custom.maps || {}) : undefined })) };
 };
+/* Egna material (lagesplan-3drmed.js): utgångsmaterial + egna värden och bilder (PBR-texturset). */
+l3api.methods.define_render_material = async a => {
+  l3apiReady(); const maps = {}, mime = a.mime || "image/png";
+  for (const [k, key] of [["albedo_base64", "alb"], ["normal_base64", "nrm"], ["roughness_base64", "rgh"]]) if (a[k]) maps[key] = await l3rmedShrink(String(a[k]).startsWith("data:") ? a[k] : `data:${mime};base64,${a[k]}`);
+  const c = l3rmedSet({ id: a.id, base: a.base, name: a.name, color: a.color, size: a.tile_size, rough: a.roughness, metal: a.metalness, op: a.opacity, bump: a.relief, flipG: a.normal_directx, maps, ...(maps.alb ? { thumb: await l3rmedThumb(maps.alb) } : {}) });
+  return { id: c.id, name: c.name, images: Object.keys(c.maps || {}), note: "Använd id:t i set_render_material, set_ground_material eller add_ground_area." };
+};
+l3api.methods.delete_render_material = a => ({ removed: l3rmedRemove(String(a.id || "")) });
 l3api.methods.get_render_setup = () => {
   const d = l3rmData(); l3apiReady(); const T = l3rmTargets();
   return { rules: d.rules.map(r => ({ id: r.id, target: r.t + ":" + r.ref, material: r.mat, scale: r.s, rotation: r.r, tint: r.tint || undefined })), ground: { base: d.ground.base, areas: d.ground.areas.map(x => ({ id: x.id, name: x.name, kind: x.kind, material: x.mat, width: x.width, points: x.pts.length })) }, environment: l3rmEnvResolved(), ifc_classes_in_scene: T.cls.map(x => ({ cls: x[0], parts: x[1] })), colors_in_scene: T.colors.map(x => ({ color: x[0], meshes: x[1] })) };
