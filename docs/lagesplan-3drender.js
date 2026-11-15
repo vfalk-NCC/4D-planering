@@ -142,7 +142,7 @@ async function l3rnRender(opt = {}) {
     ["sel", "meas", "tmp"].forEach(k => { const g = l3.groups[k]; if (g) { S.vis.push([g, g.visible]); g.visible = false; } });
     if (l3.gizmo) l3.gizmo.visible = false;
     scene.children.forEach(c => { if ((c.type === "Object3D" && c.children.length) || (c.userData && c.userData.spin)) { S.vis.push([c, c.visible]); c.visible = false; } });   // handtag, vridcirkel och rotationspunkt syns inte i bilden
-    scene.traverse(o => { if (o.userData && o.userData.reach) { S.vis.push([o, o.visible]); o.visible = false; } });   // kranarnas räckviddsringar syns inte i bilden
+    scene.traverse(o => { if (o.userData && (o.userData.reach || o.userData.bmove)) { S.vis.push([o, o.visible]); o.visible = false; } });   // kranarnas räckviddsringar syns inte i bilden
     scene.traverse(o => { if (o.userData && o.userData.vmEdge) { S.vis.push([o, o.visible]); o.visible = false; } });
     if (!opt.edges) scene.traverse(o => { if (o.isLineSegments && o.userData.noVm && o.material && o.material.color && o.material.color.getHex() === 0x1f2937) { S.vis.push([o, o.visible]); o.visible = false; } });   // kroppars konturlinjer (CAD-utseendet)
     cam.aspect = W / H;
