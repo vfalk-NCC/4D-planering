@@ -69,7 +69,7 @@ const PP = [
       const T = Date.UTC(2026, 10, 15), d = n => new Date(T + n * 86400000).toISOString().slice(0, 10);
       const key = (p, w) => { p.anim = [{ date: d(0), x: p.x, y: p.y, dz: 0, rot: p.rot, ...(w ? { w: 1 } : {}) }]; };
       key(crane, 1); key(exc, 1); key(loader, 1); key(truck, 0); key(human, 0); key(hum2, 0);
-      l3animApply(T);
+      l3animApply(T); l3SelectIds([placements[0].id]);
     });
     const shots = [
       ['01_hus_dag', { az: 215, el: 48, clouds: 0.15, haze: 0.2 }, [52, -58, 20], [0, 0, 5], {}],
