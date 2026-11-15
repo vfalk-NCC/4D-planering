@@ -3,7 +3,10 @@
 Låter Claude se och bygga i din öppna 3D-editor i 4D-planering: skapa lådor/prismor/cylindrar/linjer, placera biblioteksobjekt (kran, ställning, bod …), lägga ut etableringsobjekt
 (stängsel, väg, ställning med breddningar …), flytta/färga/kopiera/ta bort, flyga kameran och **ta skärmdump** för att kontrollera resultatet. Allt kan ångras (Ctrl+Z eller verktyget `undo`).
 
-## Snabbstart på Windows (nästan allt i kommandofönstret)
+## Snabbstart på Windows – utan administratör (jobbdator)
+Kör `tools/mcp/installera-windows-utan-admin.cmd` (Download raw file → dubbelklicka). Den hämtar en portabel Node och bryggan till `%USERPROFILE%\4D-brygga` utan att installera något, och skriver ut raden att klistra in i Claude Desktop.
+
+## Snabbstart på Windows (nästan allt i kommandofönstret, kräver att winget får installera)
 1. Ladda ner filen `tools/mcp/installera-windows.cmd` (på GitHub: öppna filen → **Download raw file**) och dubbelklicka på den. Den installerar Node, Git och Claude Code vid behov (via `winget`), hämtar 4D-planering till `%USERPROFILE%\4D-planering` och lägger till bryggan i Claude Code. Står det att du ska öppna ett nytt fönster: gör det och kör filen igen.
 2. Öppna ett kommandofönster och skriv `claude`.
 3. Öppna 3D-vyn i Chrome/Edge och klicka **🔌 Claude** nere till vänster. Skriv sedan till Claude: *Kör status och ta en skärmdump.*
