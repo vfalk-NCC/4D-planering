@@ -3,6 +3,11 @@
 Låter Claude se och bygga i din öppna 3D-editor i 4D-planering: skapa lådor/prismor/cylindrar/linjer, placera biblioteksobjekt (kran, ställning, bod …), lägga ut etableringsobjekt
 (stängsel, väg, ställning med breddningar …), flytta/färga/kopiera/ta bort, flyga kameran och **ta skärmdump** för att kontrollera resultatet. Allt kan ångras (Ctrl+Z eller verktyget `undo`).
 
+## Snabbstart på Windows (nästan allt i kommandofönstret)
+1. Ladda ner filen `tools/mcp/installera-windows.cmd` (på GitHub: öppna filen → **Download raw file**) och dubbelklicka på den. Den installerar Node, Git och Claude Code vid behov (via `winget`), hämtar 4D-planering till `%USERPROFILE%\4D-planering` och lägger till bryggan i Claude Code. Står det att du ska öppna ett nytt fönster: gör det och kör filen igen.
+2. Öppna ett kommandofönster och skriv `claude`.
+3. Öppna 3D-vyn i Chrome/Edge och klicka **🔌 Claude** nere till vänster. Skriv sedan till Claude: *Kör status och ta en skärmdump.*
+
 ## Installera (en gång)
 1. Node 18 eller nyare på datorn. Inga paket behöver installeras.
 2. Lägg bryggan i Claude:
