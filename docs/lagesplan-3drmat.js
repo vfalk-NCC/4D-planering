@@ -295,7 +295,7 @@ function l3rmBegin(S, opt = {}) {
     const zg = (g0.base && g0.base.z != null ? g0.base.z - l3.O[2] : l3rmGroundZ()), grp = new THREE.Group(); grp.userData.l3rmTmp = true; scene.add(grp);
     S.restore.push(() => { scene.remove(grp); grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); });
     const bb = new THREE.Box3(); ["bldg", "places", "objs"].forEach(k => { const g = l3.groups[k]; if (g && g.visible) bb.expandByObject(g); }); if (bb.isEmpty()) bb.set(new THREE.Vector3(-30, -30, 0), new THREE.Vector3(30, 30, 10));
-    const sp = bb.getBoundingSphere(new THREE.Sphere()), R = Math.max(60, sp.radius * 4);
+    const sp = bb.getBoundingSphere(new THREE.Sphere()), R = Math.max(120, sp.radius * 10);
     if (g0.base) { const m = new THREE.Mesh(new THREE.PlaneGeometry(R * 2, R * 2), l3rmMaterial(l3rmDef(g0.base.mat), g0.base)); m.position.set(sp.center.x, sp.center.y, zg - 0.004); m.userData.l3rmTmp = true; m.userData.noHit = true; m.raycast = () => {}; m.receiveShadow = true; m.renderOrder = -3; grp.add(m); out.base = m; if (l3.planMesh && l3.planMesh.visible) { const pm = l3.planMesh; S.vis.push([pm, pm.visible]); pm.visible = false; } if (l3vm.groundMesh) { S.vis.push([l3vm.groundMesh, l3vm.groundMesh.visible]); l3vm.groundMesh.visible = false; } }
     g0.areas.forEach((a, i) => {
       const def = l3rmDef(a.mat); if (!def) return; let pts = a.pts;
