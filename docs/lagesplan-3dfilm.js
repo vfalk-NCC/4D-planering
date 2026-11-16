@@ -14,7 +14,7 @@
 const l3fs = { t: null, raf: 0, acts: null };
 const L3PL_DAYMS = 86400000;
 const l3plShortIso = t => { const d = new Date(t); return `${d.getUTCDate()} ${L3PL_MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
-const l3fsOn = () => !!(l3plPrefs().film || {}).strip;
+const l3fsOn = () => typeof l3plPrefs === "function" && !!(l3plPrefs().film || {}).strip;   // sidan kan skicka resize innan lagesplan-3dplan.js lästs in
 function l3fsRange() {
   const f = l3plPrefs().film || {}, acts = l3plFilmActs();
   const lo = f.from || (acts.length ? acts[0].start : l3plDay()), hi = f.to || (acts.length ? acts.reduce((m, a) => (a.end > m ? a.end : m), acts[0].end) : l3gaAdd(l3plDay(), 60));
