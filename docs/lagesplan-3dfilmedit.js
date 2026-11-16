@@ -152,8 +152,8 @@ function l3feRender() {
   const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3FilmEdit");
   if (!host || !l3fsOn() || !document.getElementById("v3FilmStrip")) { if (el) el.remove(); l3feGuide(); return; }
   const E = l3feE(), f = l3feFilm(), esc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"), phone = typeof lowMemDevice !== "undefined" && lowMemDevice;
-  if (!el) { el = document.createElement("div"); el.id = "v3FilmEdit"; el.className = "v3-fe"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
-  const sec = Number(f.sec) || 20, open = l3feUi.open || (phone ? "" : "tid"), head = l3feDate(l3feHead());
+  if (!el) { el = document.createElement("div"); el.id = "v3FilmEdit"; el.className = "v3-fe v3-vp"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
+  const sec = Number(f.sec) || 20, open = l3feUi.open !== null ? l3feUi.open : (phone ? "" : "tid"), head = l3feDate(l3feHead());
   const secs = [["tid", "⏱ Tid och titlar"], ["kam", "🎥 Kamera"], ["vis", "▶ Uppspelning och bild"], ["mark", "🚩 Markörer"], ["mall", "✨ Mallar"]];
   const sel = (id, v, opts) => `<select id="${id}">${opts.map(([k, t]) => `<option value="${k}"${String(v) === String(k) ? " selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
   const body = {
@@ -180,9 +180,10 @@ function l3feRender() {
     mall: `<div class="fe-grid1">${Object.entries(L3FE_TEMPLATES).map(([k, v]) => `<button type="button" data-fe="tp" data-k="${k}">${esc(v[0])}</button>`).join("")}</div><div class="fe-note">En mall sätter längd, tidskurva, tona, bildformat och kamerabana. Dina vyer ändras inte.</div>`,
   };
   const was = el.querySelector(".fe-body") ? el.querySelector(".fe-body").scrollTop : 0;
-  el.className = "v3-fe" + (E.open ? "" : " min");
-  el.innerHTML = `<div class="fe-h"><b>🎞 Filmredigering</b><span>${esc(head)}</span><button type="button" data-fe="tog" title="${E.open ? "Fäll ihop" : "Fäll ut"}">${E.open ? "▾" : "▴"}</button></div>
-    ${E.open ? `<div class="fe-body">${secs.map(([k, t]) => `<div class="fe-sec${open === k ? " on" : ""}"><button type="button" class="fe-st" data-fe="sec" data-k="${k}">${t}<i>${open === k ? "▾" : "▸"}</i></button>${open === k ? `<div class="fe-c">${body[k]}</div>` : ""}</div>`).join("")}</div>` : ""}`;
+  el.className = "v3-fe v3-vp" + (E.open ? "" : " min"); const clAll = el.querySelector(":scope > .cl-all");
+  el.innerHTML = `<div class="fe-h"><b>🎞 Filmredigering</b><span>${esc(head)}</span><button type="button" data-fe="dock" title="Docka till högermenyn (samma som Docka i övre raden)">📌</button><button type="button" data-fe="tog" title="${E.open ? "Fäll ihop" : "Fäll ut"}">${E.open ? "▾" : "▴"}</button></div>
+    ${E.open ? `<div class="fe-body">${secs.map(([k, t]) => `<div class="fe-sec${open === k ? " on" : ""}"><button type="button" class="fe-st" data-fe="sec" data-k="${k}" aria-expanded="${open === k}">${t}<i>${open === k ? "▾" : "▸"}</i></button>${open === k ? `<div class="fe-c">${body[k]}</div>` : ""}</div>`).join("")}</div>` : ""}`;
+  if (clAll) { el.prepend(clAll); if (typeof lclUpdate === "function") lclUpdate(el); }
   const b = el.querySelector(".fe-body"); if (b) b.scrollTop = was;
   l3feBind(el); l3fePlace(); l3feGuide();
 }
@@ -196,7 +197,8 @@ function l3feBind(el) {
   const gd = q("#feGuide"); if (gd) gd.onchange = () => l3feSet({ guide: gd.checked }, false);
   el.onclick = async e => {
     const b = e.target.closest("[data-fe]"); if (!b) return; const a = b.dataset.fe, E = l3feE(), head = l3feDate(l3feHead());
-    if (a === "tog") l3feSet({ open: !E.open });
+    if (a === "dock") { if (typeof l3dkToggle === "function") l3dkToggle(); }
+    else if (a === "tog") l3feSet({ open: !E.open });
     else if (a === "sec") { l3feUi.open = l3feUi.open === b.dataset.k ? "" : b.dataset.k; l3feRender(); }
     else if (a === "from" || a === "to") { const fl = f(); l3plSet("film", { ...fl, [a]: head }); l3fsRender(); l3Status(`Filmen ${a === "from" ? "börjar" : "slutar"} ${head}.`); }
     else if (a === "hold" || a === "holdt") {

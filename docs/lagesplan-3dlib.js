@@ -156,7 +156,7 @@ function l3RenderLib() {
   // Alla mappar ligger under ett eget avsnitt som kan fällas ihop med ett klick (Victor 2026-11-11).
   const libOpen = !!q || !closed.has("__lib");
   el.innerHTML = `<div class="v3-lf v3-lf-all v3-pill"><button type="button" class="v3-pal-g" data-v3grp="__lib" aria-expanded="${libOpen}" title="Fäll ihop eller ut alla biblioteksmappar"><span>Objektbibliotek</span><em>${items.length}</em></button></div>`
-    + (libOpen ? `<button type="button" class="v3-lf-new" id="v3LibNew" title="Ny mapp i biblioteket – dra sedan objekt dit">＋ Ny mapp</button>` + (html || `<div class="v3-pal-hint">Inget matchar "${esc(q)}".</div>`) : "");
+    + (libOpen ? `<div class="v3-lf-row"><button type="button" class="v3-lf-new" id="v3LibNew" title="Ny mapp i biblioteket – dra sedan objekt dit">＋ Ny mapp</button><button type="button" class="v3-lf-new" id="v3LibCol" title="Fäll ihop alla mappar i objektbiblioteket (tryck igen för att fälla ut alla)">${l3libFolders().every(f => closed.has(f.id)) ? "⊞ Fäll ut alla" : "⊟ Fäll ihop alla"}</button></div>` + (html || `<div class="v3-pal-hint">Inget matchar "${esc(q)}".</div>`) : "");
   el.querySelectorAll("[data-v3grp]").forEach(b => { b.onclick = () => {
     const g = b.dataset.v3grp, set = new Set(l3Prefs().palClosed || L3LIB_CLOSED0);
     if (b.getAttribute("aria-expanded") === "true") set.add(g); else set.delete(g);
@@ -167,6 +167,7 @@ function l3RenderLib() {
   el.querySelectorAll("[data-lfdel]").forEach(b => { b.onclick = () => l3libDeleteFolder(b.dataset.lfdel); });
   el.querySelectorAll("[data-v3libdel]").forEach(b => { b.onclick = () => l3libDeleteModel(b.dataset.v3libdel); });
   const nf = el.querySelector("#v3LibNew"); if (nf) nf.onclick = () => l3libNewFolder();
+  const cb = el.querySelector("#v3LibCol"); if (cb) cb.onclick = () => { const set = new Set(l3Prefs().palClosed || L3LIB_CLOSED0), ids = l3libFolders().map(f => f.id), allClosed = ids.every(i => set.has(i)); ids.forEach(i => (allClosed ? set.delete(i) : set.add(i))); l3SetPref("palClosed", [...set]); l3RenderLib(); };   // fäll ihop/ut alla mappar
   el.querySelectorAll("[data-v3add]").forEach(b => { b.onclick = () => {
     if (typeof l3SetTool === "function" && l3.tool !== "select") l3SetTool("select");
     const k = b.dataset.v3add;

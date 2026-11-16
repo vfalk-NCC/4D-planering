@@ -1761,7 +1761,6 @@ function l3Key(e) {
   if (typeof l3clKey === "function" && l3clKey(e)) return; // hjälplinjer: Esc avbryter/avslutar
   if (typeof l3rbKey === "function" && l3rbKey(e)) return; // armering: rita stav (Enter, Esc, Backspace)
   if (typeof l3wKey === "function" && l3wKey(e)) return; // gå-läget (WASD) har tangenterna
-  if (e.key === " " && typeof l3pl !== "undefined" && l3pl.rec && !e.repeat) { e.preventDefault(); l3plPause(); return; } // filmen: mellanslag pausar
   if (typeof l3HandleKey === "function" && l3HandleKey(e)) return; // drag i ett handtag pågår
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (typeof l3KeyCustom === "function" && l3KeyCustom(e)) return; // egna kortkommandon gäller först

@@ -278,21 +278,23 @@ const PP = [
     const need = ['VECKA', '14 okt 2026', 'Etapp 1', 'PÅGÅR NU', 'Hus A', 'Gjutning pelare', 'PROJEKTET KLART', 'aktiviteter klara', 'Stomme klar', 'MILSTOLPE'];
     const miss = need.filter(t => !fx.all.includes(t));
     if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || !/^0,1,1,0,0$/.test(fx.goneDays) || fx.off !== 0 || !fx.glow || !fx.anim || !fx.legend || !fx.etab || !fx.smooth || !fx.noBl || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 100), a: await page.evaluate(() => window.__anim), e: await page.evaluate(() => window.__etab) }));
-    // Paus (mellanslag/⏸): bilden och grafiken står kvar; ■ stoppar, går till filmens början och tar bort grafiken.
+    // Paus (⏸; mellanslag pausar inte): bilden och grafiken står kvar; ■ stoppar, går till filmens början och tar bort grafiken.
     const pz = await page.evaluate(async () => {
       l3plSet('film', { ...l3plPrefs().film, from: '2026-10-01', to: '2026-10-21', sec: 4, fxNow: true });
       const run = l3plFilm(false);
       await new Promise(r => setTimeout(r, 900));
-      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      const sp0 = $('dateInput').value; document.body.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));   // mellanslag pausar inte längre (det avväljer verktyg)
+      await new Promise(r => setTimeout(r, 500)); const spaceKeepsPlaying = $('dateInput').value !== sp0 && !l3pl.rec.paused;
+      document.getElementById('v3FlPause').click();
       await new Promise(r => setTimeout(r, 200)); const d1 = $('dateInput').value; await new Promise(r => setTimeout(r, 700)); const d2 = $('dateInput').value;
       const hud = !document.getElementById('v3FilmHud').classList.contains('hidden'), btn = document.getElementById('v3FlPause').textContent;
-      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      document.getElementById('v3FlPause').click();
       await new Promise(r => setTimeout(r, 900)); const d3 = $('dateInput').value;
       document.getElementById('v3FlPreview').click(); await run;
-      return { d1, d2, d3, paused: d1 === d2, resumed: d3 > d2, hud, btn, start: $('dateInput').value, hudGone: document.getElementById('v3FilmHud').classList.contains('hidden') };
+      return { spaceKeepsPlaying, d1, d2, d3, paused: d1 === d2, resumed: d3 > d2, hud, btn, start: $('dateInput').value, hudGone: document.getElementById('v3FilmHud').classList.contains('hidden') };
     });
-    if (!pz.paused || !pz.resumed || !pz.hud || !/Fortsätt/.test(pz.btn) || pz.start !== '2026-10-01' || !pz.hudGone) fail('Paus och stopp: ' + JSON.stringify(pz));
-    console.log('OK: filmen pausas med mellanslag (grafiken står kvar), fortsätter, ■ går till början utan grafik');
+    if (!pz.spaceKeepsPlaying || !pz.paused || !pz.resumed || !pz.hud || !/Fortsätt/.test(pz.btn) || pz.start !== '2026-10-01' || !pz.hudGone) fail('Paus och stopp: ' + JSON.stringify(pz));
+    console.log('OK: filmen pausas med ⏸-knappen (mellanslag gör inget), grafiken står kvar, fortsätter, ■ går till början utan grafik');
     // Filmens planering: Powerproject, Excel eller båda.
     const src = await page.evaluate(async () => {
       const set = v => l3plSet('film', { ...l3plPrefs().film, src: v });

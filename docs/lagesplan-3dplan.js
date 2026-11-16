@@ -364,7 +364,7 @@ async function l3plFilm(record) {
   const day0 = $("dateInput").value, cam0 = l3plCam(), R = l3.renderer, pr0 = R.getPixelRatio();
   const st = { stop: false, paused: false, record };
   l3pl.rec = st;
-  // Mellanslag ska pausa – inte "klicka" knappen som startade filmen.
+  // Fokus bort från knappen som startade filmen (Mellanslag/Enter ska inte klicka den igen).
   if (document.activeElement && document.activeElement.blur && document.activeElement !== document.body) document.activeElement.blur();
   const setBtn = txt => { const b = document.getElementById(record ? "v3FlRec" : "v3FlPreview"); if (b) b.textContent = txt; };
   setBtn("■ Stoppa"); const fsb = document.getElementById(record ? "v3FsRec" : "v3FsPlay"); if (fsb) fsb.textContent = "■";
@@ -408,9 +408,9 @@ async function l3plFilm(record) {
       // Takten: bild i vid tiden i / fps (spelar in i realtid).
       const sp = record || typeof l3feE !== "function" ? 1 : (Number(l3feE().speed) || 1), wait = start + (i + 1) * 1000 / (fps * sp) - performance.now();
       await new Promise(r => setTimeout(r, Math.max(0, wait)));
-      // Paus (mellanslag eller ⏸): bilden och grafiken står kvar; tiden räknas om när den fortsätter.
+      // Paus (⏸-knappen): bilden och grafiken står kvar; tiden räknas om när den fortsätter.
       if (st.paused && !st.stop) {
-        if (msg) msg.textContent = `Pausad: ${d} – mellanslag eller ▶ fortsätter.`;
+        if (msg) msg.textContent = `Pausad: ${d} – ▶ fortsätter.`;
         const p0 = performance.now();
         while (st.paused && !st.stop) await new Promise(r => setTimeout(r, 60));
         start += performance.now() - p0;
@@ -453,13 +453,13 @@ function l3plPause(on) {
   st.paused = on === undefined ? !st.paused : !!on;
   if (st.mr) { try { if (st.paused && st.mr.state === "recording") st.mr.pause(); else if (!st.paused && st.mr.state === "paused") st.mr.resume(); } catch (e) { /* äldre webbläsare */ } }
   l3plPauseUi();
-  l3Status(st.paused ? "Filmen är pausad – mellanslag fortsätter, ■ stoppar." : "Filmen fortsätter.");
+  l3Status(st.paused ? "Filmen är pausad – ▶ fortsätter, ■ stoppar." : "Filmen fortsätter.");
   return true;
 }
 function l3plPauseUi() {
   const st = l3pl.rec, p = !!(st && st.paused);
   const b = document.getElementById("v3FlPause"); if (b) { b.disabled = !st; b.textContent = p ? "▶ Fortsätt" : "⏸ Paus"; b.classList.toggle("on", p); }
-  const f = document.getElementById("v3FsPause"); if (f) { f.disabled = !st; f.textContent = p ? "▶" : "⏸"; f.title = p ? "Fortsätt (mellanslag)" : "Pausa (mellanslag)"; }
+  const f = document.getElementById("v3FsPause"); if (f) { f.disabled = !st; f.textContent = p ? "▶" : "⏸"; f.title = p ? "Fortsätt" : "Pausa"; }
 }
 /* Datum, vecka och rubrik i filmen, och en tidslinje i underkanten. */
 function l3plOverlay(ctx, W, H, d, caption) {

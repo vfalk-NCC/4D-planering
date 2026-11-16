@@ -75,7 +75,7 @@ function l3fsRender() {
   if (dayPx >= 3) { const dd = new Date(t0); dd.setUTCHours(0, 0, 0, 0); for (; dd.getTime() <= t1; dd.setUTCDate(dd.getUTCDate() + 1)) days.push({ u: U(dd.getTime()), we: dd.getUTCDay() === 6 || dd.getUTCDay() === 0 }); }
   el.innerHTML = `<div class="v3-fs-ctl">
       <button type="button" class="v3-fs-play" id="v3FsPlay" title="Spela upp filmen i 3D-vyn (■ stoppar och går till början)">${l3pl.rec ? "■" : "▶"}</button>
-      <button type="button" class="v3-fs-pause" id="v3FsPause" title="Pausa (mellanslag)" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶" : "⏸"}</button>
+      <button type="button" class="v3-fs-pause" id="v3FsPause" title="Pausa" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶" : "⏸"}</button>
       <button type="button" class="v3-fs-rec" id="v3FsRec" title="Spela in filmen och spara som videofil">⏺</button>
       <button type="button" class="v3-fs-photo" id="v3FsPhoto" title="Ta ett foto i hög upplösning (4K) av det du ser i 3D-vyn – sparas som PNG" aria-label="Ta foto"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
       <button type="button" class="v3-fs-add" id="v3FsAdd" title="Lägg kameran som den står nu på datumet där huvudet står (finns det redan en vy där uppdateras den)">＋ Vy</button>

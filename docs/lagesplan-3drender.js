@@ -387,7 +387,7 @@ function l3rnTab(tab, keep) {
 }
 function l3rnOpen() {
   const host = document.getElementById("view3d"); if (!host) return; let el = document.getElementById("v3Render"); if (el) { el.remove(); return; }
-  el = document.createElement("div"); el.id = "v3Render"; el.className = "v3-rn";
+  el = document.createElement("div"); el.id = "v3Render"; el.className = "v3-rn v3-vp";
   el.innerHTML = `<div class="rn-h"><b>🎬 Rendera</b><span class="rn-tabs"><button type="button" data-t="bild" class="on">Bild</button><button type="button" data-t="material">Material</button><button type="button" data-t="mark">Mark</button><button type="button" data-t="miljo">Miljö</button><button type="button" data-t="film">Film</button></span><button type="button" class="rn-x" title="Stäng">✕</button></div>
     <div class="rn-body"></div>
     <div class="rn-a"><button type="button" id="rnGo" class="rn-go">Rendera</button><button type="button" id="rnSave" disabled>Spara PNG</button><span id="rnMsg">Vyn och kameran används som de är nu.</span></div>

@@ -149,10 +149,10 @@ const l3xyzEsc = s => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(
 function l3xyzRender() {
   const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3Pts");
   if (!l3xyz.open || !host) { if (el) el.remove(); return; }
-  if (!el) { el = document.createElement("div"); el.id = "v3Pts"; el.className = "v3-fe v3-pts"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
+  if (!el) { el = document.createElement("div"); el.id = "v3Pts"; el.className = "v3-fe v3-vp v3-pts"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
   const D = l3xyzData(), set = l3xyzSet(), groups = l3xyzGroups(set), opts = l3xyzLibOptions(), keep = l3xyz.draft || { type: opts[0] ? opts[0][0] : "", rot: "auto", dz: 0, L: "", B: "", H: "", name: "" };
-  const was = el.querySelector(".fe-body") ? el.querySelector(".fe-body").scrollTop : 0;
-  el.innerHTML = `<div class="fe-h"><b>📍 Punkter</b><span>${set ? set.pts.length + " punkter" : ""}</span><button type="button" data-pt="x" title="Stäng">✕</button></div>
+  const was = el.querySelector(".fe-body") ? el.querySelector(".fe-body").scrollTop : 0, clAll = el.querySelector(":scope > .cl-all");
+  el.innerHTML = `<div class="fe-h"><b>📍 Punkter</b><span>${set ? set.pts.length + " punkter" : ""}</span><button type="button" data-pt="dock" title="Docka till högermenyn (samma som Docka i övre raden)">📌</button><button type="button" data-pt="x" title="Stäng">✕</button></div>
   <div class="fe-body"><div class="fe-sec"><div class="fe-c">
     <div class="fe-row"><label>Fil (.pxy, .geo, .kof, .csv …)<input id="ptFile" type="file" accept="${L3XYZ_EXT}" multiple /></label></div>
     ${D.sets.length ? `<div class="fe-row"><label>Punktfil<select id="ptSet">${D.sets.map(s => `<option value="${s.id}"${set && s.id === set.id ? " selected" : ""}>${l3xyzEsc(s.name)} (${s.pts.length})</option>`).join("")}</select></label><button type="button" data-pt="delset" class="fe-danger" title="Ta bort punktfilen">Ta bort fil</button></div>` : '<div class="fe-note">Välj en punktfil. Punkterna visas i 3D och du väljer sedan vilka objekt som ska in på varje punkt.</div>'}
@@ -169,6 +169,7 @@ function l3xyzRender() {
     <button type="button" data-pt="unplace" class="fe-danger">Ta bort placerade objekt</button>
     <div class="fe-note">Fil: ${l3xyzEsc(set.file)} · format ${l3xyzEsc(set.format)} · ${set.pts.length} punkter. Hamnar punkterna fel: tryck ⇄ X/Y.</div>` : ""}
   </div></div></div>`;
+  if (clAll) el.prepend(clAll);
   const b = el.querySelector(".fe-body"); if (b) b.scrollTop = was; l3xyzBind(el, set, groups);
 }
 function l3xyzBind(el, set, groups) {
@@ -182,7 +183,8 @@ function l3xyzBind(el, set, groups) {
   on("#ptShow", e => { set.show = e.target.checked; l3xyzSave(); }); on("#ptLab", e => { set.labels = e.target.checked; l3xyzSave(); }); on("#ptSize", e => { set.size = Number(e.target.value) || 9; l3xyzSave(); });
   el.onclick = async e => {
     const b = e.target.closest("[data-pt]"); if (!b) return; const a = b.dataset.pt, k = b.dataset.k;
-    if (a === "x") { l3xyz.open = false; l3xyzRender(); }
+    if (a === "dock") { if (typeof l3dkToggle === "function") l3dkToggle(); }
+    else if (a === "x") { l3xyz.open = false; l3xyzRender(); }
     else if (a === "chk") { if (b.checked) l3xyz.sel.add(k); else l3xyz.sel.delete(k); l3xyzDraw(); l3xyzRender(); }
     else if (a === "fly") { const g = groups.find(x => x.key === k); if (g) { l3xyz.sel.has(k) ? 0 : l3xyz.sel.add(k); l3xyzFly(g); l3xyzDraw(); l3xyzRender(); } }
     else if (a === "all") { groups.forEach(g => l3xyz.sel.add(g.key)); l3xyzDraw(); l3xyzRender(); }
