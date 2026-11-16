@@ -489,10 +489,14 @@ function l3vLoad(force) {
   if (typeof token === "undefined" || !token || typeof ghReadJSON !== "function") return Promise.resolve(l3vLocal());
   l3vLoading = (async () => {
     try {
-      const remote = (await ghReadJSON(token, l3vPath())).filter(v => v && v.t && v.p), have = new Set(remote.map(v => String(v.name).toLowerCase()));
-      const onlyLocal = l3vLocal().filter(v => !have.has(String(v.name).toLowerCase()));
-      l3vShared = [...remote, ...onlyLocal].slice(-60);
-      if (onlyLocal.length) ghWriteJSON(token, l3vPath(), () => l3vShared, "3D: sparade vyer (flyttade från webbläsaren)").catch(e => console.warn("Kunde inte dela vyerna", e));
+      const remote = (await ghReadJSON(token, l3vPath()) || []).filter(v => v && v.t && v.p);
+      // Projektets lista är facit. Webbläsarens egna (äldre) vyer flyttas bara dit när projektet ännu inte har någon lista –
+      // annars kom vyer som raderats (i en annan webbläsare eller på en annan enhet) tillbaka från den gamla reserven (Victor 2026-11-16).
+      if (remote.length) { l3vShared = remote.slice(-60); const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = l3vShared; l3SetPref("views", all); }
+      else {
+        const onlyLocal = l3vLocal(); l3vShared = onlyLocal.slice(-60);
+        if (onlyLocal.length) ghWriteJSON(token, l3vPath(), () => l3vShared, "3D: sparade vyer (flyttade från webbläsaren)").catch(e => console.warn("Kunde inte dela vyerna", e));
+      }
     } catch (e) { console.warn("Sparade vyer: kunde inte läsas från projektet", e); l3vShared = null; return l3vLocal(); }
     finally { l3vLoading = null; }
     if (typeof l3RenderSavedViews === "function") l3RenderSavedViews();
@@ -501,10 +505,20 @@ function l3vLoad(force) {
   return l3vLoading;
 }
 function l3SavedViews() { return (l3vShared || l3vLocal()).filter(v => v && v.t && v.p); }
-function l3StoreViews(list) {
+/* op: { del: namn } eller { upsert: vy } – ändringen läggs på projektets senaste lista (inte på webbläsarens, som kan vara gammal), så att en vy som
+   raderats någon annanstans inte skrivs tillbaka. Utan op skrivs hela listan. */
+function l3StoreViews(list, op) {
   const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = list; l3SetPref("views", all);   // reserv i webbläsaren
   l3vShared = list.slice();
-  if (typeof token !== "undefined" && token && typeof ghWriteJSON === "function") ghWriteJSON(token, l3vPath(), () => list, "3D: sparade vyer").catch(e => { console.warn("Kunde inte spara vyerna i projektet", e); if (typeof l3Status === "function") l3Status("Vyn sparades bara i den här webbläsaren (kunde inte nå projektet).", true); });
+  const nm = v => String(v && v.name || "").toLowerCase();
+  const mutate = cur => {
+    if (!op || !Array.isArray(cur)) return list;
+    let out = cur.filter(v => v && v.t && v.p);
+    if (op.del !== undefined) out = out.filter(v => nm(v) !== String(op.del).toLowerCase());
+    if (op.upsert) { const i = out.findIndex(v => nm(v) === nm(op.upsert)); if (i >= 0) out[i] = op.upsert; else out.push(op.upsert); }
+    return out.slice(-60);
+  };
+  if (typeof token !== "undefined" && token && typeof ghWriteJSON === "function") ghWriteJSON(token, l3vPath(), mutate, "3D: sparade vyer").catch(e => { console.warn("Kunde inte spara vyerna i projektet", e); if (typeof l3Status === "function") l3Status("Vyn sparades bara i den här webbläsaren (kunde inte nå projektet).", true); });
 }
 /* Vad en vy kan innehålla. Kameran är alltid med; resten väljs vid sparandet ("Spara med val…") eller tas från senaste valet vid direktspar. */
 const L3V_PARTS = [
@@ -549,7 +563,7 @@ function l3SaveView(name, parts) {
   const v = l3MakeView(name, parts);
   const i = list.findIndex(x => x.name.toLowerCase() === name.toLowerCase());
   if (i >= 0) { v.at = list[i].at || null; v.upd = new Date().toISOString(); list[i] = v; } else list.push(v);   // skapad-datumet följer med när vyn uppdateras
-  l3StoreViews(list.slice(-30));
+  l3StoreViews(list.slice(-30), { upsert: v });
   l3RenderSavedViews();
   l3Status(i >= 0 ? `Vyn "${name}" uppdaterad.` : `Vyn "${name}" sparad – finns under Vyer.`);
   return v;
@@ -666,7 +680,7 @@ function l3GoView(i) {
   l3FlyTo(T, dist, dir, l3ViewMs());
   l3Status(`Vy: ${v.name}`);
 }
-function l3DelView(i) { const list = l3SavedViews(); const v = list.splice(i, 1)[0]; l3StoreViews(list); l3RenderSavedViews(); if (v) l3Status(`Vyn "${v.name}" borttagen.`); }
+function l3DelView(i) { const list = l3SavedViews(); const v = list.splice(i, 1)[0]; l3StoreViews(list, v ? { del: v.name } : undefined); l3RenderSavedViews(); if (v) l3Status(`Vyn "${v.name}" borttagen.`); }
 function l3RenderSavedViews() {
   const host = document.getElementById("v3SavedViews");
   if (!host) return;
