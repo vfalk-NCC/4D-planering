@@ -354,6 +354,7 @@ function l3plMime() {
 }
 async function l3plFilm(record) {
   if (l3pl.rec) { l3pl.rec.stop = true; return; }
+  if (record && typeof l3rv !== "undefined" && l3rv.on && typeof l3rvExport === "function") return l3rvExport();   // renderingsläget: Spela in = samma motor som vyn visar (bild för bild)
   const f = l3plPrefs().film || {}, msg = document.getElementById("v3FlMsg");
   const from = f.from, to = f.to;
   if (!from || !to || to < from) { l3Status("Välj ett intervall (Från före Till) för filmen.", true); return; }
@@ -402,7 +403,7 @@ async function l3plFilm(record) {
         else if (title) l3plOverlay(ctx, W, H, d, caption);
         if (typeof l3feOverlay === "function") l3feOverlay(ctx, W, H, i / frames * sec, sec, tm);
         st.frame();
-      } else { l3Render(); if (fx) l3fxHud(fx, d, ft, caption); if (typeof l3feLive === "function") l3feLive(i / frames * sec, sec, tm); }
+      } else { if (typeof l3rv !== "undefined" && l3rv.on) await l3rvFrame(ft, 2); else l3Render(); if (fx) l3fxHud(fx, d, ft, caption); if (typeof l3feLive === "function") l3feLive(i / frames * sec, sec, tm); }   // renderingsläget: varje bild ritas av renderingsmotorn
       if (msg) msg.textContent = `${record ? "Spelar in" : "Spelar upp"}: ${d} (${Math.round(i / frames * 100)} %)`;
       if (typeof l3fsPlayhead === "function") { l3fs.t = t; l3fsPlayhead(t); }
       // Takten: bild i vid tiden i / fps (spelar in i realtid).
@@ -419,6 +420,7 @@ async function l3plFilm(record) {
     }
   } finally {
     if (typeof l3feLiveEnd === "function") l3feLiveEnd();
+    if (typeof l3rv !== "undefined" && l3rv.on) { l3rv.sig = ""; setTimeout(() => l3rvInvalidate(), 50); }
     if (fx) l3fxEnd(fx);
     if (record) {
       await new Promise(r => { rec.onstop = r; rec.stop(); });

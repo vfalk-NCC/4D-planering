@@ -9,7 +9,11 @@
    Hjälpgrupper (markering, mått, tillfälliga linjer, handtag) göms under renderingen. Punktmoln ritas inte (för tungt för många delbilder).
    Prefix l3rn. Används av knappen "🎬 Rendera" i 3D-vyn och av MCP-verktyget render_image (lagesplan-l3api.js). */
 
-const l3rn = { busy: false, cancel: false, last: null, ui: null, sticky: null };
+const l3rn = { busy: false, cancel: false, last: null, ui: null, sticky: null, painting: false, liveBuf: null };
+/* Inställningarna för renderingen ligger på ett ställe och används av allt: vyn i renderingsläge, uppspelningen, inspelningen och stillbilden. */
+const L3RN_DEF = { quality: "good", soft: 1.6, ao: 1, exposure: 0.95, bloom: 0.12, dof: 0, shadowSize: 4096, edges: false };
+const l3rnSettings = () => ({ ...L3RN_DEF, ...((typeof l3Prefs === "function" && l3Prefs().rn) || {}) });
+function l3rnLiveFree() { const b = l3rn.liveBuf; l3rn.liveBuf = null; if (!b) return; [b.s, b.a, b.b].forEach(t => t && t.dispose()); (b.blur || []).forEach(L => { L.a.dispose(); L.b.dispose(); }); }
 /* Filmen (sticky) lämnar den stora skuggkartan kvar mellan bilderna; när filmen är klar sätts vyns egen storlek tillbaka. */
 function l3rnRelease() { const s = l3rn.sticky; l3rn.sticky = null; if (s) { const [L, n] = s; L.shadow.mapSize.set(n, n); if (L.shadow.map) { L.shadow.map.dispose(); L.shadow.map = null; } } }
 const L3RN_Q = { fast: 12, good: 48, best: 160 };
@@ -114,17 +118,19 @@ const L3RN_BLUR = "uniform sampler2D t; uniform vec2 d; varying vec2 vUv; void m
 /* Renderar en stillbild. opt: { width, height, samples|quality (fast/good/best), sunAz, sunEl (grader), soft (solens mjukhet, grader), ao (0–1.6), exposure, vignette (0–1), edges (behåll CAD-konturer), background ("sky"|"keep"), onProgress(done,total,canvas) }.
    Returnerar { canvas, width, height, samples, ms }. */
 async function l3rnRender(opt = {}) {
+  if (opt.live) opt = { ...opt, sticky: true };   // renderingsläget i vyn: Realistisk står kvar, stor skuggkarta behålls
   if (typeof l3 === "undefined" || !l3 || !l3.renderer) throw new Error("3D-editorn är inte öppen");
+  if (!opt.live) for (let k = 0; k < 120 && l3rn.busy && l3rn.painting; k++) await new Promise(res => setTimeout(res, 50));   // en pågående vybild i renderingsläget är kort – vänta in den
   if (l3rn.busy) throw new Error("En rendering pågår redan");
   const r = l3.renderer, scene = l3.scene, cam = l3.camera, view = r.getSize(new THREE.Vector2());
   const asp = view.x / Math.max(1, view.y), maxT = 8192, texMax = r.capabilities.maxTextureSize || 4096;
-  const pano = !!opt.panorama, W = Math.round(l3rnClamp(opt.width, 160, maxT, pano ? 4096 : 1600)), H = pano ? Math.round(W / 2) : Math.round(l3rnClamp(opt.height, 90, maxT, W / asp));
-  const tileMax = Math.max(512, Math.min(texMax, Math.round(l3rnClamp(opt.tile, 512, 4096, 2048)))), nx = Math.ceil(W / tileMax), ny = Math.ceil(H / tileMax), TW = Math.ceil(W / nx), TH = Math.ceil(H / ny), tiles = []; for (let yy = 0; yy < ny; yy++) for (let xx = 0; xx < nx; xx++) tiles.push([xx * TW, yy * TH]);   // stora bilder (8K) renderas i rutor och sätts ihop
-  const N = Math.round(l3rnClamp(opt.samples || L3RN_Q[opt.quality] || L3RN_Q.good, 1, 512, L3RN_Q.good));
+  const pano = !!opt.panorama, live = !!opt.live, dbs = live ? r.getDrawingBufferSize(new THREE.Vector2()) : null, W = live ? Math.round(dbs.x) : Math.round(l3rnClamp(opt.width, 160, maxT, pano ? 4096 : 1600)), H = live ? Math.round(dbs.y) : pano ? Math.round(W / 2) : Math.round(l3rnClamp(opt.height, 90, maxT, W / asp));
+  const tileMax = live ? Math.max(W, H) : Math.max(512, Math.min(texMax, Math.round(l3rnClamp(opt.tile, 512, 4096, 2048)))), nx = Math.ceil(W / tileMax), ny = Math.ceil(H / tileMax), TW = Math.ceil(W / nx), TH = Math.ceil(H / ny), tiles = []; for (let yy = 0; yy < ny; yy++) for (let xx = 0; xx < nx; xx++) tiles.push([xx * TW, yy * TH]);   // stora bilder (8K) renderas i rutor och sätts ihop
+  const N = live ? Math.max(1, Math.round(Number(opt.target) || 24)) : Math.round(l3rnClamp(opt.samples || L3RN_Q[opt.quality] || L3RN_Q.good, 1, 512, L3RN_Q.good));
   const E = typeof l3rmEnvResolved === "function" ? l3rmEnvResolved(opt.env || {}) : { az: null, el: null, warm: 0, clouds: 0, haze: 0, exposure: 1 };
   const soft = l3rnClamp(opt.soft, 0, 15, 1.6) + E.clouds * 6, ao = l3rnClamp(opt.ao, 0, 1.6, 1), exposure = l3rnClamp(opt.exposure, 0.2, 4, 0.95) * E.exposure, vig = pano ? 0 : l3rnClamp(opt.vignette, 0, 1, 0.25), bloomAmt = l3rnClamp(opt.bloom, 0, 1, 0.12), dofAmt = l3rnClamp(opt.dof, 0, 10, 0);
   const t0 = performance.now();
-  l3rn.busy = true; l3rn.cancel = false;
+  l3rn.busy = true; l3rn.cancel = false; l3rn.painting = live;
   const S = { mode: l3vm.mode, aspect: cam.aspect, near: cam.near, far: cam.far, target: r.getRenderTarget(), sunDir: l3vm.sunDir ? l3vm.sunDir.clone() : null, lights: [], vis: [], env: new Map(), gizmo: l3.gizmo ? l3.gizmo.visible : null, autoClear: r.autoClear, clear: r.getClearColor(new THREE.Color()), clearA: r.getClearAlpha(), bg: scene.background, fog: scene.fog, envMap: scene.environment, restore: [], linUndo: [] };
   let cubeRT = null, cubeCam = null, panoQ = null, camPos0 = null, blur = null, bloomQ = null, blurQ = null, sky = null, skyMesh = null, bgTex = null, rtS = null, rtA = null, rtB = null, rtOut = null, addQ = null, toneQ = null;
   try {
@@ -189,14 +195,18 @@ async function l3rnRender(opt = {}) {
     L3RM_T.value = Number(opt.time) || 0; l3rnWeather(S, scene, E);
     // 4) buffertar: delbild (HDR, halvflyttal), två summabuffertar (ping-pong, flyttal) och slutbilden (8 bit)
     const bloomOn = bloomAmt > 0 && tiles.length === 1;   // glöden räknas inte per ruta (skarvar) – av vid rutindelad rendering
-    rtS = new THREE.WebGLRenderTarget(TW, TH, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true });
-    rtA = new THREE.WebGLRenderTarget(TW, TH, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false }); rtB = rtA.clone();
-    rtOut = new THREE.WebGLRenderTarget(TW, TH, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, depthBuffer: false });
-    if (bloomOn) { blur = []; for (let k = 0; k < 5; k++) { const bw = Math.max(2, TW >> (k + 1)), bh = Math.max(2, TH >> (k + 1)), mk = () => new THREE.WebGLRenderTarget(bw, bh, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false }); blur.push({ a: mk(), b: mk(), w: bw, h: bh }); } bloomQ = l3rnQuad(L3RN_BRIGHT, { t: { value: null }, ex: { value: 1 }, thr: { value: 1.2 } }); blurQ = l3rnQuad(L3RN_BLUR, { t: { value: null }, d: { value: new THREE.Vector2() } }); }
+    const mkS = () => new THREE.WebGLRenderTarget(TW, TH, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: true }), mkA = () => new THREE.WebGLRenderTarget(TW, TH, { type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false });
+    if (live) { if (!l3rn.liveBuf || l3rn.liveBuf.W !== TW || l3rn.liveBuf.H !== TH) { l3rnLiveFree(); l3rn.liveBuf = { W: TW, H: TH, s: mkS(), a: mkA(), b: mkA(), blur: null }; opt.reset = true; } rtS = l3rn.liveBuf.s; rtA = l3rn.liveBuf.a; rtB = l3rn.liveBuf.b; }
+    else { rtS = mkS(); rtA = mkA(); rtB = rtA.clone(); rtOut = new THREE.WebGLRenderTarget(TW, TH, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, depthBuffer: false }); }
+    if (bloomOn) {
+      if (live && l3rn.liveBuf.blur) blur = l3rn.liveBuf.blur;
+      else { blur = []; for (let k = 0; k < 5; k++) { const bw = Math.max(2, TW >> (k + 1)), bh = Math.max(2, TH >> (k + 1)), mk = () => new THREE.WebGLRenderTarget(bw, bh, { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false }); blur.push({ a: mk(), b: mk(), w: bw, h: bh }); } if (live) l3rn.liveBuf.blur = blur; }
+      bloomQ = l3rnQuad(L3RN_BRIGHT, { t: { value: null }, ex: { value: 1 }, thr: { value: 1.2 } }); blurQ = l3rnQuad(L3RN_BLUR, { t: { value: null }, d: { value: new THREE.Vector2() } });
+    }
     addQ = l3rnQuad(L3RN_ADD, { t: { value: rtS.texture }, tAcc: { value: rtA.texture }, w: { value: 1 / N } });
     toneQ = l3rnQuad(L3RN_TONE, { t: { value: rtA.texture }, ex: { value: exposure }, vig: { value: vig }, bloom: { value: bloomOn ? bloomAmt : 0 }, tOrg: { value: new THREE.Vector2() }, tSize: { value: new THREE.Vector2(TW, TH) }, full: { value: new THREE.Vector2(W, H) }, b0: { value: rtA.texture }, b1: { value: rtA.texture }, b2: { value: rtA.texture }, b3: { value: rtA.texture }, b4: { value: rtA.texture } });
-    r.autoClear = true; [rtA, rtB].forEach(t => { r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); });
-    const out = document.createElement("canvas"); out.width = W; out.height = H; const octx = out.getContext("2d"), px = new Uint8Array(TW * TH * 4), img = octx.createImageData(TW, TH);
+    r.autoClear = true; if (!live || opt.reset) [rtA, rtB].forEach(t => { r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); });
+    const out = live ? null : document.createElement("canvas"); if (out) { out.width = W; out.height = H; } const octx = out ? out.getContext("2d") : null, px = live ? null : new Uint8Array(TW * TH * 4), img = live ? null : octx.createImageData(TW, TH);
     const finish = (scale, tx = 0, ty = 0) => {
       toneQ.mat.uniforms.t.value = rtA.texture; toneQ.mat.uniforms.ex.value = exposure * (scale || 1); toneQ.mat.uniforms.tOrg.value.set(tx, H - ty - TH);
       if (blur) {
@@ -209,6 +219,7 @@ async function l3rnRender(opt = {}) {
           toneQ.mat.uniforms["b" + k].value = L.a.texture;
         });
       }
+      if (live) { r.setRenderTarget(S.target); r.render(toneQ.scene, toneQ.cam); return null; }   // vyn: direkt till skärmen
       r.setRenderTarget(rtOut); r.render(toneQ.scene, toneQ.cam); r.readRenderTargetPixels(rtOut, 0, 0, TW, TH, px); r.setRenderTarget(S.target);
       for (let y = 0; y < TH; y++) img.data.set(px.subarray((TH - 1 - y) * TW * 4, (TH - y) * TW * 4), y * TW * 4);   // GL läser nerifrån och upp
       octx.putImageData(img, tx, ty, 0, 0, Math.min(TW, W - tx), Math.min(TH, H - ty)); return out;
@@ -229,8 +240,8 @@ async function l3rnRender(opt = {}) {
     let done = 0, doneAll = 0;
     for (let ti = 0; ti < tiles.length && !l3rn.cancel; ti++) {
     const [tx, ty] = tiles[ti]; done = 0; if (ti) [rtA, rtB].forEach(t => { r.setRenderTarget(t); r.setClearColor(0x000000, 0); r.clear(); });
-    for (let i = 0; i < N; i++) {
-      if (l3rn.cancel) break;
+    for (let i = live ? (Number(opt.from) || 0) : 0, iEnd = live ? Math.min(N, (Number(opt.from) || 0) + Math.max(1, Number(opt.step) || 1)) : N; i < iEnd; i++) {
+      if (l3rn.cancel || (live && l3rv.dirty)) break;
       cam.setViewOffset(W, H, tx + l3rnHalton(i + 1, 2) - 0.5, ty + l3rnHalton(i + 1, 3) - 0.5, TW, TH);                    // kantutjämning: bråkdel av en bildpunkt
       e1.set(-d0.y, d0.x, 0); if (e1.lengthSq() < 1e-6) e1.set(1, 0, 0); e1.normalize(); e2.crossVectors(d0, e1).normalize();
       const rr = Math.tan(soft * Math.PI / 180) * Math.sqrt(l3rnHalton(i + 1, 5)), th = 2 * Math.PI * l3rnHalton(i + 1, 7);   // solen: en punkt på dess skiva
@@ -253,14 +264,15 @@ async function l3rnRender(opt = {}) {
       } else { r.setRenderTarget(rtS); r.setClearColor(bg0, 1); r.render(scene, cam); }
       addQ.mat.uniforms.tAcc.value = rtA.texture; r.setRenderTarget(rtB); r.render(addQ.scene, addQ.cam); [rtA, rtB] = [rtB, rtA];
       done++; doneAll++;
-      if (i % 3 === 2 || i === N - 1) {
+      if (live || i % 3 === 2 || i === N - 1) {
         if (typeof opt.onProgress === "function" && (done === N || done % Math.max(2, Math.round(N / 12)) === 0)) opt.onProgress(doneAll, N * tiles.length, finish(N / done, tx, ty));
         r.setRenderTarget(S.target);   // ritar något annat i väntan (vyns egen ritloop) ska det inte hamna i våra buffertar
         await new Promise(res => setTimeout(res, 0));
       }
     }
-    finish(N / Math.max(1, done), tx, ty);   // avbruten: det som hunnit läggas ihop skalas upp
+    finish(N / Math.max(1, (live ? (Number(opt.from) || 0) : 0) + done), tx, ty);   // avbruten: det som hunnit läggas ihop skalas upp
     }
+    if (live) { if (typeof opt.capture === "function") opt.capture(r.domElement); l3rvPrecip(E, Number(opt.time) || 0); return { live: true, done, W, H }; }
     l3rnPrecip(octx, W, H, E, Number(opt.time) || 0); const canvas = out;
     l3rn.last = { canvas, width: W, height: H, panorama: pano, samples: N, tiles: tiles.length, ms: Math.round(performance.now() - t0) };
     return l3rn.last;
@@ -280,13 +292,67 @@ async function l3rnRender(opt = {}) {
     S.env.forEach((v, m) => { m.envMapIntensity = v; });
     S.vis.forEach(([o, v]) => { o.visible = v; }); if (l3.gizmo && S.gizmo != null) l3.gizmo.visible = S.gizmo;
     l3vm.sunDir = S.sunDir; if (S.mode !== "real") { if (!opt.sticky) l3vmSet(S.mode, true); } else l3vmShadows(true);   // sticky: filmen låter Realistisk stå kvar mellan bilderna och sätter tillbaka läget i slutet
-    (blur || []).forEach(L => { L.a.dispose(); L.b.dispose(); }); [rtS, rtA, rtB, rtOut].forEach(t => t && t.dispose()); if (cubeRT) cubeRT.dispose(); [addQ, toneQ, bloomQ, blurQ, panoQ].forEach(q => { if (q) { q.mesh.geometry.dispose(); q.mat.dispose(); } });
-    l3rn.busy = false;
-    l3Render();
+    if (!live) { (blur || []).forEach(L => { L.a.dispose(); L.b.dispose(); }); [rtS, rtA, rtB, rtOut].forEach(t => t && t.dispose()); } else if (l3rn.liveBuf) { l3rn.liveBuf.a = rtA; l3rn.liveBuf.b = rtB; } if (cubeRT) cubeRT.dispose(); [addQ, toneQ, bloomQ, blurQ, panoQ].forEach(q => { if (q) { q.mesh.geometry.dispose(); q.mat.dispose(); } });
+    l3rn.busy = false; l3rn.painting = false;
+    if (!live) { l3Render(); if (l3rv.on) { l3rv.sig = ""; l3rvInvalidate(); } }
   }
 }
-(function () {   // medan renderingen pågår ritar inte vyn själv (delar ljus och skuggor)
-  if (typeof l3Render === "function") { const f = l3Render; l3Render = function () { if (l3rn.busy) return; return f.apply(this, arguments); }; }
+/* ---- Renderingsläget i själva 3D-vyn (Victor 2026-11-16: "Rendera = preview av den faktiska filmoutputen") ----
+   Vyn ritas av samma motor som stillbilder, uppspelning och inspelning: samma kamera, datum, objektens läge, material, himmel, skuggor och inställningar.
+   Medan kameran rör sig visas en delbild; står den still förfinas bilden (fler delbilder) till målet. Spela upp ritar varje bild med motorn och
+   Spela in lägger bilderna i filen med samma motor (renderingsfilmen) – det som syns är det som sparas, bara med fler delbilder i filen. */
+const l3rv = { on: false, dirty: true, busy: false, count: 0, raf: 0, prevMode: null, sig: "", timer: 0 };
+const l3rvTarget = () => Math.min(48, L3RN_Q[l3rnSettings().quality] || 48);
+function l3rvSig() {
+  try {
+    const c = l3.camera, p = c.position, q = c.quaternion; let h = [p.x, p.y, p.z, q.x, q.y, q.z, q.w, c.zoom, c.fov || 0, l3.renderer.domElement.width, l3.renderer.domElement.height, document.getElementById("dateInput").value, l3.hidden ? l3.hidden.size : 0, typeof placements !== "undefined" ? placements.length : 0, JSON.stringify(l3rnSettings()), typeof l3rmData === "function" ? JSON.stringify(l3rmData()).length : 0, l3vm.sunDir ? l3vm.sunDir.x.toFixed(3) + l3vm.sunDir.z.toFixed(3) : 0].join("|");
+    l3.groups.places.children.forEach(g => { h += `,${g.position.x.toFixed(2)},${g.position.y.toFixed(2)},${g.position.z.toFixed(2)},${g.rotation.z.toFixed(3)},${g.visible ? 1 : 0}`; });
+    if (typeof l3b !== "undefined") l3b.models.forEach(m => { h += m.visible ? "m1" : "m0"; });
+    return h;
+  } catch (e) { return String(Math.random()); }
+}
+function l3rvInvalidate() { l3rv.dirty = true; l3rvKick(); }
+function l3rvKick() {
+  if (!l3rv.on || l3rv.raf || l3rv.busy) return;
+  if (l3rn.busy || (typeof l3pl !== "undefined" && l3pl.rec)) { clearTimeout(l3rv.timer); l3rv.timer = setTimeout(l3rvKick, 250); return; }   // en stillbild/uppspelning/inspelning pågår – vyn väntar
+  l3rv.raf = requestAnimationFrame(l3rvStep);
+}
+async function l3rvStep() {
+  l3rv.raf = 0; if (!l3rv.on || l3rv.busy || l3rn.busy) return; l3rv.busy = true;
+  try {
+    const reset = l3rv.dirty; if (reset) { l3rv.dirty = false; l3rv.count = 0; }
+    const target = l3rvTarget(), step = l3rv.count === 0 ? 1 : 3;
+    const res = await l3rnRender({ ...l3rnSettings(), live: true, reset, from: l3rv.count, step, target, time: l3rv.t || 0 });
+    if (!l3rv.dirty) l3rv.count += res.done;
+  } catch (e) { console.warn("Renderingsläget:", e); l3rv.on = false; l3rvUi(); if (typeof l3Status === "function") l3Status("Renderingsläget stängdes av: " + e.message, true); }
+  finally { l3rv.busy = false; }
+  if (l3rv.on && (l3rv.dirty || l3rv.count < l3rvTarget())) l3rvKick();
+}
+/* En bild med motorn direkt på vyn (uppspelningen): inga förfinade delbilder, samma bild som filmens ruta före förfining. */
+async function l3rvFrame(time, spp = 2) { l3rv.t = time; return l3rnRender({ ...l3rnSettings(), live: true, reset: true, from: 0, step: spp, target: spp, time }); }
+function l3rvPrecip(E, time) {
+  const host = document.getElementById("v3Canvas"); let cv = document.getElementById("v3RnPrecip");
+  if (!(E.rain > 0 || E.snow > 0)) { if (cv) cv.remove(); return; }
+  if (!host) return; if (!cv) { cv = document.createElement("canvas"); cv.id = "v3RnPrecip"; cv.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4"; host.appendChild(cv); }
+  const w = host.clientWidth, h = host.clientHeight; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const g = cv.getContext("2d"); g.clearRect(0, 0, w, h); l3rnPrecip(g, w, h, E, time);
+}
+function l3rvUi() { const b = document.getElementById("v3RenderBtn"); if (b) { b.classList.toggle("on", l3rv.on); b.title = l3rv.on ? "Renderingsläget är på: vyn, uppspelningen och inspelningen använder samma renderingsmotor. Tryck för att stänga av." : "Rendera: visa 3D-vyn med renderingsmotorn (samma som filmen). Tryck igen för att stänga av."; } if (typeof l3feGuide === "function") l3feGuide(); }
+function l3rvToggle(on = !l3rv.on) {
+  on = !!on; if (on === l3rv.on) return;
+  if (on && typeof lowMemDevice !== "undefined" && lowMemDevice) { l3Status("Renderingsläget är för tungt för telefon och surfplatta – använd Spara stillbild i Rendera-rutan.", true); return; }
+  if (on) { l3rv.prevMode = l3vm.mode; if (l3vm.mode !== "real") l3vmSet("real", true); l3rv.on = true; l3rv.dirty = true; l3rv.sig = ""; l3rvKick(); }
+  else { l3rv.on = false; clearTimeout(l3rv.timer); cancelAnimationFrame(l3rv.raf); l3rv.raf = 0; l3rnLiveFree(); l3rvPrecip({}, 0); if (typeof l3rnRelease === "function") l3rnRelease(); if (l3rv.prevMode && l3rv.prevMode !== "real") l3vmSet(l3rv.prevMode, true); l3Render(); }
+  l3rvUi();
+}
+(function l3rvInstall() {   // renderingen ritar själv; vyns egen ritning hoppar över medan den pågår (väntar tills vyn är inläst – 3d.js ligger senare i sidan)
+  if (typeof l3Render !== "function") { setTimeout(l3rvInstall, 200); return; }
+  if (l3Render.__l3rv) return; const f = l3Render;
+  l3Render = function () {
+    if (l3rv.on && !l3rn.painting) { const sg = l3rvSig(); if (sg !== l3rv.sig) { l3rv.sig = sg; l3rvInvalidate(); } return; }   // renderingsläge: ritas om bara när något ändrats
+    if (l3rn.busy) return; return f.apply(this, arguments);
+  };
+  l3Render.__l3rv = true;
 })();
 
 /* ---- Rutan "🎬 Rendera": flikarna Bild, Material, Mark och Miljö – med förhandsvisning som uppdateras när du ändrar ---- */
@@ -294,14 +360,22 @@ const l3rnUi = { tab: "bild", grp: "Mark", mat: "asfalt", target: "", prevT: 0, 
 function l3rnBtn() {
   const host = document.getElementById("view3d"); if (!host) return;
   let btn = document.getElementById("v3RenderBtn");
-  if (!btn) { btn = document.createElement("button"); btn.type = "button"; btn.id = "v3RenderBtn"; btn.className = "v3-bridge v3-rnb"; btn.textContent = "🎬 Rendera"; btn.title = "Rendera en snygg bild av modellen – med egna renderingsmaterial, mark och miljö (påverkar inte editorns utseende)"; btn.onclick = l3rnOpen; const ft = host.querySelector(".v3-foot"), st = document.getElementById("v3Status"); if (ft && st && st.parentNode === ft) ft.insertBefore(btn, st); else host.appendChild(btn); }   // ligger i fotraden, inte ovanpå menyerna
+  if (!btn) { btn = document.createElement("button"); btn.type = "button"; btn.id = "v3RenderBtn"; btn.className = "v3-bridge v3-rnb"; btn.textContent = "🎬 Rendera"; btn.title = "Rendera en snygg bild av modellen – med egna renderingsmaterial, mark och miljö (påverkar inte editorns utseende)"; btn.onclick = l3rnBtnClick; const ft = host.querySelector(".v3-foot"), st = document.getElementById("v3Status"); if (ft && st && st.parentNode === ft) ft.insertBefore(btn, st); else host.appendChild(btn); }   // ligger i fotraden, inte ovanpå menyerna
 }
 const l3rnQ = (el, s) => el.querySelector(s);
+/* Rendera-knappen: slår på renderingsläget i själva 3D-vyn och öppnar inställningarna; igen = av. */
+function l3rnBtnClick() {
+  if (!l3rv.on) { l3rvToggle(true); if (l3rv.on && !document.getElementById("v3Render")) l3rnOpen(); }
+  else { l3rvToggle(false); const d = document.getElementById("v3Render"); if (d) { l3rn.cancel = true; if (typeof l3rfStop === "function") l3rfStop(); clearTimeout(l3rnUi.prevT); d.remove(); } }
+}
 function l3rnOpts(el) {
   const v = s => { const e = l3rnQ(el, s); return e ? e.value : undefined; };
+  const cur = l3rnSettings(), num = (id, d) => { const e = v(id); return e === undefined || e === "" ? d : +e; };
+  if (l3rnQ(el, "#rnQ")) { const keep = { quality: v("#rnQ") || cur.quality, soft: num("#rnSoft", cur.soft), ao: num("#rnAo", cur.ao), exposure: num("#rnEx", cur.exposure), bloom: num("#rnBl", cur.bloom), dof: num("#rnDof", cur.dof), shadowSize: num("#rnSh", cur.shadowSize), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked }; l3SetPref("rn", keep); }   // sparas: vyn, uppspelningen, inspelningen och stillbilden läser samma värden
   return l3rnUi.last = { quality: v("#rnQ") || "good", soft: +(v("#rnSoft") || 1.6), ao: +(v("#rnAo") || 1), exposure: +(v("#rnEx") || 0.95), bloom: +(v("#rnBl") || 0.12), dof: +(v("#rnDof") || 0), shadowSize: +(v("#rnSh") || 4096), edges: !!(l3rnQ(el, "#rnEdges") || {}).checked, panorama: !!(l3rnQ(el, "#rnPano") || {}).checked };
 }
 function l3rnPreviewSoon() {   // lågupplöst bild efter varje ändring (hoppar över om en full rendering pågår)
+  if (l3rv.on) { l3rvInvalidate(); return; }   // renderingsläget: själva vyn är förhandsvisningen
   const el = document.getElementById("v3Render"); if (!el) return; clearTimeout(l3rnUi.prevT);
   l3rnUi.prevT = setTimeout(async () => {
     if (l3rn.busy || (typeof l3rf !== "undefined" && l3rf.st)) { l3rnUi.prevT = setTimeout(l3rnPreviewSoon, 1500); return; }
@@ -331,7 +405,8 @@ function l3rnTab(tab, keep) {
       <label>Mjuka skuggor <input id="rnSoft" type="range" min="0" max="8" step="0.5" value="1.6" /></label><label>Ambient occlusion <input id="rnAo" type="range" min="0" max="1.5" step="0.1" value="1" /></label>
       <label>Exponering <input id="rnEx" type="range" min="0.5" max="2" step="0.05" value="0.95" /></label><label title="Glöd runt det som är ljusare än vitt (solen, blanka ytor)">Bloom <input id="rnBl" type="range" min="0" max="1" step="0.05" value="0.12" /></label><label title="Oskärpa före och bakom skärpeplanet (fokus ligger vid det du tittar mot). 0 = allt skarpt">Skärpedjup <input id="rnDof" type="range" min="0" max="5" step="0.25" value="0" /></label><label title="Skuggkartans storlek: större = skarpare skuggor men tyngre">Skuggor<select id="rnSh"><option value="2048">2048</option><option value="4096" selected>4096</option><option value="8192">8192 (kräver mycket grafikminne)</option></select></label><label class="rn-chk"><input id="rnEdges" type="checkbox" /> Visa konturlinjer på kroppar</label><label class="rn-chk" title="Hela omgivningen runt kamerans plats som en equirektangulär bild (2:1) – kan läggas in i en 360°-visare. Storleken är bredden."><input id="rnPano" type="checkbox" /> 360°-panorama (från kamerans plats)</label></div>
       <div class="rn-note">Material, mark och miljö väljs i flikarna bredvid och gäller bara renderingen – 3D-editorns utseende ändras inte.</div>`;
-    body.querySelectorAll("input,select").forEach(i => { i.onchange = i.oninput = () => { if (i.id !== "rnS") l3rnPreviewSoon(); }; });
+    { const S = l3rnSettings(), set = (id, v) => { const e = l3rnQ(body, id); if (e && v !== undefined) e.value = v; }; set("#rnQ", S.quality); set("#rnSoft", S.soft); set("#rnAo", S.ao); set("#rnEx", S.exposure); set("#rnBl", S.bloom); set("#rnDof", S.dof); set("#rnSh", String(S.shadowSize)); const ed = l3rnQ(body, "#rnEdges"); if (ed) ed.checked = !!S.edges; }
+    body.querySelectorAll("input,select").forEach(i => { i.onchange = i.oninput = () => { l3rnOpts(el); if (i.id !== "rnS") l3rnPreviewSoon(); }; });
   } else if (tab === "material") {
     const T = l3rmTargets(), sel = l3rnSel(), opts = [];
     if (sel.length) opts.push([`sel`, `Markerade objekt i 3D (${sel.length})`]);
@@ -398,7 +473,7 @@ function l3rnOpen() {
   l3rnTab(l3rnUi.tab || "bild");
   q("#rnGo").onclick = async () => {
     if (l3rn.busy) { l3rn.cancel = true; return; }
-    clearTimeout(l3rnUi.prevT); const go = q("#rnGo"); go.textContent = "Avbryt"; q("#rnSave").disabled = true; const cv = q("#rnCv"), bar = q("#rnBar"), msg = q("#rnMsg");
+    clearTimeout(l3rnUi.prevT); { const rv = el.querySelector(".rn-v"); if (rv) rv.style.display = ""; } const go = q("#rnGo"); go.textContent = "Avbryt"; q("#rnSave").disabled = true; const cv = q("#rnCv"), bar = q("#rnBar"), msg = q("#rnMsg");
     try {
       const W = +((q("#rnS") || {}).value || 1920), vs = l3.renderer.getSize(new THREE.Vector2()), o = q("#rnQ") ? l3rnOpts(el) : { quality: "good", soft: 1.6, ao: 1, exposure: 0.95 };
       const res = await l3rnRender({ ...o, width: W, height: Math.round(W * vs.y / vs.x), onProgress: (d, n, c) => { bar.style.width = Math.round(d / n * 100) + "%"; msg.textContent = `Delbild ${d} av ${n} …`; cv.width = c.width; cv.height = c.height; cv.getContext("2d").drawImage(c, 0, 0); } });
@@ -408,6 +483,7 @@ function l3rnOpen() {
     go.textContent = "Rendera";
   };
   q("#rnSave").onclick = () => { const c = l3rn.last && l3rn.last.canvas; if (!c) return; c.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = `${l3rn.last.panorama ? "panorama" : "rendering"}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }, "image/png"); };
+  { const rv = el.querySelector(".rn-v"); if (l3rv.on && rv) rv.style.display = "none"; }   // renderingsläget: vyn själv är förhandsvisningen
   l3rnPreviewSoon();
 }
 (function l3rnBoot() { const tick = () => { if (document.getElementById("view3d") && typeof l3 !== "undefined" && l3 && l3.renderer) l3rnBtn(); else setTimeout(tick, 1500); }; setTimeout(tick, 1500); })();

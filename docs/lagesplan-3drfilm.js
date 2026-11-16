@@ -141,11 +141,28 @@ function l3rfTab(body, el) {
     if (l3rf.st) { l3rfStop(); return; }
     l3rf.msg = ""; const msg = q("#rfMsg"), bar = q("#rfBar"), cv = el.querySelector("#rnCv"); q("#rfGo").textContent = "Stoppa"; q("#rfPause").disabled = false; q("#rfSave").disabled = true;
     try {
-      const r = await l3rfFilm({ from: q("#rfFrom").value, to: q("#rfTo").value, sec: +q("#rfSec").value, fps: +q("#rfFps").value, res: q("#rfRes").value, samples: +q("#rfQ").value, format: q("#rfFmt").value, caption: q("#rfCap").value, soft: (l3rnUi.last || {}).soft, ao: (l3rnUi.last || {}).ao, exposure: (l3rnUi.last || {}).exposure, bloom: (l3rnUi.last || {}).bloom, dof: (l3rnUi.last || {}).dof, shadowSize: (l3rnUi.last || {}).shadowSize,
+      const r = await l3rfFilm({ from: q("#rfFrom").value, to: q("#rfTo").value, sec: +q("#rfSec").value, fps: +q("#rfFps").value, res: q("#rfRes").value, samples: +q("#rfQ").value, format: q("#rfFmt").value, caption: q("#rfCap").value, soft: l3rnSettings().soft, ao: l3rnSettings().ao, exposure: l3rnSettings().exposure, bloom: l3rnSettings().bloom, dof: l3rnSettings().dof, shadowSize: l3rnSettings().shadowSize,
         onProgress: (i, n, c, inf) => { bar.style.width = Math.round(i / n * 100) + "%"; msg.textContent = `Bild ${i} av ${n} (${inf.day}) · ${(inf.ms / 1000).toFixed(1)} s/bild · ca ${l3rfFmtT(inf.eta / 1000)} kvar`; if (cv) { cv.width = Math.min(960, c.width); cv.height = Math.round(cv.width * c.height / c.width); cv.getContext("2d").drawImage(c, 0, 0, cv.width, cv.height); } } });
       bar.style.width = "100%"; l3rf.msg = `${r.stopped ? "Avbruten" : "Klar"}: ${r.name} – ${r.frames} bilder, ${(r.size / 1e6).toFixed(1).replace(".", ",")} MB, ${l3rfFmtT(r.ms / 1000)}.`; msg.textContent = l3rf.msg;
       if (r.blob && r.size && el.isConnected) { try { downloadBlob(r.blob, r.name); } catch (e) { /* sparas med knappen */ } }
     } catch (e) { l3rf.msg = "Filmen kunde inte renderas: " + e.message; msg.textContent = l3rf.msg; }
     if (el.isConnected && body.isConnected) l3rfTab(body, el);
   };
+}
+
+/* Spela in i renderingsläget: samma motor och samma inställningar som vyn visar, bild för bild (renderingsfilmen) – filen blir det du ser.
+   Knapparna ■ och ⏸ i filmraden styr den som vanligt. */
+async function l3rvExport() {
+  const f = l3plPrefs().film || {}, rp = l3rfPrefs(), msg = document.getElementById("v3FlMsg"), S = l3rnSettings();
+  if (!f.from || !f.to || f.to < f.from) { l3Status("Välj ett intervall (Från före Till) för filmen.", true); return null; }
+  const st = { record: true, export: true }; Object.defineProperty(st, "stop", { get: () => !!(l3rf.st && l3rf.st.stop), set: v => { if (v) l3rfStop(); }, enumerable: true }); Object.defineProperty(st, "paused", { get: () => !!(l3rf.st && l3rf.st.paused), set: v => l3rfPause(!!v), enumerable: true });
+  l3pl.rec = st; if (typeof l3plPauseUi === "function") l3plPauseUi(); { const b = document.getElementById("v3FsRec"); if (b) b.textContent = "■"; const b2 = document.getElementById("v3FlRec"); if (b2) b2.textContent = "■ Stoppa"; }
+  l3Status("Spelar in med renderingsmotorn – bild för bild, så att filen blir exakt det du ser i vyn.");
+  try {
+    const r = await l3rfFilm({ from: f.from, to: f.to, sec: f.sec, res: f.res || rp.res, samples: rp.q, fps: rp.fps, format: rp.fmt, caption: f.caption, soft: S.soft, ao: S.ao, exposure: S.exposure, bloom: S.bloom, dof: S.dof, shadowSize: S.shadowSize,
+      onProgress: (i, n) => { if (msg) msg.textContent = `Spelar in (renderingsmotorn): bild ${i} av ${n}`; } });
+    if (r && r.blob) { downloadBlob(r.blob, r.name); if (msg) msg.textContent = `Sparad: ${r.name} (${(r.size / 1e6).toFixed(1).replace(".", ",")} MB)${r.stopped ? " – avbruten" : ""}.`; l3Status(`Filmen är sparad: ${r.name}`); }
+    return r;
+  } catch (e) { l3Status("Inspelningen misslyckades: " + e.message, true); return null; }
+  finally { l3pl.rec = null; if (typeof l3plPauseUi === "function") l3plPauseUi(); const b = document.getElementById("v3FsRec"); if (b) b.textContent = "⏺"; const b2 = document.getElementById("v3FlRec"); if (b2) b2.textContent = "⏺ Spela in"; if (typeof l3rv !== "undefined" && l3rv.on) { l3rv.sig = ""; l3rvInvalidate(); } }
 }

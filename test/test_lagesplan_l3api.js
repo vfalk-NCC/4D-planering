@@ -203,10 +203,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   { await page.click('#v3RenderBtn'); await page.waitForSelector('#v3Render');
     await page.selectOption('#rnQ', 'fast'); await page.selectOption('#rnS', '1280'); await page.fill('#rnSoft', '2'); await page.click('#rnGo');
     await page.waitForFunction(() => { const b = document.getElementById('rnSave'); return b && !b.disabled; }, null, { timeout: 120000 });
-    const ui = await page.evaluate(() => ({ msg: document.getElementById('rnMsg').textContent, w: document.getElementById('rnCv').width, bar: document.getElementById('rnBar').style.width, last: l3rn.last && l3rn.last.samples, busy: l3rn.busy, go: document.getElementById('rnGo').textContent }));
+    const ui = await page.evaluate(() => ({ msg: document.getElementById('rnMsg').textContent, w: document.getElementById('rnCv').width, bar: document.getElementById('rnBar').style.width, last: l3rn.last && l3rn.last.samples, busy: l3rn.busy && !l3rn.painting, go: document.getElementById('rnGo').textContent }));
     if (!/Klar/.test(ui.msg) || ui.w !== 1280 || ui.bar !== '100%' || ui.last !== 12 || ui.busy || ui.go !== 'Rendera') fail('Rutan Rendera ska ge en färdig bild: ' + JSON.stringify(ui));
     const dl = page.waitForEvent('download'); await page.click('#rnSave'); const d = await dl; if (!/^rendering-.*\.png$/.test(d.suggestedFilename())) fail('Spara PNG: ' + d.suggestedFilename());
-    await page.click('#v3Render .rn-x');
+    await page.click('#v3Render .rn-x'); await page.evaluate(() => l3rvToggle(false));
     console.log('OK: 🎬 Rendera i 3D-vyn – kvalitet, storlek, sol och mjukhet, förhandsvisning, klar bild och nedladdning av PNG'); }
 
   // --- eval_js kräver godkännande ---

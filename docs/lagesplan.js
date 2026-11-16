@@ -2273,6 +2273,9 @@ function openLabelMenu(l, e) {
 // ---------------------------------------------------------------------
 const objHideKey = () => "lagesplan-objhide-" + projectId;
 const objFamKey = it => it.group_id ? "g:" + it.group_id : it.source_key ? "s:" + it.source_key : "i:" + it.id;
+/* Släckta objekt hålls också på en stabil nyckel (objektets IFC-id/namn + aktivitet). Radernas id byts när planen läses in på nytt (ny Powerproject-/Excelimport
+   ger nya rader för t.ex. borrning) – då kom släckta prickar tillbaka, även ur sparade vyer (Victor 2026-11-16). */
+const objStableKey = it => { const o = String(it.object_id || it.object_name || "").trim(), a = String(it.activity || "").trim(); return o || a ? o + "|" + a : ""; };
 let objHideUndo = [];      // [{ kind: "obj"|"labels", state }] – Ctrl+Z ångrar släckningar och dolda namn
 let lastUndoTarget = "";   // "obj" när senaste ångringsbara steget var en släckning (annars etableringen)
 /* Ångra senaste släckning eller dolda namn. */
@@ -2296,15 +2299,22 @@ function statusWithUndo(text) {
   el.appendChild(b);
 }
 function objHidden() {
-  try { const v = JSON.parse(localStorage.getItem(objHideKey()) || "{}") || {}; return { ids: v.ids || [], fams: v.fams || [], acts: v.acts || [], view: v.view || "" }; }
-  catch (e) { return { ids: [], fams: [], acts: [], view: "" }; }
+  try { const v = JSON.parse(localStorage.getItem(objHideKey()) || "{}") || {}; return { ids: v.ids || [], fams: v.fams || [], acts: v.acts || [], keys: v.keys || [], view: v.view || "" }; }
+  catch (e) { return { ids: [], fams: [], acts: [], keys: [], view: "" }; }
 }
 let objHiddenSets = null;
 function isObjHidden(it) {
-  if (!objHiddenSets) { const h = objHidden(); objHiddenSets = { ids: new Set(h.ids), fams: new Set(h.fams), acts: new Set(h.acts) }; }
-  return objHiddenSets.ids.has(it.id) || objHiddenSets.fams.has(objFamKey(it)) || objHiddenSets.acts.has(String(it.activity || "").trim());
+  if (!objHiddenSets) { const h = objHidden(); objHiddenSets = { ids: new Set(h.ids), fams: new Set(h.fams), acts: new Set(h.acts), keys: new Set(h.keys || []) }; }
+  const k = objHiddenSets.keys.size ? objStableKey(it) : "";
+  return objHiddenSets.ids.has(it.id) || objHiddenSets.fams.has(objFamKey(it)) || objHiddenSets.acts.has(String(it.activity || "").trim()) || (k !== "" && objHiddenSets.keys.has(k));
 }
 function setObjHidden(h, opts = {}) {
+  { // stabila nycklar för de släckta raderna (följer med när raderna får nya id vid ny import); tända rader tar bort sin nyckel
+    const prev = objHidden(), byId = new Map(items.map(i => [i.id, i])), keys = new Set(h.keys !== undefined ? h.keys : prev.keys || []);
+    (h.ids || []).forEach(id => { const it = byId.get(id); if (it) { const k = objStableKey(it); if (k) keys.add(k); } });
+    if (h.keys === undefined) prev.ids.filter(id => !(h.ids || []).includes(id)).forEach(id => { const it = byId.get(id); if (it) keys.delete(objStableKey(it)); });
+    h = { ...h, keys: [...keys] };
+  }
   if (opts.undo !== false) { objHideUndo.push({ kind: "obj", state: objHidden() }); if (objHideUndo.length > 30) objHideUndo.shift(); lastUndoTarget = "obj"; }
   try { localStorage.setItem(objHideKey(), JSON.stringify(h)); } catch (e) {}
   objHiddenSets = null;
@@ -2336,7 +2346,7 @@ function bindObjMenu(m, its) {
   on("act", () => { const x = h(); x.acts = [...new Set([...x.acts, String(its[0].activity || "").trim()])]; setObjHidden(x); statusWithUndo(`Släckt alla med aktiviteten ${its[0].activity}.`); });
   on("only", () => {
     const keep = new Set(its.map(objFamKey));
-    const x = h(); x.ids = []; x.acts = []; x.fams = [...new Set(items.map(objFamKey).filter(k => !keep.has(k)))];
+    const x = h(); x.ids = []; x.acts = []; x.keys = []; x.fams = [...new Set(items.map(objFamKey).filter(k => !keep.has(k)))];
     setObjHidden(x); statusWithUndo(`Visar bara ${famName(its[0])}.`);
   });
 }
@@ -2383,18 +2393,18 @@ function bindObjViewUi() {
     renderLayerPanel = function () { const r = orig.apply(this, arguments); renderObjViewUi(); return r; };
     renderLayerPanel.__objViews = true;
   }
-  $("btnObjShowAll").onclick = () => { setObjHidden({ ids: [], fams: [], acts: [], view: "" }); statusWithUndo("Alla objekt tända."); };
+  $("btnObjShowAll").onclick = () => { setObjHidden({ ids: [], fams: [], acts: [], keys: [], view: "" }); statusWithUndo("Alla objekt tända."); };
   $("btnObjHideUndo").onclick = () => undoObjHide();
   $("objViewSel").onchange = () => {
     const v = objViews().find(x => x.id === $("objViewSel").value);
-    setObjHidden(v ? { ids: [...(v.hidden.ids || [])], fams: [...(v.hidden.fams || [])], acts: [...(v.hidden.acts || [])], view: v.id } : { ids: [], fams: [], acts: [], view: "" });
+    setObjHidden(v ? { ids: [...(v.hidden.ids || [])], fams: [...(v.hidden.fams || [])], acts: [...(v.hidden.acts || [])], keys: [...(v.hidden.keys || [])], view: v.id } : { ids: [], fams: [], acts: [], keys: [], view: "" });
   };
   $("btnObjViewSave").onclick = async () => {
     const h = objHidden(), cur = objViews().find(v => v.id === h.view);
     const name = (await uiPrompt("Namn på vyn (t.ex. \"Utan grundsula\"). Samma namn skriver över.", cur ? cur.name : "") || "").trim();
     if (!name) return;
     const existing = objViews().find(v => v.name.toLowerCase() === name.toLowerCase());
-    const rec = { id: existing ? existing.id : ghNewId(), type: "objview", name, hidden: { ids: h.ids, fams: h.fams, acts: h.acts }, updated_by: settings.userName || null, updated_at: new Date().toISOString() };
+    const rec = { id: existing ? existing.id : ghNewId(), type: "objview", name, hidden: { ids: h.ids, fams: h.fams, acts: h.acts, keys: h.keys || [] }, updated_by: settings.userName || null, updated_at: new Date().toISOString() };
     await saveSiteItem(rec, false, { record: false });
     setObjHidden({ ...h, view: rec.id }, { undo: false });
     setSaveStatus(`Vyn "${name}" är sparad i projektet.`);

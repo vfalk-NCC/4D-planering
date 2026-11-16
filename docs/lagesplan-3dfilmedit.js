@@ -17,7 +17,7 @@ const L3FE_LOOKS = { "": ["Ingen", ""], vivid: ["Levande", "contrast(1.08) satur
 const L3FE_EASE = { lin: ["Linjär (jämn takt)", u => u], inout: ["Mjuk start och slut", u => u * u * (3 - 2 * u)], in: ["Mjuk start (accelererar)", u => u * u], out: ["Mjuk slut (bromsar)", u => 1 - (1 - u) * (1 - u)] };
 const l3feClamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const l3feFilm = () => (typeof l3plPrefs === "function" ? l3plPrefs().film : null) || {};
-const l3feE = () => ({ ease: "lin", cam: "smooth", holds: [], fadeIn: 0, fadeOut: 0, fadeCol: "#000000", speed: 1, loop: false, look: "", aspect: "16:9", guide: false, markers: [], open: true, sec: {}, ...(l3feFilm().edit || {}) });
+const l3feE = () => ({ ease: "lin", cam: "smooth", holds: [], fadeIn: 0, fadeOut: 0, fadeCol: "#000000", speed: 1, loop: false, look: "", aspect: "auto", guide: false, markers: [], open: true, sec: {}, ...(l3feFilm().edit || {}) });
 function l3feSet(patch, rerender = true) { const f = l3feFilm(); l3plSet("film", { ...f, edit: { ...l3feE(), ...patch } }); if (rerender) l3feRender(); l3feGuide(); }
 const l3feDate = t => l3plIso(new Date(Math.round(t / L3FE_DAY) * L3FE_DAY));
 const l3feHead = () => (typeof l3fs !== "undefined" && l3fs.t != null ? l3fs.t : l3plDate(l3plDay()).getTime());
@@ -67,7 +67,12 @@ function l3feLive(s, sec, tm) {
 }
 function l3feLiveEnd() { const el = document.getElementById("v3FeLive"); if (el) el.remove(); }
 const l3feFilter = () => (L3FE_LOOKS[l3feE().look] || L3FE_LOOKS[""])[1] || "none";
-const l3feRatio = () => L3FE_ASPECT[l3feE().aspect] || 16 / 9;
+/* Bildformat: "auto" = vyns eget format i renderingsläget (inspelningen fångar exakt det du ser), annars 16:9. */
+function l3feRatio() {
+  const a = l3feE().aspect;
+  if (a === "auto") { if (typeof l3rv !== "undefined" && l3rv.on && typeof l3 !== "undefined" && l3 && l3.renderer) { const c = l3.renderer.domElement; if (c.clientWidth && c.clientHeight) return c.clientWidth / c.clientHeight; } return 16 / 9; }
+  return L3FE_ASPECT[a] || 16 / 9;
+}
 const l3feW = H => Math.max(2, Math.round(H * l3feRatio() / 2) * 2);
 
 /* ---- Kamera ------------------------------------------------------------------------------------------ */
@@ -171,7 +176,7 @@ function l3feRender() {
       <div class="fe-sub">Vyer (${l3plKeys().length})</div>
       <div class="fe-grid"><button type="button" data-fe="copyk">⧉ Kopiera vy hit</button><button type="button" data-fe="even">⇔ Fördela jämnt</button><button type="button" data-fe="prevk">⏮ Förra vyn</button><button type="button" data-fe="nextk">⏭ Nästa vyn</button><button type="button" data-fe="sh" data-d="-1">◂ Efter huvudet −1 d</button><button type="button" data-fe="sh" data-d="1">▸ Efter huvudet +1 d</button><button type="button" data-fe="sh" data-d="-7">◂◂ −1 v</button><button type="button" data-fe="sh" data-d="7">▸▸ +1 v</button></div>
       <button type="button" data-fe="clearK" class="fe-danger">Ta bort alla vyer</button>`,
-    vis: `<div class="fe-row"><label>Hastighet ${sel("feSp", E.speed, [[0.25, "0,25×"], [0.5, "0,5×"], [1, "1×"], [2, "2×"], [4, "4×"]])}</label><label>Bildformat ${sel("feAs", E.aspect, Object.keys(L3FE_ASPECT).map(k => [k, k]))}</label></div>
+    vis: `<div class="fe-row"><label>Hastighet ${sel("feSp", E.speed, [[0.25, "0,25×"], [0.5, "0,5×"], [1, "1×"], [2, "2×"], [4, "4×"]])}</label><label>Bildformat ${sel("feAs", E.aspect, [["auto", "Som vyn (render) / 16:9"], ...Object.keys(L3FE_ASPECT).map(k => [k, k])])}</label></div>
       <label class="fe-chk"><input id="feLoop" type="checkbox"${E.loop ? " checked" : ""} /> Upprepa uppspelningen (loop)</label>
       <label class="fe-chk"><input id="feGuide" type="checkbox"${E.guide ? " checked" : ""} /> Visa bildruta (det som kommer med i filmen)</label>
       <label>Filmfilter ${sel("feLook", E.look, Object.entries(L3FE_LOOKS).map(([k, v]) => [k, v[0]]))}</label>

@@ -194,8 +194,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('.rn-tabs [data-t="miljo"]'); await page.waitForSelector('#v3Render [data-time]');
   await page.click('#v3Render [data-time="kvall"]'); await page.waitForTimeout(250);
   const e1 = await page.evaluate(() => l3rmData().env.time); if (e1 !== 'kvall') fail('Tid på dygnet via knapp: ' + e1);
-  await page.waitForFunction(() => /Förhandsvisning/.test(document.getElementById('rnMsg').textContent) && document.getElementById('rnCv').width >= 500, null, { timeout: 60000 });
-  await page.click('#v3Render .rn-x');
+  await page.waitForFunction(() => l3rv.on && !l3rv.busy && l3rv.count >= 1, null, { timeout: 60000 });
+  await page.click('#v3Render .rn-x'); await page.evaluate(() => l3rvToggle(false));
   await page.evaluate(() => { l3rmData().rules = []; l3rmData().ground = { base: null, areas: [] }; l3rmData().env = {}; });
   console.log('OK: rutan – Material, Mark och Miljö: klick lägger på material, markyta av markerad yta, tid på dygnet, förhandsvisning uppdateras');
 

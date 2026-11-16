@@ -118,7 +118,7 @@ const PP = [
     await page.waitForFunction(() => /Avbruten|Klar/.test(document.getElementById('rfMsg').textContent), null, { timeout: 20000 });
     const saved = await page.evaluate(() => ({ msg: document.getElementById('rfMsg').textContent, save: document.getElementById('rfSave').disabled, last: l3rf.last && l3rf.last.frames }));
     if (saved.save || !/Avbruten/.test(saved.msg)) fail('Efter Stoppa: ' + J(saved));
-    await page.click('#v3Render .rn-x');
+    await page.click('#v3Render .rn-x'); await page.evaluate(() => l3rvToggle(false)); await page.waitForTimeout(300);   // renderingsläget står kvar när rutan stängs
     const after3 = await cap(); if (J(after3) !== J(before)) fail('Editorn efter rutans film: ' + J({ before, after3 }));
     console.log('OK: fliken Film – inställningar sparas, start/stopp via knappen, förlopp med tid kvar, avbrutet sparas');
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));

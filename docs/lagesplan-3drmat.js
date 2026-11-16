@@ -188,6 +188,7 @@ function l3rmSave() {
   l3rm.matCache.forEach(() => {}); // materialen ligger kvar i minnet (de är små)
   if (typeof plan !== "undefined" && plan && typeof schedulePlanSave === "function") { const d = plan.render; if (d && !d.rules.length && !d.ground.base && !d.ground.areas.length && !Object.keys(d.env).length && !d.custom.length) delete plan.render; schedulePlanSave(); }
   if (typeof l3rmUiRefresh === "function") l3rmUiRefresh();
+  if (typeof l3rvInvalidate === "function" && typeof l3rv !== "undefined" && l3rv.on) l3rvInvalidate();   // renderingsläget ritar om vyn
 }
 const l3rmId = () => (typeof ghNewId === "function" ? ghNewId() : Math.random().toString(36).slice(2, 10));
 const l3rmHexOf = c => "#" + [0, 1, 2].map(i => Math.round(Math.max(0, Math.min(1, c[i])) * 255).toString(16).padStart(2, "0")).join("");
