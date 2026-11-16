@@ -294,7 +294,7 @@ const l3rnUi = { tab: "bild", grp: "Mark", mat: "asfalt", target: "", prevT: 0, 
 function l3rnBtn() {
   const host = document.getElementById("view3d"); if (!host) return;
   let btn = document.getElementById("v3RenderBtn");
-  if (!btn) { btn = document.createElement("button"); btn.type = "button"; btn.id = "v3RenderBtn"; btn.className = "v3-bridge v3-rnb"; btn.textContent = "🎬 Rendera"; btn.title = "Rendera en snygg bild av modellen – med egna renderingsmaterial, mark och miljö (påverkar inte editorns utseende)"; btn.onclick = l3rnOpen; host.appendChild(btn); }
+  if (!btn) { btn = document.createElement("button"); btn.type = "button"; btn.id = "v3RenderBtn"; btn.className = "v3-bridge v3-rnb"; btn.textContent = "🎬 Rendera"; btn.title = "Rendera en snygg bild av modellen – med egna renderingsmaterial, mark och miljö (påverkar inte editorns utseende)"; btn.onclick = l3rnOpen; const ft = host.querySelector(".v3-foot"), st = document.getElementById("v3Status"); if (ft && st && st.parentNode === ft) ft.insertBefore(btn, st); else host.appendChild(btn); }   // ligger i fotraden, inte ovanpå menyerna
 }
 const l3rnQ = (el, s) => el.querySelector(s);
 function l3rnOpts(el) {

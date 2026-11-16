@@ -227,6 +227,9 @@ const PP = [
       // Klar aktivitet bockas av: Gjutning pelare slutar 18/10.
       ['2026-10-17', '2026-10-18', '2026-10-19'].forEach((d, i) => l3fxFrame(fx, d, 1 + i * 0.2));
       texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-19', 1.5, fx, '', true); const done = texts.join(' | ');
+      // Klara aktiviteter tas bort 3 dagar efter slutdatum (filmens tid): Gjutning pelare slutar 18/10 → kvar 21/10, borta 22/10.
+      const fx3 = await l3fxStart('2026-10-01', '2026-10-21'), keep = []; ['2026-10-17', '2026-10-19', '2026-10-21', '2026-10-22', '2026-10-24'].forEach((d, i) => { l3fxFrame(fx3, d, 5 + i * 0.01); keep.push(fx3.gone.filter(g => /Gjutning pelare/.test(g.a.name)).length); }); l3fxEnd(fx3);
+      const goneDays = keep.join(',');
       // Lys upp: pågående aktiviteters IFC-objekt får ett pulserande lager i statusfärgen.
       const geo = new THREE.BoxGeometry(1, 1, 1), mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial());
       mesh.userData.l3b = { origIdx: geo.index.array, ranges: [{ guid: '4hZq3$Bq9Fxu8nZK0bW1aA', idxStart: 0, idxCount: geo.index.count }] };
@@ -270,11 +273,11 @@ const PP = [
       // Uppspelning: lagret över 3D-vyn ritas och döljs efteråt.
       l3fxHud(fx, '2026-10-14', 0.7, ''); const hud = !document.getElementById('v3FilmHud').classList.contains('hidden'); l3fxEnd(fx); const hudOff = document.getElementById('v3FilmHud').classList.contains('hidden');
       const fxNoBl = await (async () => { l3plSet('film', { ...l3plPrefs().film, fxBl: false }); const f3 = await l3fxStart('2026-10-01', '2026-10-21'); l3fxFrame(f3, '2026-10-14', 0.5); texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-14', 0.5, f3, '', true); return texts.join(' | '); })();
-      return { all, weekRoll, done, off, hud, hudOff, glow, anim, legend, etab, smooth, noBl: !/baslinjen/.test(fxNoBl), ahead: l3fxAhead(fx, Date.UTC(2026, 9, 12)), prog: Math.round(fx.prog(Date.UTC(2026, 9, 12)) * 100) };
+      return { goneDays, all, weekRoll, done, off, hud, hudOff, glow, anim, legend, etab, smooth, noBl: !/baslinjen/.test(fxNoBl), ahead: l3fxAhead(fx, Date.UTC(2026, 9, 12)), prog: Math.round(fx.prog(Date.UTC(2026, 9, 12)) * 100) };
     });
     const need = ['VECKA', '14 okt 2026', 'Etapp 1', 'PÅGÅR NU', 'Hus A', 'Gjutning pelare', 'PROJEKTET KLART', 'aktiviteter klara', 'Stomme klar', 'MILSTOLPE'];
     const miss = need.filter(t => !fx.all.includes(t));
-    if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || fx.off !== 0 || !fx.glow || !fx.anim || !fx.legend || !fx.etab || !fx.smooth || !fx.noBl || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 100), a: await page.evaluate(() => window.__anim), e: await page.evaluate(() => window.__etab) }));
+    if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || !/^0,1,1,0,0$/.test(fx.goneDays) || fx.off !== 0 || !fx.glow || !fx.anim || !fx.legend || !fx.etab || !fx.smooth || !fx.noBl || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 100), a: await page.evaluate(() => window.__anim), e: await page.evaluate(() => window.__etab) }));
     // Paus (mellanslag/⏸): bilden och grafiken står kvar; ■ stoppar, går till filmens början och tar bort grafiken.
     const pz = await page.evaluate(async () => {
       l3plSet('film', { ...l3plPrefs().film, from: '2026-10-01', to: '2026-10-21', sec: 4, fxNow: true });

@@ -395,7 +395,7 @@ function l3apiChip() {
   const host = document.getElementById("view3d"), c = l3api.conn; if (!host) return;
   let el = document.getElementById("v3Bridge");
   if (!el) {
-    el = document.createElement("button"); el.type = "button"; el.id = "v3Bridge"; host.appendChild(el);
+    el = document.createElement("button"); el.type = "button"; el.id = "v3Bridge"; const ft = host.querySelector(".v3-foot"), st = document.getElementById("v3Status"); if (ft && st && st.parentNode === ft) ft.insertBefore(el, st); else host.appendChild(el);   // ligger i fotraden, inte ovanpå menyerna
     el.onclick = () => { if (l3api.conn.on) l3apiDisconnect(); else l3apiConnect(); };
   }
   el.className = "v3-bridge" + (c.on ? (c.err ? " err" : " on") : ""); el.textContent = c.on ? (c.busy ? "🔌 Claude arbetar…" : c.err ? "🔌 Claude – väntar på bryggan" : `🔌 Claude kopplad${c.n ? " · " + c.n : ""}`) : "🔌 Claude";

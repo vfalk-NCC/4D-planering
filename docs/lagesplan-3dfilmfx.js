@@ -64,6 +64,9 @@ function l3fxAhead(fx, t) {
 
 /* ---- Varje bild ------------------------------------------------------------------------------------- */
 /* Före 3D-bilden: pågående aktiviteter (in/ut) och glöden. */
+/* Klara aktiviteter i Pågår nu: kvar med bock i 3 dagar efter slutdatum (filmens tid, inte sekunder), tonas ut den sista tiden (Victor 2026-11-16). */
+const L3FX_GONE_DAYS = 3;
+const l3fxGoneAlpha = (t, a) => 1 - l3fxEase(((t - a.t1) / (L3FX_GONE_DAYS * L3FX_DAY) - 0.8) / 0.2);
 function l3fxFrame(fx, iso, ft, tms) {
   if (!fx) return;
   // Löpande tid (inte avrundad till dagen) – procenten stegar fram jämnt bild för bild.
@@ -72,7 +75,7 @@ function l3fxFrame(fx, iso, ft, tms) {
   const keys = new Set(act.map(a => a.key));
   act.forEach(a => { if (!fx.seen.has(a.key)) fx.seen.set(a.key, ft); });
   fx.prev.forEach(k => { if (!keys.has(k)) { const a = fx.acts.find(x => x.key === k); if (a && a.t1 <= t) fx.gone.push({ a, at: ft }); fx.seen.delete(k); } });
-  fx.gone = fx.gone.filter(g => ft - g.at < 1.4);
+  fx.gone = fx.gone.filter(g => t < g.a.t1 + L3FX_GONE_DAYS * L3FX_DAY);   // en klar aktivitet står kvar med bock i tre dagar (filmens tid), sedan tas den bort
   fx.prev = keys; fx.active = act;
   // Veckan rullar fram.
   const wk = l3plWeekNo(l3plDate(iso));
@@ -428,7 +431,7 @@ function l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t) {
     col.forEach(gi => {
       const g = groups[gi], gh = L.gh[gi];
       const seen = Math.min(...(g.acts.length ? g.acts.map(a => fx.seen.get(a.key) ?? -9) : [-9]));
-      const inA = l3fxEase((ft - seen) / 0.5), outA = g.fading ? 1 - l3fxEase(((ft - g.fading.at) / 1.4 - 0.4) / 0.6) : 1;
+      const inA = l3fxEase((ft - seen) / 0.5), outA = g.acts.length || !g.done.length ? 1 : Math.max(...g.done.map(d => l3fxGoneAlpha(t, d.a)));
       ctx.save(); ctx.globalAlpha *= Math.min(inA, outA); ctx.translate((1 - inA) * 30 * s, 0);
       ctx.fillStyle = "rgba(255,255,255,.05)"; l3fxRR(ctx, cx0 + pad, cy, L.cw - 2 * pad + 4 * s, gh, 12 * s); ctx.fill();
       const ap = fx.areaProg(g.area, t), col = g.acts.length ? phaseColor(zonePhase(g.acts[0].rows, iso)) : "#22c55e";
@@ -447,7 +450,7 @@ function l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t) {
         const rc = done ? "#22c55e" : phaseColor(zonePhase(list[0].rows, iso));
         ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
         const lines = l3fxWrap(ctx, r.tx + (r.acts.length > 1 ? ` ×${r.acts.length}` : ""), L.textW, L.lines), rh = lines.length * m.lh;
-        ctx.save(); if (done) ctx.globalAlpha *= 1 - l3fxEase(((ft - r.done.at) / 1.4 - 0.4) / 0.6);
+        ctx.save(); if (done) ctx.globalAlpha *= l3fxGoneAlpha(t, r.done.a);
         ctx.fillStyle = rc; ctx.beginPath(); ctx.arc(hx + 4 * s, ry + m.lh / 2, Math.max(2.5 * s, 4.5 * s * L.k), 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "#e2e8f0"; lines.forEach((ln, li) => ctx.fillText(ln, hx + 14 * s, ry + m.lh / 2 + li * m.lh));
         const sbw = 64 * s, sbx = hx + hw - sbw - 48 * s, by = ry + rh / 2 - 2.5 * s;
