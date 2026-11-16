@@ -160,6 +160,7 @@ function l3feRender() {
     tid: `<label>Tidskurva ${sel("feEase", E.ease, Object.entries(L3FE_EASE).map(([k, v]) => [k, v[0]]))}</label>
       <div class="fe-row"><label>Längd (s)<input id="feSec" type="number" min="3" max="600" step="1" value="${sec}" /></label><label>Tona in (s)<input id="feFi" type="number" min="0" max="10" step="0.5" value="${E.fadeIn}" /></label><label>Tona ut (s)<input id="feFo" type="number" min="0" max="10" step="0.5" value="${E.fadeOut}" /></label></div>
       <label>Tonar till ${sel("feFc", E.fadeCol, [["#000000", "Svart"], ["#ffffff", "Vit"]])}</label>
+      <div class="fe-row"><label>Spela in från<input id="feFrom" type="date" value="${esc(f.from || "")}" /></label><label>till<input id="feTo" type="date" value="${esc(f.to || "")}" /></label></div>
       <div class="fe-row"><button type="button" data-fe="from" title="Filmen börjar på datumet där huvudet står">Från = huvudet</button><button type="button" data-fe="to" title="Filmen slutar på datumet där huvudet står">Till = huvudet</button></div>
       <div class="fe-sub">Pauser och titelkort (${(E.holds || []).length})</div>
       <div class="fe-list">${(E.holds || []).map((h, i) => `<div class="fe-it"><b>${esc(h.date)}</b> ${esc(h.sec)} s${h.text ? ` · ${esc(h.text.slice(0, 22))}` : ""}<button type="button" data-fe="holdx" data-i="${i}" title="Ta bort">✕</button></div>`).join("") || '<div class="fe-note">Inga. Filmen står stilla vid ett datum i några sekunder – med eller utan text.</div>'}</div>
@@ -192,6 +193,7 @@ function l3feBind(el) {
   const num = (id, key) => { const e = q(id); if (e) e.onchange = () => l3feSet({ [key]: Number(e.value) || 0 }); };
   const val = (id, key, cv = v => v) => { const e = q(id); if (e) e.onchange = () => l3feSet({ [key]: cv(e.value) }); };
   val("#feEase", "ease"); val("#feFc", "fadeCol"); val("#feCam", "cam"); val("#feAs", "aspect"); val("#feLook", "look"); val("#feSp", "speed", Number); num("#feFi", "fadeIn"); num("#feFo", "fadeOut");
+  [["#feFrom", "from"], ["#feTo", "to"]].forEach(([id, k]) => { const e = q(id); if (e) e.onchange = () => { const fl = f(), v = e.value; if (!v) return; const nf = { ...fl, [k]: v }; if (nf.from && nf.to && nf.to < nf.from) { if (typeof l3Status === "function") l3Status("Till-datumet kan inte ligga före Från-datumet.", true); l3feRender(); return; } l3plSet("film", nf); l3fsRender(); l3Status(`Filmen spelas in ${nf.from || "…"} – ${nf.to || "…"}.`); }; });
   const sc = q("#feSec"); if (sc) sc.onchange = () => { l3plSet("film", { ...f(), sec: l3feClamp(Number(sc.value) || 20, 3, 600) }); l3feRender(); };
   const lp = q("#feLoop"); if (lp) lp.onchange = () => l3feSet({ loop: lp.checked }, false);
   const gd = q("#feGuide"); if (gd) gd.onchange = () => l3feSet({ guide: gd.checked }, false);

@@ -245,6 +245,24 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       console.log(`OK: gå-läge – W gick ${moved.toFixed(2)} m framåt, musen tittar runt, Esc avslutar`);
     }
     await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc-panel.png'), clip: { x: 0, y: 0, width: 1300, height: 850 } });
+    { // egna inställningar per moln + Synka alla (med bekräftelse)
+      const two = await page.evaluate(async () => {
+        const a = l3pc.clouds[0]; l3SetPref('pcSize', 3); l3pcApplyAll(); l3LayersRender();
+        const rows = document.querySelectorAll('#v3PalLayers [data-pc-set]').length;
+        document.querySelector(`#v3PalLayers [data-pc-set="${a.id}"]`).click(); await new Promise(r => setTimeout(r, 100));
+        const sz = document.querySelector(`#v3PalLayers [data-pcc="${a.id}"][data-k="pcSize"]`); sz.value = 9; sz.dispatchEvent(new Event('input')); sz.dispatchEvent(new Event('change'));
+        const md = document.querySelector(`#v3PalLayers [data-pcc="${a.id}"][data-k="pcMode"]`); md.value = 'solid'; md.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 100));
+        const col = document.querySelector(`#v3PalLayers [data-pcc="${a.id}"][data-k="pcColor"]`); col.value = '#ff0000'; col.dispatchEvent(new Event('input'));
+        const px = c => Array.from(c.group.children[0].geometry.getAttribute('color').array.slice(0, 3)).join(), own = { sizeA: a.mat.size, colA: px(a) };
+        l3SetPref('pcSize', 5); l3pcApplyAll();   // övergripande ändras – molnet med egen storlek följer inte
+        return { rows, ...own, sizeAfterGlobal: a.mat.size, ov: l3Prefs()['pcCloud:' + a.id], ownMark: !!document.querySelector('#v3PalLayers .v3-pc-own') };
+      });
+      if (two.rows < 1 || two.sizeA !== 9 || two.colA !== '255,0,0' || two.sizeAfterGlobal !== 9 || !two.ov || two.ov.pcSize !== 9 || !two.ownMark) fail('Egna inställningar per moln: ' + JSON.stringify(two));
+      const sy = async answer => page.evaluate(async answer => { window.__confirms = []; uiConfirm = async t => { window.__confirms.push(t); return answer; }; document.getElementById('v3PcSync').click(); await new Promise(r => setTimeout(r, 200)); const a = l3pc.clouds[0]; return { asked: window.__confirms.length, text: window.__confirms[0] || '', sizeA: a.mat.size, ov: !!l3Prefs()['pcCloud:' + a.id] }; }, answer);
+      const no = await sy(false); if (no.asked !== 1 || !/Synka alla 1 punktmoln/.test(no.text) || no.sizeA !== 9 || !no.ov) fail('Synka alla ska fråga och inte ändra något vid Nej: ' + JSON.stringify(no));
+      const yes = await sy(true); if (yes.sizeA !== 5 || yes.ov) fail('Synka alla ska ge molnen de övergripande inställningarna: ' + JSON.stringify(yes));
+      console.log('OK: egna visningsinställningar per moln (färg, storlek …) och Synka alla med bekräftelse');
+    }
     console.log('OK: punktmolnets visning – runda punkter, meter, täckning, höjdfilter, enfärgad/ljus, höjdjustering, återställ, förlopp i raden');
     // Cache: bort ur vyn och tillbaka utan Trimble Connect.
     await page.waitForTimeout(500);

@@ -52,6 +52,11 @@ const PP = [
     if (process.env.L3FE) { await page.click('#v3FilmEdit [data-fe="sec"][data-k="kam"]'); await page.screenshot({ path: process.env.L3FE }); await page.click('#v3FilmEdit [data-fe="sec"][data-k="tid"]'); }
     console.log('OK: menyn öppnas med tidslinjen – ' + ui0.secs.length + ' avsnitt, ligger ovanför tidslinjen');
 
+    await page.fill('#v3FilmEdit #feFrom', '2026-10-05'); await page.dispatchEvent('#v3FilmEdit #feFrom', 'change'); await page.waitForTimeout(150); await page.fill('#v3FilmEdit #feTo', '2026-10-18'); await page.dispatchEvent('#v3FilmEdit #feTo', 'change'); await page.waitForTimeout(150);
+    const rg = await page.evaluate(() => ({ f: l3plPrefs().film.from, t: l3plPrefs().film.to, range: l3fsRange().map(x => new Date(x).toISOString().slice(0, 10)) }));
+    if (rg.f !== '2026-10-05' || rg.t !== '2026-10-18' || rg.range.join() !== '2026-10-05,2026-10-18') fail('Datumen för inspelningen i filmmenyn: ' + J(rg));
+    await page.evaluate(() => { l3plSet('film', { ...l3plPrefs().film, from: '2026-10-01', to: '2026-10-21' }); l3fsRender(); });
+    console.log('OK: Spela in från/till – datum i filmmenyn styr filmens intervall och tidslinje');
     // tidskurva, pauser och tona
     const T = await page.evaluate(() => {
       const tIn = Date.UTC(2026, 9, 1), tOut = Date.UTC(2026, 9, 21), sec = 10, D = 86400000;
