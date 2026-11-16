@@ -57,7 +57,7 @@ async function l3rfEncoder(W, H, fps, bps, onChunk) {
 
 /* ---- Filmen ---- */
 const L3RF_FPS = [24, 25, 30, 60];
-function l3rfDims(res) { const H = Math.max(2, Math.round((Number(res) || 1080) / 2) * 2), W = Math.round(H * 16 / 9 / 2) * 2; return { W, H }; }
+function l3rfDims(res) { const H = Math.max(2, Math.round((Number(res) || 1080) / 2) * 2), W = typeof l3feW === "function" ? l3feW(H) : Math.round(H * 16 / 9 / 2) * 2; return { W, H }; }
 /* o: { from, to, sec, fps, res, samples, format ("auto"|"webm"|"zip"), caption, onProgress(i, n, canvas, info) }. Returnerar { name, blob, size, frames, format, ms, stopped }. */
 async function l3rfFilm(o = {}) {
   if (l3rf.st) throw new Error("En film renderas redan");
@@ -78,12 +78,13 @@ async function l3rfFilm(o = {}) {
     const fx = typeof l3fxStart === "function" ? await l3fxStart(from, to).catch(() => null) : null, title = pf.title !== false;
     try {
       for (let i = 0; i < frames && !st.stop; i++) {
-        st.i = i; const t = t0 + (t1 - t0) * (frames > 1 ? i / (frames - 1) : 0), d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps, fs0 = performance.now();
+        st.i = i; const su = frames > 1 ? i / (frames - 1) : 0, tm = typeof l3feTimeAt === "function" ? l3feTimeAt(su * sec, sec, t0, t1) : { t: t0 + (t1 - t0) * su }, t = tm.t, d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps, fs0 = performance.now();
         l3plSetDay(d); const c = l3plCamAt(keys, t); if (c) l3plCamApply(c); if (typeof l3animApply === "function") l3animApply(t); if (fx) l3fxFrame(fx, d, ft, t);
         const res = await l3rnRender({ width: W, height: H, samples, sticky: true, time: ft, edges: false, soft: o.soft, ao: o.ao, exposure: o.exposure, bloom: o.bloom, dof: o.dof, shadowSize: o.shadowSize });
-        ctx.drawImage(res.canvas, 0, 0, W, H);
+        if (typeof l3feFilter === "function") ctx.filter = l3feFilter(); ctx.drawImage(res.canvas, 0, 0, W, H); ctx.filter = "none";
         if (typeof l3fsDrawFrame === "function" && pf.pearls !== false) l3fsDrawFrame(ctx, W, H, d);
         if (fx) l3fxDraw(ctx, W, H, d, ft, fx, caption, pf.pearls !== false); else if (title && typeof l3plOverlay === "function") l3plOverlay(ctx, W, H, d, caption);
+        if (typeof l3feOverlay === "function") l3feOverlay(ctx, W, H, su * sec, sec, tm);
         if (enc) {
           while (enc.enc.encodeQueueSize > 4 && !enc.err) await new Promise(r => setTimeout(r, 10)); if (enc.err) throw enc.err;
           const vf = new VideoFrame(cv, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) }); enc.enc.encode(vf, { keyFrame: i % 60 === 0 }); vf.close();

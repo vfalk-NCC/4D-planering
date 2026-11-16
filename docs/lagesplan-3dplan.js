@@ -335,7 +335,8 @@ function l3plCamAt(keys, t) {
   if (t <= T[0]) return keys[0];
   if (t >= T[T.length - 1]) return keys[keys.length - 1];
   let i = 0; while (i < T.length - 1 && t > T[i + 1]) i++;
-  const u = T[i + 1] > T[i] ? (t - T[i]) / (T[i + 1] - T[i]) : 1, s = u * u * (3 - 2 * u);
+  const u = T[i + 1] > T[i] ? (t - T[i]) / (T[i + 1] - T[i]) : 1, mode = typeof l3feCamMode === "function" ? l3feCamMode() : "smooth", s = mode === "smooth" ? u * u * (3 - 2 * u) : u;   // filmredigeringen (lagesplan-3dfilmedit.js): mjuk stopp, jämn takt eller slät kurva
+  if (mode === "spline" && keys.length > 2) return l3feCamSpline(keys, T, i, u);
   const L = (a, b) => a.map((v, j) => v + (b[j] - v) * s);
   return { p: L(keys[i].p, keys[i + 1].p), t: L(keys[i].t, keys[i + 1].t) };
 }
@@ -359,7 +360,7 @@ async function l3plFilm(record) {
   if (record && l3plMime() === null) { l3Status("Webbläsaren kan inte spela in video.", true); return; }
   const sec = Math.max(3, Math.min(600, Number(f.sec) || 20)), fps = 30, frames = Math.round(sec * fps);
   const t0 = l3plDate(from).getTime(), t1 = l3plDate(to).getTime(), keys = l3plKeys();
-  const H = Number(f.res) || 1080, W = Math.round(H * 16 / 9);
+  const H = Number(f.res) || 1080, W = typeof l3feW === "function" ? l3feW(H) : Math.round(H * 16 / 9);
   const day0 = $("dateInput").value, cam0 = l3plCam(), R = l3.renderer, pr0 = R.getPixelRatio();
   const st = { stop: false, paused: false, record };
   l3pl.rec = st;
@@ -384,27 +385,28 @@ async function l3plFilm(record) {
   const title = f.title !== false, caption = String(f.caption || "").trim();
   // Grafiken (lagesplan-3dfilmfx.js): pågår nu, glöd, datumskylt, milstolpar, förloppsmätare – var och en valbar.
   if (typeof l3fsAnimEnd === "function") l3fsAnimEnd(); // förhandsvisningen av animeringen lämnar plats åt filmens egen
-  const fx = typeof l3fxStart === "function" ? await l3fxStart(from, to).catch(() => null) : null;
+  let fx = typeof l3fxStart === "function" ? await l3fxStart(from, to).catch(() => null) : null;
   let start = performance.now();
   try {
     for (let i = 0; i <= frames && !st.stop; i++) {
-      const t = t0 + (t1 - t0) * (i / frames), d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps;
+      const tm = typeof l3feTimeAt === "function" ? l3feTimeAt(i / frames * sec, sec, t0, t1) : { t: t0 + (t1 - t0) * (i / frames) }, t = tm.t, d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps;   // tidskurva och pauser: filmredigeringen
       l3plSetDay(d);
       const c = l3plCamAt(keys, t); if (c) l3plCamApply(c);
       if (typeof l3animApply === "function") l3animApply(t);
       if (fx) l3fxFrame(fx, d, ft, t);
       if (record) {
         R.render(l3.scene, l3.camera);
-        ctx.drawImage(R.domElement, 0, 0, W, H);
+        if (typeof l3feFilter === "function") ctx.filter = l3feFilter(); ctx.drawImage(R.domElement, 0, 0, W, H); ctx.filter = "none";
         if (typeof l3fsDrawFrame === "function" && f.pearls !== false) l3fsDrawFrame(ctx, W, H, d);
         if (fx) l3fxDraw(ctx, W, H, d, ft, fx, caption, f.pearls !== false);
         else if (title) l3plOverlay(ctx, W, H, d, caption);
+        if (typeof l3feOverlay === "function") l3feOverlay(ctx, W, H, i / frames * sec, sec, tm);
         st.frame();
-      } else { l3Render(); if (fx) l3fxHud(fx, d, ft, caption); }
+      } else { l3Render(); if (fx) l3fxHud(fx, d, ft, caption); if (typeof l3feLive === "function") l3feLive(i / frames * sec, sec, tm); }
       if (msg) msg.textContent = `${record ? "Spelar in" : "Spelar upp"}: ${d} (${Math.round(i / frames * 100)} %)`;
       if (typeof l3fsPlayhead === "function") { l3fs.t = t; l3fsPlayhead(t); }
       // Takten: bild i vid tiden i / fps (spelar in i realtid).
-      const wait = start + (i + 1) * 1000 / fps - performance.now();
+      const sp = record || typeof l3feE !== "function" ? 1 : (Number(l3feE().speed) || 1), wait = start + (i + 1) * 1000 / (fps * sp) - performance.now();
       await new Promise(r => setTimeout(r, Math.max(0, wait)));
       // Paus (mellanslag eller ⏸): bilden och grafiken står kvar; tiden räknas om när den fortsätter.
       if (st.paused && !st.stop) {
@@ -413,8 +415,10 @@ async function l3plFilm(record) {
         while (st.paused && !st.stop) await new Promise(r => setTimeout(r, 60));
         start += performance.now() - p0;
       }
+      if (i === frames && !record && !st.stop && typeof l3feE === "function" && l3feE().loop) { i = -1; start = performance.now(); if (fx) l3fxEnd(fx); fx = typeof l3fxStart === "function" ? await l3fxStart(from, to).catch(() => null) : null; }   // loop
     }
   } finally {
+    if (typeof l3feLiveEnd === "function") l3feLiveEnd();
     if (fx) l3fxEnd(fx);
     if (record) {
       await new Promise(r => { rec.onstop = r; rec.stop(); });
