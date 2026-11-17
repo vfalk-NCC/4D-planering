@@ -277,6 +277,8 @@ const L3VR_PRESETS = [["Grundläggning", ["IFCFOOTING", "IFCPILE", "IFCPILECAP"]
 /* Klass- och namnfiltret (gäller listan, 3D-vyn och HTML-exporten; kategorierna Tillkommit … styrs för sig). */
 function l3vrInF(r) { const f = l3vr.filter, q = f.q.trim().toLowerCase(); return (!f.cls.size || f.cls.has(r.cls)) && (!q || (r.name + " " + r.cls + " " + r.why).toLowerCase().includes(q)); }
 function l3vrRows() { const R = l3vr.res; if (!R) return []; return R.rows.filter(r => (!l3vr.filter.st || r.st === l3vr.filter.st) && l3vrInF(r)); }
+/* Alla inlästa modeller att välja bland (även tidigare inlästa versioner, "Namn · v9"), utom de som en pågående Trimble Connect-jämförelse själv har läst in. */
+function l3vrLoadedList() { return l3b.models.filter(m => !(l3vr.own.A && m.id === l3vr.ids.A) && !(l3vr.own.B && m.id === l3vr.ids.B)); }
 function l3vrInfoHtml(inf) {
   const part = (k, x) => `${k} = ${l3vrEsc(x.label)} (${l3vrMb(x.bytes) || (x.bytes === 0 && x.local ? "" : "okänd storlek")}${x.bytes || !x.local ? ", " : ""}${(x.tris || 0).toLocaleString("sv-SE")} trianglar)`;
   return `<div class="fe-note">${inf.local ? "Jämför" : "Hämtat"}: ${part("A", inf.A)}, ${part("B", inf.B)}.${inf.local ? "" : ` Versions-id A ${l3vrEsc(String(inf.A.id).slice(0, 12))} / B ${l3vrEsc(String(inf.B.id).slice(0, 12))}.`}</div>`;
@@ -292,7 +294,7 @@ function l3vrRender() {
   if (l3vr.busy) h += `<div class="fe-note"><span class="pm-spin"></span> ${e(l3vr.busy)}</div>`;
   h += `<div class="fe-row" style="margin-bottom:4px"><button type="button" data-vr="src" data-s="tc" class="${l3vr.src === "tc" ? "primary" : ""}">Versioner i Trimble Connect</button><button type="button" data-vr="src" data-s="loaded" class="${l3vr.src === "loaded" ? "primary" : ""}">Inlästa modeller</button></div>`;
   if (l3vr.src === "loaded") {
-    const ms = l3b.models.filter(m => !String(m.id).startsWith("v:")), opt = v => ms.map(m => `<option value="${e(m.id)}"${v === m.id ? " selected" : ""}>${e(m.name)}${m.tris ? ` (${(m.tris / 1000).toFixed(0)}k)` : ""}</option>`).join("");
+    const ms = l3vrLoadedList(), opt = v => ms.map(m => `<option value="${e(m.id)}"${v === m.id ? " selected" : ""}>${e(m.name)}${m.tris ? ` (${(m.tris / 1000).toFixed(0)}k)` : ""}</option>`).join("");
     h += `<div class="fe-sec"><div class="fe-sub">1. Välj två inlästa modeller</div><div class="fe-c">${ms.length < 2 ? `<div class="fe-note">Läs in minst två modeller under Lager → 3D-modeller (t.ex. två exporter av samma modell). Välj sedan äldre och nyare här.</div>` : `<label>Äldre (A)<select id="vrLdA"><option value="">Välj…</option>${opt(l3vr.ldA)}</select></label><label>Nyare (B)<select id="vrLdB"><option value="">Välj…</option>${opt(l3vr.ldB)}</select></label><div class="fe-row"><label>Tolerans (mm)<input id="vrTol" type="number" min="0" max="500" step="1" value="${l3vr.tol}"></label><button type="button" class="primary" data-vr="runl"${l3vr.busy ? " disabled" : ""}>Jämför</button></div><div class="fe-note">Modellerna läses inte in igen och tas inte bort när du stänger. Övriga modeller släcks under jämförelsen och tänds igen efteråt.</div>`}</div></div>`;
   } else {
   h += `<div class="fe-sec"><div class="fe-sub">1. Modell</div><div class="fe-c">`;
@@ -416,7 +418,7 @@ function l3vrBind(el) {
     else if (a === "file") l3vrPickFile(b.dataset.id, b.dataset.nm, b.dataset.par);
     else if (a === "run") l3vrRun();
     else if (a === "runl") l3vrRunLoaded();
-    else if (a === "src") { l3vr.src = b.dataset.s; if (l3vr.src === "loaded" && !l3vr.ldA) { const ms = l3b.models.filter(m => !String(m.id).startsWith("v:")); l3vr.ldA = ms[0] ? ms[0].id : ""; l3vr.ldB = ms[1] ? ms[1].id : ""; } l3vrRender(); }
+    else if (a === "src") { l3vr.src = b.dataset.s; if (l3vr.src === "loaded" && !l3vr.ldA) { const ms = l3vrLoadedList(); l3vr.ldA = ms[0] ? ms[0].id : ""; l3vr.ldB = ms[1] ? ms[1].id : ""; } l3vrRender(); }
     else if (a === "show") { const k = b.dataset.k; l3vr.show[k] = l3vr.show[k] ? 0 : 1; l3vrApply(); l3vrRender(); }
     else if (a === "selk") { const k = b.dataset.k; if (R) { if (!l3vr.show[k]) { l3vr.show[k] = 1; l3vrApply(); } const add = ev.ctrlKey || ev.metaKey || ev.shiftKey, list = R.rows.filter(r => r.st === k).map(r => (r.b && r.st !== "removed" ? r.b : r.a)).filter(Boolean).map(t => ({ mesh: t.mesh, ri: t.ri })); const all = add ? [...l3bs.sel.map(x => ({ mesh: x.mesh, ri: x.ri })), ...list] : list; l3bsSet(all.slice(0, 30000)); if (list.length) l3bsZoom(); l3Status(`${list.length} ${L3VR_NAME[k].toLowerCase()} markerade.`); l3vrRender(); } }
     else if (a === "iso") { if (l3bs.sel.length && typeof l3bsIsolate === "function") l3bsIsolate(); else l3Status("Markera något först (tryck på en kategori eller en rad).", true); }

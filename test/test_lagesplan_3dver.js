@@ -160,6 +160,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => l3vrToggle(false));
   const end = await page.evaluate(() => ({ vis: l3b.models[0] && l3b.models[0].visible, orig: l3b.orig, models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));
   ok(end.vis === true && end.orig === false && end.models === 1 && !end.active && !end.panel && end.col === 0, 'Stängd: ' + JSON.stringify(end));
+  // Tidigare inlästa versioner (id börjar på v:) kan också väljas
+  ok(await page.evaluate(() => { l3vr.src = 'loaded'; return l3vrLoadedList().length === l3b.models.length; }), 'Alla inlästa modeller kan väljas');
+  await page.evaluate(() => { l3vr.src = 'tc'; });
   // Inlästa modeller: jämför två modeller som redan finns under 3D-modeller (de tas inte bort)
   await page.evaluate(async () => { await l3bLoad([{ id: 'm:a', fileId: 'x1', versionId: 'v1', name: 'Export 1.ifc' }, { id: 'm:b', fileId: 'x2', versionId: 'v2', name: 'Export 2.ifc' }]); l3vrToggle(true); });
   await page.click('#v3Ver [data-vr="src"][data-s="loaded"]'); await page.waitForSelector('#v3Ver #vrLdA');
