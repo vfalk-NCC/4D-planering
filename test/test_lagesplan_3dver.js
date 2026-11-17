@@ -100,6 +100,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return !l3vr.show.same && [...u.cmpHide].map(i => u.ranges[i].guid).sort().join() === 'g0,g9' && l3vr.filter.st === ''; }), 'Oförändrat döljs med sin knapp');
   await page.click('#v3Ver [data-vr="show"][data-k="same"]');
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return l3vr.show.same && u.cmpHide.size === 0 && u.cmpAlpha.size === 2; }), 'Oförändrat visas igen som spöke');
+  // Kategoriknapparna markerar objekten i 3D (även en avslagen kategori tänds), Ctrl lägger till, Isolera markerade
+  await page.click('#v3Ver [data-vr="selk"][data-k="removed"]');
+  ok(await page.evaluate(() => l3bs.sel.length === 1 && l3bs.sel[0].mesh.userData.l3b.ranges[l3bs.sel[0].ri].guid === 'g2'), 'Borttaget markeras (äldre versionens pelare)');
+  await page.click('#v3Ver [data-vr="selk"][data-k="added"]', { modifiers: ['Control'] });
+  ok(await page.evaluate(() => l3bs.sel.map(e => e.mesh.userData.l3b.ranges[e.ri].guid).sort().join() === 'g2,g5'), 'Ctrl lägger till tillkommet i markeringen');
+  await page.click('#v3Ver [data-vr="selk"][data-k="moved"]');
+  ok(await page.evaluate(() => l3bs.sel.length === 1 && l3bs.sel[0].mesh.userData.l3b.ranges[l3bs.sel[0].ri].guid === 'g1'), 'Utan Ctrl ersätter markeringen');
+  await page.click('#v3Ver [data-vr="iso"]'); await page.waitForTimeout(200);
+  ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return u.hidden.size >= 3; }), 'Isolera markerade döljer resten');
+  await page.click('#v3Ver [data-vr="showall"]'); ok(await page.evaluate(() => l3vrModel('B').meshes[0].userData.l3b.hidden.size === 0), 'Visa alla tänder allt');
   // Före/efter, svep, blinka
   await page.selectOption('#v3Ver #vrView', 'before'); ok(await page.evaluate(() => [l3vrModel('A').visible, l3vrModel('B').visible].join()) === 'true,false', 'Bara äldre');
   await page.selectOption('#v3Ver #vrView', 'swipe'); await page.waitForSelector('#v3Ver #vrSwipe');
