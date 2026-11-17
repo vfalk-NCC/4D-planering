@@ -87,6 +87,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => { const A = l3vrModel('A'); l3bRecolor(); window.__c = Array.from(A.meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });
   const colA = await page.evaluate(() => window.__c); ok(colA[0] > colA[1] + 100, 'Borttagen pelare är röd i 3D: ' + colA);
   ok(await page.evaluate(() => l3b.models.find(m => m.id === 'f:f1').visible === false && l3vr.hid.join() === 'f:f1'), 'Den vanliga modellen av samma fil släcks under jämförelsen: ' + await page.evaluate(() => JSON.stringify([l3b.models.map(m => [m.id, m.visible]), l3vr.hid, l3vr.file])));
+  // Återställ filter: allt tillbaka till jämförelsen
+  await page.evaluate(() => { l3vr.filter.cls = new Set(['IFCSLAB']); l3vr.filter.q = 'x'; l3vr.show.added = 0; l3vr.view = 'overlay'; l3vrApply(); });
+  await page.evaluate(() => l3vrRender()); await page.click('#v3Ver [data-vr="reset"]');
+  ok(await page.evaluate(() => l3vr.filter.cls.size === 0 && l3vr.filter.q === '' && l3vr.show.added === 1 && l3vr.view === 'diff' && l3vr.modelCol.size === 0 && l3vr.active), 'Återställ filter tar bort filtren och går tillbaka till Skillnader');
   // Tidplanen av: Original-läget är på och skillnadsfärgerna syns ändå; av/på med kryssrutan
   ok(await page.evaluate(() => l3b.orig === true && l3vr.setOrig === true), 'Tidplanen ignoreras som standard (Original-läget)');
   await page.evaluate(() => { l3bRecolor(); window.__c = Array.from(l3vrModel('A').meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });
@@ -157,7 +161,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // klassfilter + markering
     await pg.click('#clsum'); await pg.uncheck('#cls input[data-c="IFCMEMBER"]'); ok(await pg.evaluate(() => document.querySelectorAll('#list .it').length === 3), 'Klass av: listan krymper');
     await pg.click('#list .it >> nth=0'); ok(await pg.evaluate(() => __ver.st.sel >= 0 && /m³/.test(document.getElementById('info').textContent)), 'Klick i listan markerar och visar info');
-    await pg.screenshot({ path: '/tmp/ver-viewer.png' }); ok(!perr.length, 'Visaren: fel i konsolen: ' + perr.join(' | ')); await pg.context().close(); }
+    await pg.click('#rst'); ok(await pg.evaluate(() => Object.values(__ver.st.show).every(Boolean) && Object.values(__ver.st.cls).every(Boolean) && __ver.st.q === '' && __ver.st.mode === 'diff' && document.querySelectorAll('#list .it').length === 4), 'Visarens återställ: alla filter borta'); await pg.screenshot({ path: '/tmp/ver-viewer.png' }); ok(!perr.length, 'Visaren: fel i konsolen: ' + perr.join(' | ')); await pg.context().close(); }
   await page.evaluate(() => { l3vr.filter.cls = new Set(); l3vrApply(); });
   // Stäng: versionerna tas bort och färgerna är borta
   await page.evaluate(() => l3vrToggle(false));

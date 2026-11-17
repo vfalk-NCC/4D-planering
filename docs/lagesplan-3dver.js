@@ -343,6 +343,7 @@ function l3vrRender() {
       <div class="vr-bar" title="Andel av objekten">${L3VR_ORDER.map(k => `<i style="width:${R.count[k] / tot * 100}%;background:${L3VR_COL[k]}"></i>`).join("")}</div>
       <div class="fe-note">Volym: ${R.volA.toFixed(1).replace(".", ",")} → ${R.volB.toFixed(1).replace(".", ",")} m³ (${dv >= 0 ? "+" : "−"}${Math.abs(dv).toFixed(1).replace(".", ",")} m³). ${R.reguid ? `${R.reguid} objekt hade fått nytt GUID och parades ihop på klass, namn och läge. ` : ""}${R.noGuid ? `${R.noGuid} delar saknar GUID och ingår inte.` : ""}</div>
       <label class="fe-chk" title="På: modellerna visas med sina egna färger, utan tidplanens färger, dolda temporära objekt eller Gantt-filter – som en vanlig viewer. Av: tidplanen färgar som vanligt (skillnadsfärgerna ligger ändå överst)."><input id="vrNoPlan" type="checkbox"${l3vr.noPlan ? " checked" : ""}> Visa som viewer – ignorera tidplanen</label>
+      <div class="fe-row"><button type="button" data-vr="reset" title="Tar bort alla filter (klass, namn, kategorier), isolering och markering och går tillbaka till visningen Skillnader">↺ Återställ filter</button></div>
       <div class="fe-row"><label>Visa<select id="vrView"><option value="diff"${l3vr.view === "diff" ? " selected" : ""}>Skillnader (färgat)</option><option value="overlay"${l3vr.view === "overlay" ? " selected" : ""}>Överlägg (äldre / nyare i egna färger)</option><option value="before"${l3vr.view === "before" ? " selected" : ""}>Bara äldre (A)</option><option value="after"${l3vr.view === "after" ? " selected" : ""}>Bara nyare (B)</option><option value="blink"${l3vr.view === "blink" ? " selected" : ""}>Blinka A / B</option><option value="swipe"${l3vr.view === "swipe" ? " selected" : ""}>Svep (delad bild)</option></select></label>
         ${l3vr.view === "diff" ? `<label title="Hur oförändrade objekt ritas när de är tända (knappen Oförändrat ovan slår av och på dem)">Oförändrat<select id="vrSame"><option value="ghost"${l3vr.same === "ghost" ? " selected" : ""}>Spöke</option><option value="grey"${l3vr.same === "grey" ? " selected" : ""}>Grått</option></select></label>` : ""}</div>
       ${l3vr.view === "overlay" ? `<div class="fe-row"><label>Äldre (A)<input id="vrColA" type="color" value="${l3vr.colA}"></label><label>Nyare (B)<input id="vrColB" type="color" value="${l3vr.colB}"></label></div><div class="fe-note">Där ytorna ligger på varandra syns nyare färgen. Äldre färgen syns där den äldre versionen har något som den nyare saknar eller har flyttat.</div>` : ""}
@@ -414,6 +415,13 @@ async function l3vrExportHtml() {
   l3Status(`HTML sparad: ${rows.length} objekt, ${(tt / 1000).toFixed(0)} tusen trianglar, ${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB.`);
   return { name, size: blob.size, html };
 }
+/* Återställ: tar bort alla filter (klass, namn, typ, kategorier), isolering och val i visningen och återgår till jämförelsen (Skillnader). */
+function l3vrReset() {
+  l3vr.filter = { cls: new Set(), q: "", st: "" }; L3VR_ORDER.forEach(k => { l3vr.show[k] = 1; }); l3vr.view = "diff"; l3vr.same = "ghost"; l3vr.old = true; l3vr.sel = null; l3vr.props = null;
+  if (typeof l3bsClear === "function") l3bsClear();
+  [l3vrModel("A"), l3vrModel("B")].forEach(m => m && m.meshes.forEach(x => { const u = x.userData.l3b; if (u && u.hidden && u.hidden.size) { u.hidden.clear(); l3bApplyHidden(x); } }));   // bara jämförelsens modeller
+  l3vrApply(); l3vrRender(); l3Status("Alla filter är borttagna – tillbaka till jämförelsen.");
+}
 function l3vrBind(el) {
   const q = s => el.querySelector(s), on = (s, f) => { const x = q(s); if (x) x.onchange = f; };
   on("#vrLoaded", ev => { const m = l3b.models.find(x => x.id === ev.target.value); if (m && m.src) l3vrPickFile(m.src.fileId, String(m.name).replace(/ · v\d+$/, ""), m.src.parentId); });
@@ -437,6 +445,7 @@ function l3vrBind(el) {
     else if (a === "tc") { l3vr.pick = !l3vr.pick; if (l3vr.pick && !l3vr.tc.items) l3vrTcOpen(null); else l3vrRender(); }
     else if (a === "dir") l3vrTcOpen(b.dataset.id, b.dataset.nm);
     else if (a === "file") l3vrPickFile(b.dataset.id, b.dataset.nm, b.dataset.par);
+    else if (a === "reset") l3vrReset();
     else if (a === "run") l3vrRun();
     else if (a === "runl") l3vrRunLoaded();
     else if (a === "src") { l3vr.src = b.dataset.s; if (l3vr.src === "loaded" && !l3vr.ldA) { const ms = l3vrLoadedList(); l3vr.ldA = ms[0] ? ms[0].id : ""; l3vr.ldB = ms[1] ? ms[1].id : ""; } l3vrRender(); }

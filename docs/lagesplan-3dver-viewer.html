@@ -32,7 +32,7 @@ details summary{cursor:pointer;color:var(--mut)}label.c{display:flex;gap:5px;ali
 <div id="dfrow" style="margin-top:6px" class="row"><label class="c"><input id="old" type="checkbox" checked> Gammalt läge som röd skugga</label><label class="c">Oförändrat <select id="same"><option value="ghost">Spöke</option><option value="grey">Grått</option></select></label></div></section>
 <section><h2>Kategorier</h2><div class="chips" id="chips"></div><div class="row" style="margin-top:5px"><button id="all">Alla</button><button id="none">Ingen</button><button id="chg">Bara ändringar</button></div></section>
 <section><h2>Klass</h2><details><summary id="clsum">Alla klasser</summary><div id="cls" style="max-height:160px;overflow:auto;margin-top:4px"></div></details><div class="row" style="margin-top:4px"><button id="clall">Alla</button><button id="clnone">Ingen</button></div></section>
-<section><h2>Objekt <span id="cnt"></span></h2><input type="search" id="q" placeholder="Sök namn…" style="width:100%;margin-bottom:5px"><div id="list"></div><div class="row" style="margin-top:5px"><button id="csv">Exportera CSV</button><button id="fit">Återställ vy</button></div></section>
+<section><h2>Objekt <span id="cnt"></span></h2><input type="search" id="q" placeholder="Sök namn…" style="width:100%;margin-bottom:5px"><div id="list"></div><div class="row" style="margin-top:5px"><button id="csv">Exportera CSV</button><button id="fit">Återställ vy</button><button id="rst" title="Tar bort alla filter och går tillbaka till Skillnader">↺ Återställ filter</button></div></section>
 <section id="info">Tryck på ett objekt i vyn eller i listan.</section>
 <section class="row" style="color:var(--mut)" id="foot"></section>
 </aside></main>
@@ -163,6 +163,7 @@ var DATA = /*__DATA__*/null;
   $("ca").oninput = function () { st.colA = this.value; build(); }; $("cb").oninput = function () { st.colB = this.value; build(); };
   $("old").onchange = function () { st.old = this.checked; build(); }; $("same").onchange = function () { st.same = this.value; build(); };
   $("fit").onclick = function () { home(); draw(); };
+  $("rst").onclick = function () { ORDER.forEach(function (k) { st.show[k] = true; }); classes.forEach(function (c) { st.cls[c] = true; }); st.q = ""; $("q").value = ""; st.old = true; $("old").checked = true; st.same = "ghost"; $("same").value = "ghost"; select(-1); chips(); clsUi(); setMode("diff"); list(); home(); draw(); };
   $("csv").onclick = function () {
     var q = function (v) { v = String(v == null ? "" : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }, L = [["Typ", "Namn", "Klass", "Anmärkning", "Volym A (m3)", "Volym B (m3)"].join(";")];
     objs.filter(vis).forEach(function (o) { L.push([NAME[o.s], o.n, DATA.clsNames[o.c] || o.c, o.w, o.va == null ? "" : String(o.va).replace(".", ","), o.vb == null ? "" : String(o.vb).replace(".", ",")].map(q).join(";")); });
