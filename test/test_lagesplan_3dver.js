@@ -95,6 +95,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => { l3vr.show.added = 0; l3vr.same = 'hide'; l3vrApply(); });
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return [...u.cmpHide].map(i => u.ranges[i].guid).sort().join(); }) === 'g0,g5,g9', 'Dölj tillkommet och oförändrat');
   await page.evaluate(() => { l3vr.show.added = 1; l3vr.same = 'ghost'; l3vrApply(); });
+  // Oförändrat slås av och på med sin knapp, precis som de andra
+  await page.click('#v3Ver [data-vr="show"][data-k="same"]');
+  ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return !l3vr.show.same && [...u.cmpHide].map(i => u.ranges[i].guid).sort().join() === 'g0,g9' && l3vr.filter.st === ''; }), 'Oförändrat döljs med sin knapp');
+  await page.click('#v3Ver [data-vr="show"][data-k="same"]');
+  ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return l3vr.show.same && u.cmpHide.size === 0 && u.cmpAlpha.size === 2; }), 'Oförändrat visas igen som spöke');
   // Före/efter, svep, blinka
   await page.selectOption('#v3Ver #vrView', 'before'); ok(await page.evaluate(() => [l3vrModel('A').visible, l3vrModel('B').visible].join()) === 'true,false', 'Bara äldre');
   await page.selectOption('#v3Ver #vrView', 'swipe'); await page.waitForSelector('#v3Ver #vrSwipe');
