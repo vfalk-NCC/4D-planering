@@ -11,7 +11,7 @@
 const L3VR_COL = { added: "#16a34a", removed: "#dc2626", moved: "#2563eb", reshaped: "#f59e0b", renamed: "#9333ea", same: "#94a3b8" };
 const L3VR_NAME = { added: "Tillkommit", removed: "Borttaget", moved: "Flyttat", reshaped: "Ändrad form", renamed: "Nytt namn/klass", same: "Oförändrat" };
 const L3VR_ORDER = ["added", "removed", "moved", "reshaped", "renamed", "same"];
-const l3vr = { noPlan: true, setOrig: false, hid: [], open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
+const l3vr = { noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
   tol: 5, filter: { cls: "", q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
 
 const l3vrEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -117,12 +117,15 @@ function l3vrPlanMode() {
 /* ---- Visningen i 3D ---- */
 function l3vrHex(h) { const c = new THREE.Color(h); return [c.r, c.g, c.b]; }
 const l3vrColorFor0 = typeof l3pColorFor === "function" ? l3pColorFor : null;
-l3pColorFor = function (m, r, orig) { if (l3vr.active && l3vr.col.size) { const c = l3vr.col.get(m.id + "|" + r.guid); if (c) return c; } return l3vrColorFor0 ? l3vrColorFor0(m, r, orig) : null; };
+l3pColorFor = function (m, r, orig) { if (l3vr.active && l3vr.modelCol.size) { const mc = l3vr.modelCol.get(m.id); if (mc) return mc; } if (l3vr.active && l3vr.col.size) { const c = l3vr.col.get(m.id + "|" + r.guid); if (c) return c; } return l3vrColorFor0 ? l3vrColorFor0(m, r, orig) : null; };
 function l3vrClear(keepCol) {
   [l3vrModel("A"), l3vrModel("B")].forEach(m => { if (!m) return; m.meshes.forEach(x => { const u = x.userData.l3b; if (!u) return; if (u.cmpHide || u.cmpAlpha) { u.cmpHide = null; u.cmpAlpha = null; l3bApplyHidden(x); } }); });
   l3vrSwipeOff(); if (l3vr.blink) { clearInterval(l3vr.blink); l3vr.blink = null; }
+  l3vr.modelCol.clear(); l3vrOffsetB(false);
   l3vr.active = false; if (!keepCol) l3vr.col.clear();
 }
+/* Överlägg: nyare versionen ritas lite framför den äldre där ytorna ligger exakt på varandra, så att den äldres färg bara syns där den sticker ut eller saknar motsvarighet. */
+function l3vrOffsetB(on) { const B = l3vrModel("B"); if (!B) return; B.meshes.forEach(x => x.traverse(o => { if (o.material && !o.isLine && !o.isLineSegments) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => { if (mt.polygonOffset !== on || on) { mt.polygonOffset = on; mt.polygonOffsetFactor = on ? -2 : 0; mt.polygonOffsetUnits = on ? -2 : 0; mt.needsUpdate = true; } }); })); }
 function l3vrApply() {
   const A = l3vrModel("A"), B = l3vrModel("B"), R = l3vr.res; if (!A || !B || !R) return;
   l3vrClear(true); l3vr.col.clear(); l3vr.active = true;
@@ -147,6 +150,7 @@ function l3vrApply() {
   // objekt som inte finns i resultatet (utan GUID) i A döljs i färgläget så att inget gammalt ligger kvar
   if (view === "diff") A.meshes.forEach(x => { const u = x.userData.l3b; if (!u) return; u.ranges.forEach((r, ri) => { if (!r.guid) { if (!u.cmpHide) u.cmpHide = new Set(); u.cmpHide.add(ri); } }); });
   [A, B].forEach(m => m.meshes.forEach(x => { if (x.userData.l3b) l3bApplyHidden(x); }));
+  if (view === "overlay") { l3vr.modelCol.set(A.id, l3vrHex(l3vr.colA)); l3vr.modelCol.set(B.id, l3vrHex(l3vr.colB)); l3vrOffsetB(true); }
   l3bShow(A.id, view !== "after"); l3bShow(B.id, view !== "before");
   l3bRecolor(); if (view === "blink") l3vrBlink(); if (view === "swipe") l3vrSwipeOn();
   l3Render();
@@ -288,8 +292,9 @@ function l3vrRender() {
       <div class="vr-bar" title="Andel av objekten">${L3VR_ORDER.map(k => `<i style="width:${R.count[k] / tot * 100}%;background:${L3VR_COL[k]}"></i>`).join("")}</div>
       <div class="fe-note">Volym: ${R.volA.toFixed(1).replace(".", ",")} → ${R.volB.toFixed(1).replace(".", ",")} m³ (${dv >= 0 ? "+" : "−"}${Math.abs(dv).toFixed(1).replace(".", ",")} m³). ${R.reguid ? `${R.reguid} objekt hade fått nytt GUID och parades ihop på klass, namn och läge. ` : ""}${R.noGuid ? `${R.noGuid} delar saknar GUID och ingår inte.` : ""}</div>
       <label class="fe-chk" title="På: modellerna visas med sina egna färger, utan tidplanens färger, dolda temporära objekt eller Gantt-filter – som en vanlig viewer. Av: tidplanen färgar som vanligt (skillnadsfärgerna ligger ändå överst)."><input id="vrNoPlan" type="checkbox"${l3vr.noPlan ? " checked" : ""}> Visa som viewer – ignorera tidplanen</label>
-      <div class="fe-row"><label>Visa<select id="vrView"><option value="diff"${l3vr.view === "diff" ? " selected" : ""}>Skillnader (färgat)</option><option value="before"${l3vr.view === "before" ? " selected" : ""}>Bara äldre (A)</option><option value="after"${l3vr.view === "after" ? " selected" : ""}>Bara nyare (B)</option><option value="blink"${l3vr.view === "blink" ? " selected" : ""}>Blinka A / B</option><option value="swipe"${l3vr.view === "swipe" ? " selected" : ""}>Svep (delad bild)</option></select></label>
+      <div class="fe-row"><label>Visa<select id="vrView"><option value="diff"${l3vr.view === "diff" ? " selected" : ""}>Skillnader (färgat)</option><option value="overlay"${l3vr.view === "overlay" ? " selected" : ""}>Överlägg (äldre / nyare i egna färger)</option><option value="before"${l3vr.view === "before" ? " selected" : ""}>Bara äldre (A)</option><option value="after"${l3vr.view === "after" ? " selected" : ""}>Bara nyare (B)</option><option value="blink"${l3vr.view === "blink" ? " selected" : ""}>Blinka A / B</option><option value="swipe"${l3vr.view === "swipe" ? " selected" : ""}>Svep (delad bild)</option></select></label>
         ${l3vr.view === "diff" ? `<label title="Hur oförändrade objekt ritas när de är tända (knappen Oförändrat ovan slår av och på dem)">Oförändrat<select id="vrSame"><option value="ghost"${l3vr.same === "ghost" ? " selected" : ""}>Spöke</option><option value="grey"${l3vr.same === "grey" ? " selected" : ""}>Grått</option></select></label>` : ""}</div>
+      ${l3vr.view === "overlay" ? `<div class="fe-row"><label>Äldre (A)<input id="vrColA" type="color" value="${l3vr.colA}"></label><label>Nyare (B)<input id="vrColB" type="color" value="${l3vr.colB}"></label></div><div class="fe-note">Där ytorna ligger på varandra syns nyare färgen. Äldre färgen syns där den äldre versionen har något som den nyare saknar eller har flyttat.</div>` : ""}
       ${l3vr.view === "diff" ? `<label class="fe-chk"><input id="vrOld" type="checkbox"${l3vr.old ? " checked" : ""}> Visa gammalt läge som röd skugga</label>` : ""}
       ${l3vr.view === "swipe" ? `<div class="fe-row"><label>Äldre ◀ ▶ Nyare<input id="vrSwipe" type="range" min="0" max="1" step="0.005" value="${l3vr.swipe}"></label><button type="button" data-vr="swaxis" title="Lägg svepet tvärs kamerans nuvarande riktning">Efter kameran</button></div>` : ""}
       ${l3vr.view === "blink" ? `<div class="fe-note vr-blinkl">Äldre (A)</div>` : ""}</div></div>`;
@@ -331,6 +336,7 @@ function l3vrBind(el) {
   on("#vrNoPlan", ev => { l3vr.noPlan = ev.target.checked; l3vrPlanMode(); l3vrApply(); });
   on("#vrView", ev => { l3vr.view = ev.target.value; l3vrApply(); l3vrRender(); });
   on("#vrSame", ev => { l3vr.same = ev.target.value; l3vrApply(); });
+  on("#vrColA", ev => { l3vr.colA = ev.target.value; l3vrApply(); }); on("#vrColB", ev => { l3vr.colB = ev.target.value; l3vrApply(); });
   on("#vrOld", ev => { l3vr.old = ev.target.checked; l3vrApply(); });
   on("#vrFSt", ev => { l3vr.filter.st = ev.target.value; l3vrRender(); }); on("#vrFCls", ev => { l3vr.filter.cls = ev.target.value; l3vrRender(); });
   const fq = q("#vrFQ"); if (fq) { fq.onkeydown = ev => ev.stopPropagation(); fq.onchange = () => { l3vr.filter.q = fq.value; l3vrRender(); }; }

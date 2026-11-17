@@ -112,6 +112,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#v3Ver [data-vr="iso"]'); await page.waitForTimeout(200);
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return u.hidden.size >= 3; }), 'Isolera markerade döljer resten');
   await page.click('#v3Ver [data-vr="showall"]'); ok(await page.evaluate(() => l3vrModel('B').meshes[0].userData.l3b.hidden.size === 0), 'Visa alla tänder allt');
+  // Överlägg: äldre och nyare i egna färger, nyare lite framför
+  await page.selectOption('#v3Ver #vrView', 'overlay'); await page.waitForSelector('#v3Ver #vrColA');
+  const ov = await page.evaluate(() => { const A = l3vrModel('A'), B = l3vrModel('B'), ca = Array.from(A.meshes[0].geometry.getAttribute('color').array.slice(0, 3)), cb = Array.from(B.meshes[0].geometry.getAttribute('color').array.slice(0, 3)); return { ca, cb, off: B.meshes[0].material.polygonOffset, offA: !!A.meshes[0].material.polygonOffset, both: A.visible && B.visible, ghosts: [A, B].every(m => !m.meshes[0].userData.l3b.cmpAlpha || m.meshes[0].userData.l3b.cmpAlpha.size === 0) }; });
+  ok(ov.ca[0] > ov.ca[2] + 100 && ov.cb[2] > ov.cb[0] + 100 && ov.off && !ov.offA && ov.both && ov.ghosts, 'Överlägg: äldre röd, nyare blå, nyare framför: ' + JSON.stringify(ov));
+  await page.evaluate(() => { l3vr.colB = '#00aa00'; l3vrApply(); }); ok(await page.evaluate(() => { const c = l3vrModel('B').meshes[0].geometry.getAttribute('color').array; return c[1] > c[0] + 80; }), 'Egen färg för nyare');
+  await page.selectOption('#v3Ver #vrView', 'diff'); ok(await page.evaluate(() => !l3vrModel('B').meshes[0].material.polygonOffset && l3vr.modelCol.size === 0), 'Tillbaka till skillnader: förskjutningen och modellfärgerna är borta');
   // Före/efter, svep, blinka
   await page.selectOption('#v3Ver #vrView', 'before'); ok(await page.evaluate(() => [l3vrModel('A').visible, l3vrModel('B').visible].join()) === 'true,false', 'Bara äldre');
   await page.selectOption('#v3Ver #vrView', 'swipe'); await page.waitForSelector('#v3Ver #vrSwipe');
