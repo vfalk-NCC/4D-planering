@@ -101,7 +101,7 @@ async function run() {
   store.set(`projects/${PROJECT_ID}/plan_items.json`, { content: TEST_ITEMS_ROWS, sha: shaFor(TEST_ITEMS_ROWS) });
 
   await page.addInitScript(() => {
-    window.localStorage.setItem('4dplan-unlocked', '1');
+    window.localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-test-modelctl', '1');
     window.localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 'test-token' }));
     window.__calls = [];
   });

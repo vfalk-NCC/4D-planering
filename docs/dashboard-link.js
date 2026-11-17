@@ -43,6 +43,7 @@ try {
     dashLink.ch.onmessage = e => {
       const m = e.data || {};
       if (m.t === "state") dashLinkOnState(m);
+      else if (m.t === "modelOff" && typeof mgaSet === "function") mgaSet(false, true);   // huvudbrytaren avslagen i dashboarden: även här
       // 4D-dashboardens knapp öppnar lägesplanens 3D-editor och skickar dess förfrågningar hit (TC-modeller, filer, koppling …).
       else if (m.t === "relay" && m.msg && typeof lagesplanHandle === "function") {
         const id = m.id;

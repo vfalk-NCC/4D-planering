@@ -1339,3 +1339,6 @@ body.tab-design .plan-source { background: #f5f3ff; }
 /* Rubriker med mjukt sken */
 .set-sec > summary { background: linear-gradient(135deg, rgba(37,99,235,.07), rgba(124,92,255,.03)); box-shadow: inset 0 0 0 1px rgba(37,99,235,.18), 0 3px 12px rgba(37,99,235,.10); border-radius: 10px; color: #1e3a8a; }
 .set-sec[open] > summary { border-bottom: 0; }
+
+.model-affect { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; padding: 2px 8px; border: 1px solid var(--border-strong, #cbd5e1); border-radius: 999px; cursor: pointer; }
+.model-affect.on { background: #dcfce7; border-color: #16a34a; color: #166534; font-weight: 600; }

@@ -9,7 +9,7 @@
    med om biten flyttas. */
 
 /* Ett dolt objekt är dött: det går aldrig att markera (klick, ruta, lager, Markera alla) – dolt, utanför sin tid, släckt lager, släckt i montageordningen eller i filmens animering. */
-const l3bsDead = (mesh, ri) => { const u = mesh && mesh.userData.l3b; return !u || mesh.visible === false || !!((u.hidden && u.hidden.has(ri)) || (u.tempOff && u.tempOff.has(ri)) || (u.animOff && u.animOff.has(ri)) || (u.mtHide && u.mtHide.has(ri)) || (u.lyHide && u.lyHide.has(ri))); };
+const l3bsDead = (mesh, ri) => { const u = mesh && mesh.userData.l3b; return !u || mesh.visible === false || !!((u.hidden && u.hidden.has(ri)) || (u.tempOff && u.tempOff.has(ri)) || (u.animOff && u.animOff.has(ri)) || (u.mtHide && u.mtHide.has(ri)) || (u.lyHide && u.lyHide.has(ri)) || (u.cmpHide && u.cmpHide.has(ri))); };
 const l3bs = { sel: [], ov: [] }; // sel: [{ mesh, ri, key }], ov: överläggen
 const L3BS_COL = 0xffc61a;
 

@@ -49,7 +49,7 @@ function l3lodAttr(mesh, lv) {
   const sl = l3bSlices(mesh), src = u.origIdx;
   if (!sl || !src) return (u.lod[lv] = null);
   const diag = l3lodDiag(mesh), thr = L3LOD_THR[lv];
-  const gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || []), ...(u.mtHide || []), ...(u.lyHide || []), ...(u.gAlpha ? u.gAlpha.keys() : []), ...(u.alpha ? u.alpha.keys() : [])]);
+  const gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || []), ...(u.mtHide || []), ...(u.lyHide || []), ...(u.cmpHide || []), ...(u.cmpAlpha ? u.cmpAlpha.keys() : []), ...(u.gAlpha ? u.gAlpha.keys() : []), ...(u.alpha ? u.alpha.keys() : [])]);
   const idx = l3bSliceIdx(mesh, ri => !gone.has(ri) && diag[ri] >= thr);
   const cur = u.lodFull ? u.lodFull.count : mesh.geometry.index.count;
   if (!idx || !idx.length || idx.length > cur * 0.8) return (u.lod[lv] = null);   // för lite att tjäna / allt skulle försvinna

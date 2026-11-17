@@ -68,7 +68,7 @@ async function run() {
   page.on('dialog', async (dialog) => { alerts.push(dialog.message()); await dialog.accept(); });
 
   await page.addInitScript(() => {
-    window.localStorage.setItem('4dplan-unlocked', '1');
+    window.localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-test-modelctl', '1');
     window.localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 'test-token' }));
     window.__calls = [];
   });

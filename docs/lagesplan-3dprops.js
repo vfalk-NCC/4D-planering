@@ -59,7 +59,7 @@ async function l3pRaw(m, onProgress) {
   const loc = await l3pRawLocal(m);
   if (loc) return loc;
   const w = m.src || {};
-  const r = w.fileId ? await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, onProgress)
+  const r = w.fileId ? await askOpener("tcFile", { fileId: w.fileId, name: w.name, ...(w.versionId ? { versionId: w.versionId } : {}) }, 0, onProgress)
     : await askOpener("ifcModelData", { modelId: w.id || m.id }, 0, onProgress);
   l3pKeepRaw(w.id ? w : { ...w, id: m.id }, r.bytes, w.fileId ? null : r.placement);
   return l3p.mem.get(m.id) || l3p.mem.get(w.id);

@@ -38,7 +38,7 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   const asked = [];
   page.on('dialog', d => { asked.push(d.message()); const a = answers.length ? answers.shift() : true; a ? d.accept() : d.dismiss(); });
   await page.addInitScript(() => {
-    localStorage.setItem('4dplan-unlocked', '1');
+    localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-test-modelctl', '1');
     localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' }));
   });
   await page.route('https://components.connect.trimble.com/**', r => r.fulfill({ contentType: 'application/javascript', body: `

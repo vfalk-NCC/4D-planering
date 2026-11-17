@@ -83,7 +83,7 @@ async function makePp(variant) {
   page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept());
   await page.addInitScript(() => {
-    localStorage.setItem('4dplan-unlocked', '1');
+    localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-test-modelctl', '1');
     localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' }));
   });
   await page.route('https://components.connect.trimble.com/**', r => r.fulfill({ contentType: 'application/javascript', body: `

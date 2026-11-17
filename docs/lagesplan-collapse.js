@@ -2,7 +2,7 @@
    Menyerna är byggda på olika sätt, så knappen klickar på avsnittsrubrikerna (aria-expanded="true") och <details open> – en i taget, och läser om menyn
    efter varje klick eftersom många menyer ritas om. De som fälldes ihop kommer ihåg och "Fäll ut alla" öppnar precis dem igen (inget annat öppnas).
    Knappen läggs till automatiskt i nya menyer (även de som skapas senare). Objektbiblioteket har en egen knapp bredvid ＋ Ny mapp. Prefix lcl. */
-const LCL_HOSTS = ["#v3Pal", "#v3Side", "#v3Info", "#v3FilmEdit", "#v3Pts", "#v3Render .rn-body", "#view3d .v3-vp", "#v3Dock .v3-vp", "#sitePop", "#rdock .rd-body", "body > #layout > aside", "aside .side-scroll", "#v3PlanDock"];
+const LCL_HOSTS = ["#v3Pal", "#v3Side", "#v3Info", "#v3FilmEdit", "#v3Pts", "#v3Ver", "#v3Render .rn-body", "#view3d .v3-vp", "#v3Dock .v3-vp", "#sitePop", "#rdock .rd-body", "body > #layout > aside", "aside .side-scroll", "#v3PlanDock"];
 const lcl = { mem: new WeakMap() };
 const lclKey = el => ((el.textContent || "").replace(/[▸▾▴▿▼▶◀⌄˅˄›‹»«+−–]/g, "").trim().replace(/\s+/g, " ").slice(0, 48) || el.id || el.className);   // pilen byter riktning när avsnittet öppnas/stängs – inte en del av namnet
 function lclToggles(host, open) {

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-11-16 11:11";
+const APP_VERSION = "2026-11-17 20:02";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -214,6 +214,8 @@ async function initApp() {
   initPanelVisibility();
 
   API = await TrimbleConnectWorkspace.connect(window.parent, onWorkspaceEvent, 30000);
+  if (typeof mgaWrap === "function") API = mgaWrap(API);   // huvudbrytaren (model-guard.js): skyddet ligger på API-nivå
+  if (typeof mgaInstall === "function") mgaInstall(API);
 
   const project = await API.project.getProject();
   projectId = project.id;
@@ -444,9 +446,11 @@ async function lagesplanHandle(msg, reply, progress) {
     } else if (msg.type === "tcFolder") {
       // Hämta modell i lägesplanens 3D-vy: bläddra i projektets mappar i TC.
       reply(await tcFolderItems(msg.folderId || null));
+    } else if (msg.type === "tcVersions") {
+      reply(await tcFileVersions(msg.fileId));
     } else if (msg.type === "tcFile") {
       if (msg.blob && !/\.ifczip$/i.test(msg.name || "")) { reply({ blob: await ifcSubsetDownload({ fileId: msg.fileId }, progress, true) }); return; }   // punktmoln: som Blob, inte en enda jättestor minnesbit
-      const bytes = await tcFileBytes(msg.fileId, msg.name, progress);
+      const bytes = await tcFileBytes(msg.fileId, msg.name, progress, msg.versionId || null);
       const buf = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       reply({ bytes: buf }, [buf]);
     } else if (msg.type === "placementsChanged") {
@@ -675,10 +679,31 @@ async function tcFolderItems(folderId) {
   return { folderId: id, projectName: project.name || "", items };
 }
 /* En fil från TC som bytes (.ifczip packas upp till IFC). */
-async function tcFileBytes(fileId, name = "", onProgress = null) {
+async function tcFileBytes(fileId, name = "", onProgress = null, versionId = null) {
   if (!fileId) throw new Error("Ingen fil vald.");
-  const bytes = await ifcSubsetDownload({ fileId }, onProgress);
+  const bytes = await ifcSubsetDownload(versionId ? { fileId, versionId } : { fileId }, onProgress);
   return /\.ifczip$/i.test(name) ? ifcSubsetUnzip(bytes) : bytes;
+}
+
+/* Alla versioner av en fil i Trimble Connect (Victor 2026-11-17: välj versioner i 3D-editorn och jämför). Bara läsning.
+   Svarsfälten skiljer lite mellan regioner/versioner av API:et, därför läses de tolerant. */
+async function tcFileVersions(fileId) {
+  if (!fileId) throw new Error("Ingen fil vald.");
+  const tokenVal = await tcAccessToken();
+  const project = await API.project.getProject();
+  const base = await tcApiBase(tokenVal, project);
+  const H = { Authorization: `Bearer ${tokenVal}` };
+  const res = await fetch(`${base}/files/${encodeURIComponent(fileId)}/versions`, { headers: H });
+  if (!res.ok) throw new Error(`Läsa versionerna misslyckades (${res.status}).`);
+  const raw = await res.json();
+  const list = Array.isArray(raw) ? raw : (raw && (raw.versions || raw.items || raw.data)) || [];
+  const who = u => u ? ([u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || u.name || "") : "";
+  const out = list.map((v, i) => ({ versionId: String(v.versionId || v.id || ""), no: Number(v.version || v.versionNumber || v.number) || 0, name: v.name || "", size: Number(v.size || v.filesize || 0) || 0,
+    modified: v.modifiedOn || v.createdOn || v.modified || null, by: who(v.modifiedBy || v.createdBy || v.user), comment: v.description || v.comment || "", idx: i })).filter(v => v.versionId);
+  // Äldst först → numrera om saknas; nyaste sist.
+  out.sort((a, b) => (a.modified && b.modified ? String(a.modified).localeCompare(String(b.modified)) : (a.no || a.idx) - (b.no || b.idx)));
+  out.forEach((v, i) => { if (!v.no) v.no = i + 1; });
+  return { fileId, versions: out };
 }
 
 /** Mittpunkt och höjdintervall (meter) för alla planerade objekt i inlästa modeller. */
@@ -777,6 +802,7 @@ function bindUI() {
   document.getElementById("timelineSlider").oninput = onSliderMove;
   document.getElementById("timelineDate").onchange = onDateInputChange;
   document.getElementById("btnPlay").onclick = onTogglePlay;
+  if (typeof mgaInit === "function") mgaInit();
   document.getElementById("btnApplyTimelineRange").onclick = onApplyTimelineRange;
   document.getElementById("btnResetTimelineRange").onclick = onResetTimelineRange;
 
@@ -3092,6 +3118,7 @@ function computeItemPhase(item, atDateStr, warningDays, pure) { // pure: tidslin
  * samma färger som badgen i listan använder, se computeItemPhase().
  */
 async function applyTimelineColors() {
+  if (typeof mgaOn === "function" && !mgaOn()) return; // huvudbrytaren: 4D-planering rör inte modellen
   if (typeof dashboardOwns === "function" && dashboardOwns()) return; // dashboardens Gantt styr 3D-vyn (dashboard-link.js)
   const selectedDate = document.getElementById("timelineDate").value;
   if (!selectedDate || items.length === 0) return;

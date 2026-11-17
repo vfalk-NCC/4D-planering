@@ -137,7 +137,7 @@ async function l3bLoad(list, opts = {}) {
       try { local = w.version && typeof l3pRawLocal === "function" ? await l3pRawLocal({ id: w.id, src: w }) : null; } catch (e) { local = null; }
       try {
         if (local && local.blob) { clearInterval(tick); r = { bytes: await local.blob.arrayBuffer(), placement: w.fileId ? null : local.placement || null, name: w.name, local: true }; }
-        else { arm(); r = await Promise.race([stall, w.fileId ? askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl).then(x => ({ ...x, name: w.name, placement: null })) : askOpener("ifcModelData", { modelId: w.id }, 0, dl)]); }
+        else { arm(); r = await Promise.race([stall, w.fileId ? askOpener("tcFile", { fileId: w.fileId, name: w.name, ...(w.versionId ? { versionId: w.versionId } : {}) }, 0, dl).then(x => ({ ...x, name: w.name, placement: null })) : askOpener("ifcModelData", { modelId: w.id }, 0, dl)]); }
         clearTimeout(stallT);
       } catch (er) {
         clearTimeout(stallT);
@@ -151,7 +151,7 @@ async function l3bLoad(list, opts = {}) {
       let basePl = r.placement || null, plNote = "";
       if (!basePl && w.fileId) {
         if (w.pl && !opts.freshPlace) basePl = w.pl;
-        else { try { const q = await askOpener("ifcModelPlacement", { name: w.name, fileId: w.fileId }, 12000); basePl = q && q.placement || null; plNote = q && q.matched ? (basePl ? "placering hämtad från Trimble Connect" : "tänd i TC men utan placering") : "modellen är inte tänd i TC – ingen placering hämtad (använd Placera… om den är flyttad där)"; } catch (e) { plNote = "kunde inte hämta placeringen från TC"; } }
+        else { try { const q = await askOpener("ifcModelPlacement", { name: w.plName || w.name, fileId: w.fileId }, 12000); basePl = q && q.placement || null; plNote = q && q.matched ? (basePl ? "placering hämtad från Trimble Connect" : "tänd i TC men utan placering") : "modellen är inte tänd i TC – ingen placering hämtad (använd Placera… om den är flyttad där)"; } catch (e) { plNote = "kunde inte hämta placeringen från TC"; } }
       }
       w.pl = basePl;
       const usePl = l3bPlaceCompose(basePl, w.adj);
@@ -228,7 +228,7 @@ function l3bRemembered() { return l3bRememberedAll().filter(x => x.on !== false)
 function l3bRemember(w, on) {
   if (!w || !w.id) return;
   const list = l3bRememberedAll().filter(x => x.id !== w.id);
-  list.push({ id: w.id, fileId: w.fileId || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
+  list.push({ id: w.id, fileId: w.fileId || null, versionId: w.versionId || null, plName: w.plName || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
   try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-30))); } catch (e) { /* privat läge */ }
 }
 /* Soptunnan: bort ur listan och ur vyn. Bara här i webbläsaren – inget i Trimble Connect ändras. */
@@ -734,7 +734,8 @@ function l3bApplyHidden(mesh) {
   if (typeof l3lodInvalidate === "function") l3lodInvalidate(mesh); // förenklade indexlistor räknas om
   let idx = src;
   // tempOff: temporära utanför sin tid; animOff: filmens animering (lagesplan-3dfilmfx.js) ritar objektet själv; mtHide: släckta i Montageordningen.
-  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]), mt = new Set([...(u.mtHide || []), ...(u.lyHide || [])]);
+  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]), mt = new Set([...(u.mtHide || []), ...(u.lyHide || []), ...(u.cmpHide || [])]);
+  if (u.cmpAlpha) u.cmpAlpha.forEach((a, k) => alpha.set(k, a));
   if (u.hidden.size || off.size || alpha.size || mt.size) {
     const gone = new Set([...u.hidden, ...off, ...alpha.keys(), ...mt]), fast = l3bSliceIdx(mesh, ri => !gone.has(ri));
     if (fast) idx = fast;
@@ -757,9 +758,9 @@ function l3bApplyAlpha(mesh) {
   const u = mesh.userData.l3b;
   (u.ghosts || []).forEach(g => { mesh.remove(g); g.geometry.attributes = {}; g.geometry.dispose(); g.material.dispose(); }); // de delade hörnen lämnas orörda
   u.ghosts = [];
-  const alphaAll = new Map([...(u.gAlpha || []), ...(u.alpha || [])]); // gAlpha: klara objekt i Ganttens Tid-läge
+  const alphaAll = new Map([...(u.gAlpha || []), ...(u.alpha || []), ...(u.cmpAlpha || [])]); // gAlpha: klara objekt i Ganttens Tid-läge
   if (!alphaAll.size) return;
-  const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || []), ...(u.mtHide || [])]);
+  const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || []), ...(u.mtHide || []), ...(u.cmpHide || [])]);
   const byA = new Map();
   alphaAll.forEach((a, ri) => { if (gone.has(ri)) return; if (!byA.has(a)) byA.set(a, []); byA.get(a).push(ri); });
   byA.forEach((ris, a) => {
