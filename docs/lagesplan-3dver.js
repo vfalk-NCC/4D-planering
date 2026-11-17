@@ -11,7 +11,7 @@
 const L3VR_COL = { added: "#16a34a", removed: "#dc2626", moved: "#2563eb", reshaped: "#f59e0b", renamed: "#9333ea", same: "#94a3b8" };
 const L3VR_NAME = { added: "Tillkommit", removed: "Borttaget", moved: "Flyttat", reshaped: "Ändrad form", renamed: "Nytt namn/klass", same: "Oförändrat" };
 const L3VR_ORDER = ["added", "removed", "moved", "reshaped", "renamed", "same"];
-const l3vr = { noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
+const l3vr = { src: "tc", ldA: "", ldB: "", own: { A: false, B: false }, meta: null, noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
   tol: 5, filter: { cls: new Set(), q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
 
 const l3vrEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -182,6 +182,7 @@ function l3vrSwipeOff() { [l3vrModel("A"), l3vrModel("B")].forEach(m => m && m.m
 /* Den vanliga (inlästa) modellen av samma fil ligger annars kvar och täcker versionerna – spöken och skillnadsfärger syns då inte. Den släcks under jämförelsen och tänds igen när den stängs. */
 function l3vrHideCopies() {
   const f = l3vr.file; if (!f) return; l3vrShowCopies();
+  if (!l3vr.own.A && !l3vr.own.B) { l3b.models.forEach(m => { if (m.id !== l3vr.ids.A && m.id !== l3vr.ids.B && m.visible !== false) { l3vr.hid.push(m.id); l3bShow(m.id, false); } }); if (l3vr.hid.length) l3Status(`${l3vr.hid.length} andra modeller är släckta under jämförelsen (tänds igen när du stänger).`); return; }
   l3b.models.forEach(m => { if (m.id === l3vr.ids.A || m.id === l3vr.ids.B || m.visible === false) return; const same = (m.src && m.src.fileId === f.fileId) || String(m.name || "").toLowerCase() === String(f.name || "").toLowerCase(); if (same) { l3vr.hid.push(m.id); l3bShow(m.id, false); } });
   if (l3vr.hid.length) l3Status(`${l3vr.hid.length} vanlig modell av samma fil är släckt under jämförelsen (tänds igen när du stänger).`);
 }
@@ -208,17 +209,34 @@ async function l3vrRun() {
     l3vr.ids.A = await l3vrLoadOne(f, vA); l3vr.busy = "Läser in nyare version…"; l3vrRender();
     l3vr.ids.B = await l3vrLoadOne(f, vB); l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
     l3vr.res = await l3vrCompare(l3vrModel("A"), l3vrModel("B"), l3vr.tol);
-    const sz = k => { const mm = typeof l3p !== "undefined" && l3p.mem ? l3p.mem.get(l3vr.ids[k]) : null; return mm && mm.blob ? mm.blob.size : 0; }; l3vr.res.info = { A: { id: vA.versionId, no: vA.no, bytes: sz("A"), tris: l3vrModel("A").tris }, B: { id: vB.versionId, no: vB.no, bytes: sz("B"), tris: l3vrModel("B").tris } };
+    const sz = k => { const mm = typeof l3p !== "undefined" && l3p.mem ? l3p.mem.get(l3vr.ids[k]) : null; return mm && mm.blob ? mm.blob.size : 0; }; l3vr.own = { A: true, B: true }; l3vr.meta = { A: { label: `v${vA.no}`, date: l3vrDate(vA.modified), by: vA.by || "" }, B: { label: `v${vB.no}`, date: l3vrDate(vB.modified), by: vB.by || "" } }; l3vr.res.info = { A: { label: `v${vA.no}`, id: vA.versionId, no: vA.no, bytes: sz("A"), tris: l3vrModel("A").tris }, B: { label: `v${vB.no}`, id: vB.versionId, no: vB.no, bytes: sz("B"), tris: l3vrModel("B").tris } };
     l3vr.busy = ""; l3vrPlanMode(); l3vrApply(); l3vrFit();
     l3Status(`Jämförelse klar: ${l3vr.res.count.added} tillkomna, ${l3vr.res.count.removed} borttagna, ${l3vr.res.count.moved} flyttade, ${l3vr.res.count.reshaped} med ändrad form.`);
   } catch (e) { l3vr.busy = ""; console.warn("Versionsjämförelse", e); l3Status(String(e.message || e), true); }
   l3vrRender();
 }
+/* Jämför två modeller som redan är inlästa under 3D-modeller (valfria två, t.ex. två exporter från olika datum). De läses inte in igen och tas inte bort när jämförelsen stängs. */
+async function l3vrRunLoaded() {
+  const A = l3b.models.find(m => m.id === l3vr.ldA), B = l3b.models.find(m => m.id === l3vr.ldB);
+  if (!A || !B) { l3Status("Välj två inlästa modeller.", true); return; }
+  if (A.id === B.id) { l3Status("Välj två olika modeller.", true); return; }
+  l3vrClose(); l3vr.ids = { A: A.id, B: B.id }; l3vr.own = { A: false, B: false }; l3vr.file = { fileId: null, name: A.name === B.name ? A.name : `${A.name} ↔ ${B.name}`, parentId: null };
+  l3vr.sel = null; l3vr.props = null; l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
+  try {
+    l3vr.res = await l3vrCompare(A, B, l3vr.tol);
+    l3vr.meta = { A: { label: A.name, date: "", by: "" }, B: { label: B.name, date: "", by: "" } };
+    l3vr.res.info = { local: true, A: { label: A.name, tris: A.tris, bytes: 0, local: true }, B: { label: B.name, tris: B.tris, bytes: 0, local: true } };
+    l3vr.busy = ""; l3vrPlanMode(); l3vrApply(); l3vrFit();
+    l3Status(`Jämförelse klar: ${l3vr.res.count.added} tillkomna, ${l3vr.res.count.removed} borttagna, ${l3vr.res.count.moved} flyttade, ${l3vr.res.count.reshaped} med ändrad form.`);
+  } catch (e) { l3vr.busy = ""; console.warn("Jämförelse", e); l3Status(String(e.message || e), true); }
+  l3vrRender();
+}
 function l3vrFit() { try { const bb = new THREE.Box3(); [l3vrModel("A"), l3vrModel("B")].forEach(m => m && m.meshes.forEach(x => { x.updateMatrixWorld(true); bb.expandByObject(x); })); if (!bb.isEmpty()) l3FlyTo(bb.getCenter(new THREE.Vector3()), Math.max(10, bb.getSize(new THREE.Vector3()).length()) * 0.95); } catch (e) { /* behåll vyn */ } }
 async function l3vrClose(keepModels) {
-  l3vrClear(); l3vrShowCopies(); if (l3vr.setOrig && typeof l3Original === "function" && l3b.orig) l3Original(false); l3vr.setOrig = false; const ids = [l3vr.ids.A, l3vr.ids.B].filter(Boolean);
+  l3vrClear(); l3vrShowCopies(); if (l3vr.setOrig && typeof l3Original === "function" && l3b.orig) l3Original(false); l3vr.setOrig = false; const ids = [l3vr.own.A && l3vr.ids.A, l3vr.own.B && l3vr.ids.B].filter(Boolean);
+  [l3vr.own.A ? null : l3vr.ids.A, l3vr.own.B ? null : l3vr.ids.B].filter(Boolean).forEach(id => { if (l3b.models.some(m => m.id === id)) l3bShow(id, true); });   // inlästa modeller som jämfördes tänds igen
   if (!keepModels) ids.forEach(id => { try { l3bForget(id); } catch (e) { /* redan borta */ } });
-  l3vr.ids = { A: null, B: null }; l3vr.res = null; l3vr.sel = null; l3vr.props = null; if (ids.length && !keepModels) { l3RenderLegend(); l3Render(); if (typeof l3LayersRender === "function") l3LayersRender(); }
+  l3vr.ids = { A: null, B: null }; l3vr.own = { A: false, B: false }; l3vr.res = null; l3vr.sel = null; l3vr.props = null; if (ids.length && !keepModels) { l3RenderLegend(); l3Render(); if (typeof l3LayersRender === "function") l3LayersRender(); }
 }
 
 /* ---- Trimble Connect: mappar och versioner ---- */
@@ -259,6 +277,10 @@ const L3VR_PRESETS = [["Grundläggning", ["IFCFOOTING", "IFCPILE", "IFCPILECAP"]
 /* Klass- och namnfiltret (gäller listan, 3D-vyn och HTML-exporten; kategorierna Tillkommit … styrs för sig). */
 function l3vrInF(r) { const f = l3vr.filter, q = f.q.trim().toLowerCase(); return (!f.cls.size || f.cls.has(r.cls)) && (!q || (r.name + " " + r.cls + " " + r.why).toLowerCase().includes(q)); }
 function l3vrRows() { const R = l3vr.res; if (!R) return []; return R.rows.filter(r => (!l3vr.filter.st || r.st === l3vr.filter.st) && l3vrInF(r)); }
+function l3vrInfoHtml(inf) {
+  const part = (k, x) => `${k} = ${l3vrEsc(x.label)} (${l3vrMb(x.bytes) || (x.bytes === 0 && x.local ? "" : "okänd storlek")}${x.bytes || !x.local ? ", " : ""}${(x.tris || 0).toLocaleString("sv-SE")} trianglar)`;
+  return `<div class="fe-note">${inf.local ? "Jämför" : "Hämtat"}: ${part("A", inf.A)}, ${part("B", inf.B)}.${inf.local ? "" : ` Versions-id A ${l3vrEsc(String(inf.A.id).slice(0, 12))} / B ${l3vrEsc(String(inf.B.id).slice(0, 12))}.`}</div>`;
+}
 function l3vrRender() {
   const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3Ver");
   if (!l3vr.open || !host) { if (el) el.remove(); return; }
@@ -268,6 +290,11 @@ function l3vrRender() {
   const loaded = l3b.models.filter(m => m.src && m.src.fileId && !String(m.id).startsWith("v:"));
   let h = `<div class="fe-h"><b>🔀 Versioner och jämförelse</b><span>${f ? e(f.name) : ""}</span><button type="button" data-vr="dock" title="Docka till högermenyn">📌</button><button type="button" data-vr="x" title="Stäng (de inlästa versionerna tas bort)">✕</button></div><div class="fe-body">`;
   if (l3vr.busy) h += `<div class="fe-note"><span class="pm-spin"></span> ${e(l3vr.busy)}</div>`;
+  h += `<div class="fe-row" style="margin-bottom:4px"><button type="button" data-vr="src" data-s="tc" class="${l3vr.src === "tc" ? "primary" : ""}">Versioner i Trimble Connect</button><button type="button" data-vr="src" data-s="loaded" class="${l3vr.src === "loaded" ? "primary" : ""}">Inlästa modeller</button></div>`;
+  if (l3vr.src === "loaded") {
+    const ms = l3b.models.filter(m => !String(m.id).startsWith("v:")), opt = v => ms.map(m => `<option value="${e(m.id)}"${v === m.id ? " selected" : ""}>${e(m.name)}${m.tris ? ` (${(m.tris / 1000).toFixed(0)}k)` : ""}</option>`).join("");
+    h += `<div class="fe-sec"><div class="fe-sub">1. Välj två inlästa modeller</div><div class="fe-c">${ms.length < 2 ? `<div class="fe-note">Läs in minst två modeller under Lager → 3D-modeller (t.ex. två exporter av samma modell). Välj sedan äldre och nyare här.</div>` : `<label>Äldre (A)<select id="vrLdA"><option value="">Välj…</option>${opt(l3vr.ldA)}</select></label><label>Nyare (B)<select id="vrLdB"><option value="">Välj…</option>${opt(l3vr.ldB)}</select></label><div class="fe-row"><label>Tolerans (mm)<input id="vrTol" type="number" min="0" max="500" step="1" value="${l3vr.tol}"></label><button type="button" class="primary" data-vr="runl"${l3vr.busy ? " disabled" : ""}>Jämför</button></div><div class="fe-note">Modellerna läses inte in igen och tas inte bort när du stänger. Övriga modeller släcks under jämförelsen och tänds igen efteråt.</div>`}</div></div>`;
+  } else {
   h += `<div class="fe-sec"><div class="fe-sub">1. Modell</div><div class="fe-c">`;
   if (loaded.length) h += `<div class="fe-row"><label>Inläst modell<select id="vrLoaded"><option value="">Välj…</option>${loaded.map(m => `<option value="${e(m.id)}"${f && m.src.fileId === f.fileId ? " selected" : ""}>${e(m.name)}</option>`).join("")}</select></label></div>`;
   h += `<div class="fe-row"><button type="button" data-vr="tc">${l3vr.pick ? "Dölj mapparna" : "Välj fil i Trimble Connect…"}</button></div>`;
@@ -284,10 +311,11 @@ function l3vrRender() {
     h += `<div class="fe-sec"><div class="fe-sub">2. Versioner (A = äldre, B = nyare)</div><div class="fe-c">${vs.length ? `<table class="vr-tbl"><tr><th>A</th><th>B</th><th>Vers.</th><th>Datum</th><th>Av</th><th></th></tr>${vs.slice().reverse().map(v => `<tr><td><input type="radio" name="vrA" value="${e(v.versionId)}"${l3vr.A === v.versionId ? " checked" : ""}></td><td><input type="radio" name="vrB" value="${e(v.versionId)}"${l3vr.B === v.versionId ? " checked" : ""}></td><td>v${v.no}</td><td>${e(l3vrDate(v.modified))}</td><td>${e(v.by)}</td><td class="n">${l3vrMb(v.size)}</td></tr>`).join("")}</table>` : `<div class="fe-note">Inga versioner hittades.</div>`}
       <div class="fe-row"><label>Tolerans (mm)<input id="vrTol" type="number" min="0" max="500" step="1" value="${l3vr.tol}"></label><button type="button" class="primary" data-vr="run"${l3vr.busy || !vs.length ? " disabled" : ""}>Läs in och jämför</button></div><div class="fe-note">Båda versionerna läses in som egna modeller (kan ta en stund). Inget ändras i Trimble Connect.</div></div></div>`;
   }
+  }
   if (R) {
     const tot = R.rows.length || 1, dv = R.volB - R.volA;
     const inf = R.info, same = R.count.same === R.rows.length;
-    h += `<div class="fe-sec"><div class="fe-sub">3. Resultat</div><div class="fe-c">${inf ? `<div class="fe-note">Hämtat: A = v${inf.A.no} (${l3vrMb(inf.A.bytes) || "okänd storlek"}, ${(inf.A.tris || 0).toLocaleString("sv-SE")} trianglar), B = v${inf.B.no} (${l3vrMb(inf.B.bytes) || "okänd storlek"}, ${(inf.B.tris || 0).toLocaleString("sv-SE")} trianglar). Versions-id A ${e(String(inf.A.id).slice(0, 12))} / B ${e(String(inf.B.id).slice(0, 12))}.</div>` : ""}${same ? `<div class="fe-note" style="color:#b45309">Alla objekt är identiska. Antingen är versionerna lika, eller så levererade Trimble Connect samma fil för båda. Är storleken ovan densamma för A och B är det troligen det senare.</div>` : ""}<div class="vr-kpi">${L3VR_ORDER.map(k => `<div class="vr-k${!l3vr.show[k] ? " off" : ""}"><button type="button" class="vr-km" data-vr="selk" data-k="${k}" title="Markera alla ${L3VR_NAME[k].toLowerCase()} i 3D (Ctrl = lägg till i markeringen)"><span class="vr-dot" style="background:${L3VR_COL[k]}"></span>${L3VR_NAME[k]}<b>${R.count[k]}</b></button><button type="button" class="vr-ke" data-vr="show" data-k="${k}" title="Visa/dölj ${L3VR_NAME[k].toLowerCase()} i 3D">${l3vr.show[k] ? "👁" : "⊘"}</button></div>`).join("")}</div>
+    h += `<div class="fe-sec"><div class="fe-sub">3. Resultat</div><div class="fe-c">${inf ? l3vrInfoHtml(inf) : ""}${same ? `<div class="fe-note" style="color:#b45309">Alla objekt är identiska. Antingen är versionerna lika, eller så levererade Trimble Connect samma fil för båda. Är storleken ovan densamma för A och B är det troligen det senare.</div>` : ""}<div class="vr-kpi">${L3VR_ORDER.map(k => `<div class="vr-k${!l3vr.show[k] ? " off" : ""}"><button type="button" class="vr-km" data-vr="selk" data-k="${k}" title="Markera alla ${L3VR_NAME[k].toLowerCase()} i 3D (Ctrl = lägg till i markeringen)"><span class="vr-dot" style="background:${L3VR_COL[k]}"></span>${L3VR_NAME[k]}<b>${R.count[k]}</b></button><button type="button" class="vr-ke" data-vr="show" data-k="${k}" title="Visa/dölj ${L3VR_NAME[k].toLowerCase()} i 3D">${l3vr.show[k] ? "👁" : "⊘"}</button></div>`).join("")}</div>
       <div class="fe-row"><button type="button" data-vr="iso" title="Visa bara de markerade objekten (som Isolera i editorn)">Isolera markerade</button><button type="button" data-vr="showall" title="Tänd alla kategorier och alla dolda objekt igen">Visa alla</button></div>
       <div class="fe-note">Tryck på en ruta för att markera objekten i 3D. Då kan du välja eller isolera dem. 👁 slår av och på kategorin.</div>
       <div class="vr-bar" title="Andel av objekten">${L3VR_ORDER.map(k => `<i style="width:${R.count[k] / tot * 100}%;background:${L3VR_COL[k]}"></i>`).join("")}</div>
@@ -352,14 +380,14 @@ async function l3vrExportHtml() {
     objs.push({ n: r.name, c: r.cls, s: r.st, w: r.why, va: r.a ? Math.round(r.a.vol * 1e4) / 1e4 : null, vb: r.b ? Math.round(r.b.vol * 1e4) / 1e4 : null, re: r.reguid ? 1 : 0, a: a && { p: a.p, i: a.i }, b: b && { p: b.p, i: b.i } });
     if (++n % 400 === 0) await l3vrTick();
   }
-  const vs = l3vr.versions || [], vA = vs.find(v => v.versionId === l3vr.A) || {}, vB = vs.find(v => v.versionId === l3vr.B) || {}, clsNames = {}; rows.forEach(r => { clsNames[r.cls] = l3vrClsName(r.cls); });
+  const mt = l3vr.meta || { A: {}, B: {} }, clsNames = {}; rows.forEach(r => { clsNames[r.cls] = l3vrClsName(r.cls); });
   const count = {}; L3VR_ORDER.forEach(k => { count[k] = 0; }); rows.forEach(r => { count[r.st]++; });
-  const data = { colors: L3VR_COL, names: L3VR_NAME, order: L3VR_ORDER, clsNames, objs, meta: { file: f.name, A: { no: vA.no || "", date: l3vrDate(vA.modified), by: vA.by || "" }, B: { no: vB.no || "", date: l3vrDate(vB.modified), by: vB.by || "" }, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), tol: R.tol, counts: count, tris: tt } };
+  const data = { colors: L3VR_COL, names: L3VR_NAME, order: L3VR_ORDER, clsNames, objs, meta: { file: f.name, A: { label: mt.A.label || "A", date: mt.A.date || "", by: mt.A.by || "" }, B: { label: mt.B.label || "B", date: mt.B.date || "", by: mt.B.by || "" }, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), tol: R.tol, counts: count, tris: tt } };
   const get = async u => { const r = await fetch(u); if (!r.ok) throw new Error(`${u} (${r.status})`); return r.text(); };
   const [tpl, three, orbit] = await Promise.all([get("lagesplan-3dver-viewer.html"), get("vendor/three/three.min.js"), get("vendor/three/OrbitControls.js")]);
   const safe = t => t.replace(/<\/(script)/gi, "<\\/$1");
   const html = tpl.replace("/*__THREE__*/", () => safe(three)).replace("/*__ORBIT__*/", () => safe(orbit)).replace("/*__DATA__*/null", () => safe(JSON.stringify(data)));
-  const name = `Versionsjamforelse ${String(f.name).replace(/\.ifc(zip)?$/i, "")} v${vA.no || "A"}-v${vB.no || "B"}${l3vr.filter.cls.size ? " " + [...l3vr.filter.cls].map(c => l3vrClsName(c)).join("+").slice(0, 40) : ""}.html`.replace(/[\\/:*?"<>|]/g, "_");
+  const name = `Versionsjamforelse ${String(f.name).replace(/\.ifc(zip)?$/i, "")} ${String(mt.A.label || "A").slice(0, 30)}-${String(mt.B.label || "B").slice(0, 30)}${l3vr.filter.cls.size ? " " + [...l3vr.filter.cls].map(c => l3vrClsName(c)).join("+").slice(0, 40) : ""}.html`.replace(/[\\/:*?"<>|]/g, "_");
   const blob = new Blob([html], { type: "text/html;charset=utf-8" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
   l3Status(`HTML sparad: ${rows.length} objekt, ${(tt / 1000).toFixed(0)} tusen trianglar, ${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB.`);
   return { name, size: blob.size, html };
@@ -368,6 +396,7 @@ function l3vrBind(el) {
   const q = s => el.querySelector(s), on = (s, f) => { const x = q(s); if (x) x.onchange = f; };
   on("#vrLoaded", ev => { const m = l3b.models.find(x => x.id === ev.target.value); if (m && m.src) l3vrPickFile(m.src.fileId, String(m.name).replace(/ · v\d+$/, ""), m.src.parentId); });
   el.querySelectorAll('input[name="vrA"]').forEach(i => { i.onchange = () => { l3vr.A = i.value; }; }); el.querySelectorAll('input[name="vrB"]').forEach(i => { i.onchange = () => { l3vr.B = i.value; }; });
+  on("#vrLdA", ev => { l3vr.ldA = ev.target.value; }); on("#vrLdB", ev => { l3vr.ldB = ev.target.value; });
   on("#vrTol", ev => { l3vr.tol = Math.max(0, Number(ev.target.value) || 5); });
   on("#vrNoPlan", ev => { l3vr.noPlan = ev.target.checked; l3vrPlanMode(); l3vrApply(); });
   on("#vrView", ev => { l3vr.view = ev.target.value; l3vrApply(); l3vrRender(); });
@@ -386,6 +415,8 @@ function l3vrBind(el) {
     else if (a === "dir") l3vrTcOpen(b.dataset.id, b.dataset.nm);
     else if (a === "file") l3vrPickFile(b.dataset.id, b.dataset.nm, b.dataset.par);
     else if (a === "run") l3vrRun();
+    else if (a === "runl") l3vrRunLoaded();
+    else if (a === "src") { l3vr.src = b.dataset.s; if (l3vr.src === "loaded" && !l3vr.ldA) { const ms = l3b.models.filter(m => !String(m.id).startsWith("v:")); l3vr.ldA = ms[0] ? ms[0].id : ""; l3vr.ldB = ms[1] ? ms[1].id : ""; } l3vrRender(); }
     else if (a === "show") { const k = b.dataset.k; l3vr.show[k] = l3vr.show[k] ? 0 : 1; l3vrApply(); l3vrRender(); }
     else if (a === "selk") { const k = b.dataset.k; if (R) { if (!l3vr.show[k]) { l3vr.show[k] = 1; l3vrApply(); } const add = ev.ctrlKey || ev.metaKey || ev.shiftKey, list = R.rows.filter(r => r.st === k).map(r => (r.b && r.st !== "removed" ? r.b : r.a)).filter(Boolean).map(t => ({ mesh: t.mesh, ri: t.ri })); const all = add ? [...l3bs.sel.map(x => ({ mesh: x.mesh, ri: x.ri })), ...list] : list; l3bsSet(all.slice(0, 30000)); if (list.length) l3bsZoom(); l3Status(`${list.length} ${L3VR_NAME[k].toLowerCase()} markerade.`); l3vrRender(); } }
     else if (a === "iso") { if (l3bs.sel.length && typeof l3bsIsolate === "function") l3bsIsolate(); else l3Status("Markera något först (tryck på en kategori eller en rad).", true); }

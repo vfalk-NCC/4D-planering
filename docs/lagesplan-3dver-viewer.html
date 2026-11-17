@@ -46,7 +46,7 @@ var DATA = /*__DATA__*/null;
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function b64(s, T) { var bin = atob(s), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i); return new T(u.buffer); }
   $("ttl").textContent = "Versionsjämförelse – " + M.file;
-  $("sub").textContent = "Äldre (A): v" + M.A.no + (M.A.date ? " " + M.A.date : "") + (M.A.by ? " · " + M.A.by : "") + "   |   Nyare (B): v" + M.B.no + (M.B.date ? " " + M.B.date : "") + (M.B.by ? " · " + M.B.by : "");
+  $("sub").textContent = "Äldre (A): " + (M.A.label || "v" + M.A.no) + (M.A.date ? " " + M.A.date : "") + (M.A.by ? " · " + M.A.by : "") + "   |   Nyare (B): " + (M.B.label || "v" + M.B.no) + (M.B.date ? " " + M.B.date : "") + (M.B.by ? " · " + M.B.by : "");
   $("foot").textContent = "Exporterad " + M.exported + " ur 4D-planering. Tolerans " + M.tol + " mm. Filen är fristående och behöver ingen uppkoppling.";
   var objs = DATA.objs; objs.forEach(function (o, i) { o.id = i; ["a", "b"].forEach(function (k) { if (o[k]) { o[k].P = b64(o[k].p, Float32Array); o[k].I = b64(o[k].i, Uint32Array); } }); });
   var st = { mode: "diff", show: {}, cls: {}, q: "", sel: -1, colA: "#ef4444", colB: "#2563eb", old: true, same: "ghost", sw: 0.5, ax: [1, 0] };

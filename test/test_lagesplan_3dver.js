@@ -160,6 +160,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => l3vrToggle(false));
   const end = await page.evaluate(() => ({ vis: l3b.models[0] && l3b.models[0].visible, orig: l3b.orig, models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));
   ok(end.vis === true && end.orig === false && end.models === 1 && !end.active && !end.panel && end.col === 0, 'Stängd: ' + JSON.stringify(end));
+  // Inlästa modeller: jämför två modeller som redan finns under 3D-modeller (de tas inte bort)
+  await page.evaluate(async () => { await l3bLoad([{ id: 'm:a', fileId: 'x1', versionId: 'v1', name: 'Export 1.ifc' }, { id: 'm:b', fileId: 'x2', versionId: 'v2', name: 'Export 2.ifc' }]); l3vrToggle(true); });
+  await page.click('#v3Ver [data-vr="src"][data-s="loaded"]'); await page.waitForSelector('#v3Ver #vrLdA');
+  await page.selectOption('#v3Ver #vrLdA', 'm:a'); await page.selectOption('#v3Ver #vrLdB', 'm:b');
+  await page.click('#v3Ver [data-vr="runl"]'); await page.waitForFunction(() => l3vr.res && !l3vr.busy, null, { timeout: 15000 });
+  const LR = await page.evaluate(() => ({ c: l3vr.res.count, others: l3b.models.filter(m => m.id !== 'm:a' && m.id !== 'm:b').map(m => m.visible).join(), info: !!document.querySelector('#v3Ver .fe-note') && /Jämför: A = Export 1/.test(document.getElementById('v3Ver').textContent), file: l3vr.file.name }));
+  ok(LR.c.added === 1 && LR.c.removed === 1 && LR.c.moved === 1 && LR.c.reshaped === 1 && LR.c.same === 2 && LR.others === 'false' && LR.info, 'Inlästa modeller jämförs, övriga släcks: ' + JSON.stringify(LR));
+  const ex2 = await page.evaluate(async () => { const r = await l3vrExportHtml(); return r.name; }); ok(/Export 1.*Export 2/.test(ex2), 'HTML-namn med modellnamnen: ' + ex2);
+  await page.evaluate(() => l3vrToggle(false));
+  const LE = await page.evaluate(() => ({ n: l3b.models.length, vis: l3b.models.map(m => m.visible).join() }));
+  ok(LE.n === 3 && LE.vis === 'true,true,true', 'Inlästa modeller finns kvar och är tända efter stängning: ' + JSON.stringify(LE));
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
   console.log('OK: versioner och jämförelse – fil och versioner ur Trimble Connect, tillkommet/borttaget/flyttat/ändrad form/nytt GUID, färgläge, före/efter, svep, blinka, lista, CSV, stäng');
   await browser.close(); server.close();
