@@ -189,6 +189,7 @@ async function l3vrRun() {
     l3vr.ids.A = await l3vrLoadOne(f, vA); l3vr.busy = "Läser in nyare version…"; l3vrRender();
     l3vr.ids.B = await l3vrLoadOne(f, vB); l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
     l3vr.res = await l3vrCompare(l3vrModel("A"), l3vrModel("B"), l3vr.tol);
+    const sz = k => { const mm = typeof l3p !== "undefined" && l3p.mem ? l3p.mem.get(l3vr.ids[k]) : null; return mm && mm.blob ? mm.blob.size : 0; }; l3vr.res.info = { A: { id: vA.versionId, no: vA.no, bytes: sz("A"), tris: l3vrModel("A").tris }, B: { id: vB.versionId, no: vB.no, bytes: sz("B"), tris: l3vrModel("B").tris } };
     l3vr.busy = ""; l3vrApply(); l3vrFit();
     l3Status(`Jämförelse klar: ${l3vr.res.count.added} tillkomna, ${l3vr.res.count.removed} borttagna, ${l3vr.res.count.moved} flyttade, ${l3vr.res.count.reshaped} med ändrad form.`);
   } catch (e) { l3vr.busy = ""; console.warn("Versionsjämförelse", e); l3Status(String(e.message || e), true); }
@@ -214,7 +215,7 @@ async function l3vrTcOpen(folderId, name) {
 async function l3vrPickFile(fileId, name, parentId) {
   l3vrClose(); l3vr.file = { fileId, name, parentId: parentId || null }; l3vr.versions = null; l3vr.pick = false; l3vr.busy = "Hämtar versionerna…"; l3vrRender();
   try {
-    const r = await askOpener("tcVersions", { fileId }, 30000); l3vr.versions = (r && r.versions) || [];
+    const r = await askOpener("tcVersions", { fileId }, 30000); l3vr.versions = (r && r.versions) || []; l3vr.keys = (r && r.keys) || [];
     const n = l3vr.versions.length; l3vr.B = n ? l3vr.versions[n - 1].versionId : ""; l3vr.A = n > 1 ? l3vr.versions[n - 2].versionId : "";
     if (!n) l3Status("Trimble Connect gav inga versioner för filen.", true);
   } catch (e) { l3vr.versions = []; l3Status(`Kunde inte läsa versionerna: ${e.message}`, true); }
@@ -266,7 +267,8 @@ function l3vrRender() {
   }
   if (R) {
     const tot = R.rows.length || 1, dv = R.volB - R.volA;
-    h += `<div class="fe-sec"><div class="fe-sub">3. Resultat</div><div class="fe-c"><div class="vr-kpi">${L3VR_ORDER.map(k => `<button type="button" class="vr-k${k !== "same" && !l3vr.show[k] ? " off" : ""}" data-vr="show" data-k="${k}" title="${k === "same" ? "Filtrera listan på oförändrade" : "Visa/dölj i 3D"}"><span class="vr-dot" style="background:${L3VR_COL[k]}"></span>${L3VR_NAME[k]}<b>${R.count[k]}</b></button>`).join("")}</div>
+    const inf = R.info, same = R.count.same === R.rows.length;
+    h += `<div class="fe-sec"><div class="fe-sub">3. Resultat</div><div class="fe-c">${inf ? `<div class="fe-note">Hämtat: A = v${inf.A.no} (${l3vrMb(inf.A.bytes) || "okänd storlek"}, ${(inf.A.tris || 0).toLocaleString("sv-SE")} trianglar), B = v${inf.B.no} (${l3vrMb(inf.B.bytes) || "okänd storlek"}, ${(inf.B.tris || 0).toLocaleString("sv-SE")} trianglar). Versions-id A ${e(String(inf.A.id).slice(0, 12))} / B ${e(String(inf.B.id).slice(0, 12))}.</div>` : ""}${same ? `<div class="fe-note" style="color:#b45309">Alla objekt är identiska. Antingen är versionerna lika, eller så levererade Trimble Connect samma fil för båda. Är storleken ovan densamma för A och B är det troligen det senare.</div>` : ""}<div class="vr-kpi">${L3VR_ORDER.map(k => `<button type="button" class="vr-k${k !== "same" && !l3vr.show[k] ? " off" : ""}" data-vr="show" data-k="${k}" title="${k === "same" ? "Filtrera listan på oförändrade" : "Visa/dölj i 3D"}"><span class="vr-dot" style="background:${L3VR_COL[k]}"></span>${L3VR_NAME[k]}<b>${R.count[k]}</b></button>`).join("")}</div>
       <div class="vr-bar" title="Andel av objekten">${L3VR_ORDER.map(k => `<i style="width:${R.count[k] / tot * 100}%;background:${L3VR_COL[k]}"></i>`).join("")}</div>
       <div class="fe-note">Volym: ${R.volA.toFixed(1).replace(".", ",")} → ${R.volB.toFixed(1).replace(".", ",")} m³ (${dv >= 0 ? "+" : "−"}${Math.abs(dv).toFixed(1).replace(".", ",")} m³). ${R.reguid ? `${R.reguid} objekt hade fått nytt GUID och parades ihop på klass, namn och läge. ` : ""}${R.noGuid ? `${R.noGuid} delar saknar GUID och ingår inte.` : ""}</div>
       <div class="fe-row"><label>Visa<select id="vrView"><option value="diff"${l3vr.view === "diff" ? " selected" : ""}>Skillnader (färgat)</option><option value="before"${l3vr.view === "before" ? " selected" : ""}>Bara äldre (A)</option><option value="after"${l3vr.view === "after" ? " selected" : ""}>Bara nyare (B)</option><option value="blink"${l3vr.view === "blink" ? " selected" : ""}>Blinka A / B</option><option value="swipe"${l3vr.view === "swipe" ? " selected" : ""}>Svep (delad bild)</option></select></label>

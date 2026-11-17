@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-11-17 20:02";
+const APP_VERSION = "2026-11-17 20:21";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -703,7 +703,7 @@ async function tcFileVersions(fileId) {
   // Äldst först → numrera om saknas; nyaste sist.
   out.sort((a, b) => (a.modified && b.modified ? String(a.modified).localeCompare(String(b.modified)) : (a.no || a.idx) - (b.no || b.idx)));
   out.forEach((v, i) => { if (!v.no) v.no = i + 1; });
-  return { fileId, versions: out };
+  return { fileId, versions: out, keys: list[0] ? Object.keys(list[0]) : [] };
 }
 
 /** Mittpunkt och höjdintervall (meter) för alla planerade objekt i inlästa modeller. */
