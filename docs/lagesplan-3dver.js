@@ -11,7 +11,7 @@
 const L3VR_COL = { added: "#16a34a", removed: "#dc2626", moved: "#2563eb", reshaped: "#f59e0b", renamed: "#9333ea", same: "#94a3b8" };
 const L3VR_NAME = { added: "Tillkommit", removed: "Borttaget", moved: "Flyttat", reshaped: "Ändrad form", renamed: "Nytt namn/klass", same: "Oförändrat" };
 const L3VR_ORDER = ["added", "removed", "moved", "reshaped", "renamed", "same"];
-const l3vr = { noPlan: true, setOrig: false, open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
+const l3vr = { noPlan: true, setOrig: false, hid: [], open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
   tol: 5, filter: { cls: "", q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
 
 const l3vrEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -112,6 +112,7 @@ function l3vrPlanMode() {
   if (typeof l3Original !== "function" || typeof l3b === "undefined") return;
   if (l3vr.noPlan && !l3b.orig) { l3Original(true); l3vr.setOrig = true; }
   else if (!l3vr.noPlan && l3b.orig && l3vr.setOrig) { l3Original(false); l3vr.setOrig = false; }
+  l3vrHideCopies();   // Original-läget tänder alla modeller: den vanliga kopian släcks igen
 }
 /* ---- Visningen i 3D ---- */
 function l3vrHex(h) { const c = new THREE.Color(h); return [c.r, c.g, c.b]; }
@@ -132,7 +133,7 @@ function l3vrApply() {
     R.rows.forEach(r => {
       const shown = r.st === "same" || l3vr.show[r.st];
       if (r.b) {
-        if (r.st === "same") { if (!l3vr.show.same || l3vr.same === "hide") mark(r.b, true); else if (l3vr.same === "ghost") mark(r.b, false, 0.12); else l3vr.col.set(B.id + "|" + r.b.guid, l3vrHex(L3VR_COL.same)); }
+        if (r.st === "same") { if (!l3vr.show.same || l3vr.same === "hide") mark(r.b, true); else if (l3vr.same === "ghost") mark(r.b, false, 0.15); else l3vr.col.set(B.id + "|" + r.b.guid, l3vrHex(L3VR_COL.same)); }
         else if (!shown) mark(r.b, true); else l3vr.col.set(B.id + "|" + r.b.guid, l3vrHex(L3VR_COL[r.st]));
       }
       if (r.a) {
@@ -173,6 +174,13 @@ function l3vrSwipeMove() {
 }
 function l3vrSwipeOff() { [l3vrModel("A"), l3vrModel("B")].forEach(m => m && m.meshes.forEach(x => x.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(mt => { if (mt.clippingPlanes && mt.clippingPlanes.length) { mt.clippingPlanes = null; mt.needsUpdate = true; } }); }))); }
 
+/* Den vanliga (inlästa) modellen av samma fil ligger annars kvar och täcker versionerna – spöken och skillnadsfärger syns då inte. Den släcks under jämförelsen och tänds igen när den stängs. */
+function l3vrHideCopies() {
+  const f = l3vr.file; if (!f) return; l3vrShowCopies();
+  l3b.models.forEach(m => { if (m.id === l3vr.ids.A || m.id === l3vr.ids.B || m.visible === false) return; const same = (m.src && m.src.fileId === f.fileId) || String(m.name || "").toLowerCase() === String(f.name || "").toLowerCase(); if (same) { l3vr.hid.push(m.id); l3bShow(m.id, false); } });
+  if (l3vr.hid.length) l3Status(`${l3vr.hid.length} vanlig modell av samma fil är släckt under jämförelsen (tänds igen när du stänger).`);
+}
+function l3vrShowCopies() { l3vr.hid.forEach(id => { if (l3b.models.some(m => m.id === id)) l3bShow(id, true); }); l3vr.hid = []; }
 /* ---- Läsa in versionerna ---- */
 async function l3vrLoadOne(file, v) {
   const id = `v:${file.fileId}:${v.versionId}`;
@@ -203,7 +211,7 @@ async function l3vrRun() {
 }
 function l3vrFit() { try { const bb = new THREE.Box3(); [l3vrModel("A"), l3vrModel("B")].forEach(m => m && m.meshes.forEach(x => { x.updateMatrixWorld(true); bb.expandByObject(x); })); if (!bb.isEmpty()) l3FlyTo(bb.getCenter(new THREE.Vector3()), Math.max(10, bb.getSize(new THREE.Vector3()).length()) * 0.95); } catch (e) { /* behåll vyn */ } }
 async function l3vrClose(keepModels) {
-  l3vrClear(); if (l3vr.setOrig && typeof l3Original === "function" && l3b.orig) l3Original(false); l3vr.setOrig = false; const ids = [l3vr.ids.A, l3vr.ids.B].filter(Boolean);
+  l3vrClear(); l3vrShowCopies(); if (l3vr.setOrig && typeof l3Original === "function" && l3b.orig) l3Original(false); l3vr.setOrig = false; const ids = [l3vr.ids.A, l3vr.ids.B].filter(Boolean);
   if (!keepModels) ids.forEach(id => { try { l3bForget(id); } catch (e) { /* redan borta */ } });
   l3vr.ids = { A: null, B: null }; l3vr.res = null; l3vr.sel = null; l3vr.props = null; if (ids.length && !keepModels) { l3RenderLegend(); l3Render(); if (typeof l3LayersRender === "function") l3LayersRender(); }
 }

@@ -61,6 +61,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       throw new Error('okänt ' + op);
     };
   });
+  await page.evaluate(() => l3bLoad([{ id: 'f:f1', fileId: 'f1', versionId: 'v2', name: 'Hus A.ifc' }]));   // den vanliga inlästa modellen av samma fil
   // Panelen: välj fil i TC → versioner → jämför
   await page.evaluate(() => l3vrToggle(true));
   await page.click('#v3Ver [data-vr="tc"]'); await page.waitForSelector('#v3Ver [data-vr="file"]');
@@ -71,7 +72,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForFunction(() => l3vr.res && !l3vr.busy, null, { timeout: 15000 }).catch(async e => { throw new Error(e.message + ' :: ' + errors.join(' | ') + ' :: ' + JSON.stringify(await page.evaluate(() => ({ busy: l3vr.busy, st: (document.getElementById('v3Status') || {}).textContent, loads: window.__loads, ids: l3vr.ids, ms: l3b.models.map(m => m.id) })))); });
   const R = await page.evaluate(() => ({ count: l3vr.res.count, reguid: l3vr.res.reguid, rows: l3vr.res.rows.map(r => [r.guid, r.st, r.reguid ? 1 : 0, Math.round(r.dpos * 100) / 100, Math.round(r.dvol * 100) / 100]), loads: window.__loads, ids: l3vr.ids, models: l3b.models.map(m => m.name) }));
   const by = g => R.rows.find(r => r[0] === g);
-  ok(R.loads.length === 2 && R.loads[0][1] === 'v1' && R.loads[1][1] === 'v2' && R.loads[0][0] === 'f1', 'Båda versionerna lästes in med fileId och versionId: ' + JSON.stringify(R.loads));
+  ok(R.loads.length === 3 && R.loads[1][1] === 'v1' && R.loads[2][1] === 'v2' && R.loads[1][0] === 'f1', 'Båda versionerna lästes in med fileId och versionId: ' + JSON.stringify(R.loads));
   ok(by('g0')[1] === 'same', 'Platta oförändrad: ' + by('g0'));
   ok(by('g1')[1] === 'moved' && Math.abs(by('g1')[3] - 1) < 0.01, 'Vägg flyttad 1 m: ' + by('g1'));
   ok(by('g2')[1] === 'removed', 'Pelare borttagen');
@@ -85,6 +86,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(V.bSameGhost && V.aHidden === 'g0,g4' && V.aGhost === 'g1,g3' && V.active && V.colB >= 3, 'Färgläget: ' + JSON.stringify(V));
   await page.evaluate(() => { const A = l3vrModel('A'); l3bRecolor(); window.__c = Array.from(A.meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });
   const colA = await page.evaluate(() => window.__c); ok(colA[0] > colA[1] + 100, 'Borttagen pelare är röd i 3D: ' + colA);
+  ok(await page.evaluate(() => l3b.models.find(m => m.id === 'f:f1').visible === false && l3vr.hid.join() === 'f:f1'), 'Den vanliga modellen av samma fil släcks under jämförelsen: ' + await page.evaluate(() => JSON.stringify([l3b.models.map(m => [m.id, m.visible]), l3vr.hid, l3vr.file])));
   // Tidplanen av: Original-läget är på och skillnadsfärgerna syns ändå; av/på med kryssrutan
   ok(await page.evaluate(() => l3b.orig === true && l3vr.setOrig === true), 'Tidplanen ignoreras som standard (Original-läget)');
   await page.evaluate(() => { l3bRecolor(); window.__c = Array.from(l3vrModel('A').meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });
@@ -127,8 +129,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => { l3vr.filter.q = ''; });
   // Stäng: versionerna tas bort och färgerna är borta
   await page.evaluate(() => l3vrToggle(false));
-  const end = await page.evaluate(() => ({ orig: l3b.orig, models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));
-  ok(end.orig === false && end.models === 0 && !end.active && !end.panel && end.col === 0, 'Stängd: ' + JSON.stringify(end));
+  const end = await page.evaluate(() => ({ vis: l3b.models[0] && l3b.models[0].visible, orig: l3b.orig, models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));
+  ok(end.vis === true && end.orig === false && end.models === 1 && !end.active && !end.panel && end.col === 0, 'Stängd: ' + JSON.stringify(end));
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
   console.log('OK: versioner och jämförelse – fil och versioner ur Trimble Connect, tillkommet/borttaget/flyttat/ändrad form/nytt GUID, färgläge, före/efter, svep, blinka, lista, CSV, stäng');
   await browser.close(); server.close();
