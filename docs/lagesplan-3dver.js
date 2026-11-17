@@ -397,23 +397,30 @@ async function l3vrExportHtml() {
   l3Status("Bygger HTML-filen…"); await l3vrTick();
   const first = rows.find(r => r.b || r.a), t0 = first.b || first.a; t0.mesh.updateMatrixWorld(true); const e0 = t0.mesh.matrixWorld.elements, p0 = t0.mesh.geometry.getAttribute("position").array, v0 = t0.mesh.userData.l3b.origIdx[l3bsIdx(t0.mesh, t0.ri)[0]];
   const O = [e0[0] * p0[v0 * 3] + e0[4] * p0[v0 * 3 + 1] + e0[8] * p0[v0 * 3 + 2] + e0[12], e0[1] * p0[v0 * 3] + e0[5] * p0[v0 * 3 + 1] + e0[9] * p0[v0 * 3 + 2] + e0[13], e0[2] * p0[v0 * 3] + e0[6] * p0[v0 * 3 + 1] + e0[10] * p0[v0 * 3 + 2] + e0[14]];
-  const objs = []; let tt = 0, n = 0;
+  const chunks = []; let tt = 0, n = 0, bytes = 0; const LIM = 400e6;   // datadelen får inte bli över ~400 MB: webbläsaren klarar inte ett skript över ~500 MB
   for (const r of rows) {
     const a = r.a ? l3vrGeom(r.a, O) : null, b = r.b ? l3vrGeom(r.b, O) : null; tt += (a ? a.tris : 0) + (b ? b.tris : 0);
-    objs.push({ n: r.name, c: r.cls, s: r.st, w: r.why, va: r.a ? Math.round(r.a.vol * 1e4) / 1e4 : null, vb: r.b ? Math.round(r.b.vol * 1e4) / 1e4 : null, re: r.reguid ? 1 : 0, a: a && { p: a.p, i: a.i }, b: b && { p: b.p, i: b.i } });
-    if (++n % 400 === 0) await l3vrTick();
+    const j = JSON.stringify({ n: r.name, c: r.cls, s: r.st, w: r.why, va: r.a ? Math.round(r.a.vol * 1e4) / 1e4 : null, vb: r.b ? Math.round(r.b.vol * 1e4) / 1e4 : null, re: r.reguid ? 1 : 0, a: a && { p: a.p, i: a.i }, b: b && { p: b.p, i: b.i } }); bytes += j.length;
+    if (bytes > LIM) throw new Error(`Filen blir för stor (över ${Math.round(LIM / 1e6)} MB, ${rows.length} objekt). Filtrera på klass först, till exempel Grundläggning, och exportera igen.`);
+    chunks.push(j);
+    if (++n % 300 === 0) { l3Status(`Bygger HTML-filen… ${n} av ${rows.length} objekt`); await l3vrTick(); }
   }
   const mt = l3vr.meta || { A: {}, B: {} }, clsNames = {}; rows.forEach(r => { clsNames[r.cls] = l3vrClsName(r.cls); });
   const count = {}; L3VR_ORDER.forEach(k => { count[k] = 0; }); rows.forEach(r => { count[r.st]++; });
-  const data = { colors: L3VR_COL, names: L3VR_NAME, order: L3VR_ORDER, clsNames, objs, meta: { file: f.name, A: { label: mt.A.label || "A", date: mt.A.date || "", by: mt.A.by || "" }, B: { label: mt.B.label || "B", date: mt.B.date || "", by: mt.B.by || "" }, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), tol: R.tol, counts: count, tris: tt } };
+  const head = JSON.stringify({ colors: L3VR_COL, names: L3VR_NAME, order: L3VR_ORDER, clsNames, meta: { file: f.name, A: { label: mt.A.label || "A", date: mt.A.date || "", by: mt.A.by || "" }, B: { label: mt.B.label || "B", date: mt.B.date || "", by: mt.B.by || "" }, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), tol: R.tol, counts: count, tris: tt } }).slice(0, -1) + ',"objs":[';
   const get = async u => { const r = await fetch(u); if (!r.ok) throw new Error(`${u} (${r.status})`); return r.text(); };
   const [tpl, three, orbit] = await Promise.all([get("lagesplan-3dver-viewer.html"), get("vendor/three/three.min.js"), get("vendor/three/OrbitControls.js")]);
   const safe = t => t.replace(/<\/(script)/gi, "<\\/$1");
-  const html = tpl.replace("/*__THREE__*/", () => safe(three)).replace("/*__ORBIT__*/", () => safe(orbit)).replace("/*__DATA__*/null", () => safe(JSON.stringify(data)));
+  /* Filen sätts ihop som delar i en Blob (aldrig som en enda textsträng – den har en gräns på ~500 MB, "Invalid string length"). */
+  const M1 = "/*__THREE__*/", M2 = "/*__ORBIT__*/", M3 = "/*__DATA__*/null", i1 = tpl.indexOf(M1), i2 = tpl.indexOf(M2), i3 = tpl.indexOf(M3);
+  if (i1 < 0 || i2 < 0 || i3 < 0) throw new Error("Visarmallen är skadad.");
+  const parts = [tpl.slice(0, i1), safe(three), tpl.slice(i1 + M1.length, i2), safe(orbit), tpl.slice(i2 + M2.length, i3), safe(head)];
+  chunks.forEach((c, i) => { parts.push(i ? "," : ""); parts.push(safe(c)); });
+  parts.push("]}", tpl.slice(i3 + M3.length));
   const name = `Versionsjamforelse ${String(f.name).replace(/\.ifc(zip)?$/i, "")} ${String(mt.A.label || "A").slice(0, 30)}-${String(mt.B.label || "B").slice(0, 30)}${l3vr.filter.cls.size ? " " + [...l3vr.filter.cls].map(c => l3vrClsName(c)).join("+").slice(0, 40) : ""}.html`.replace(/[\\/:*?"<>|]/g, "_");
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  const blob = new Blob(parts, { type: "text/html;charset=utf-8" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
   l3Status(`HTML sparad: ${rows.length} objekt, ${(tt / 1000).toFixed(0)} tusen trianglar, ${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB.`);
-  return { name, size: blob.size, html };
+  return { name, size: blob.size, blob };
 }
 /* Återställ: tar bort alla filter (klass, namn, typ, kategorier), isolering och val i visningen och återgår till jämförelsen (Skillnader). */
 function l3vrReset() {

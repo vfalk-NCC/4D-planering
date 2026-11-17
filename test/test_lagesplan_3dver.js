@@ -144,7 +144,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#v3Ver [data-vr="preset"][data-i="1"]');   // Pelare och balkar
   ok(await page.evaluate(() => [...l3vr.filter.cls].sort().join() === 'IFCBEAM,IFCCOLUMN,IFCMEMBER' && l3vrRows().map(r => r.guid).sort().join() === 'g2,g3,g5,g9'), 'Förvalet Pelare och balkar filtrerar listan');
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return [...u.cmpHide].map(i => u.ranges[i].guid).sort().join() === 'g0,g1'; }), 'Filtret döljer övriga i 3D (nyare versionen)');
-  const ex = await page.evaluate(async () => { const r = await l3vrExportHtml(); return { name: r.name, size: r.size, html: r.html }; });
+  const ex = await page.evaluate(async () => { const r = await l3vrExportHtml(); return { name: r.name, size: r.size, html: await r.blob.text() }; });
   ok(/\.html$/.test(ex.name) && ex.size > 100000 && /Pelare/.test(ex.name), 'HTML-filen har ett beskrivande namn: ' + ex.name + ' ' + ex.size);
   { const pg = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage(); const perr = []; pg.on('pageerror', e => perr.push(e.message)); pg.on('console', m => { if (m.type() === 'error') perr.push(m.text()); });
     await pg.setContent(ex.html, { waitUntil: 'load' }); await pg.waitForFunction(() => window.__ver && window.__ver.groups().length > 0, null, { timeout: 15000 });
