@@ -103,7 +103,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#v3Ver [data-vr="show"][data-k="same"]');
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return l3vr.show.same && u.cmpHide.size === 0 && u.cmpAlpha.size === 2; }), 'Oförändrat visas igen som spöke');
   // Kategoriknapparna markerar objekten i 3D (även en avslagen kategori tänds), Ctrl lägger till, Isolera markerade
+  const cam0 = await page.evaluate(() => l3.camera.position.toArray().concat(l3.orbit.target.toArray()).join());
   await page.click('#v3Ver [data-vr="selk"][data-k="removed"]');
+  await page.waitForTimeout(700); ok(await page.evaluate(c => l3.camera.position.toArray().concat(l3.orbit.target.toArray()).join() === c, cam0), 'Kategoriknappen markerar utan att flytta vyn');
   ok(await page.evaluate(() => l3bs.sel.length === 1 && l3bs.sel[0].mesh.userData.l3b.ranges[l3bs.sel[0].ri].guid === 'g2'), 'Borttaget markeras (äldre versionens pelare)');
   await page.click('#v3Ver [data-vr="selk"][data-k="added"]', { modifiers: ['Control'] });
   ok(await page.evaluate(() => l3bs.sel.map(e => e.mesh.userData.l3b.ranges[e.ri].guid).sort().join() === 'g2,g5'), 'Ctrl lägger till tillkommet i markeringen');
