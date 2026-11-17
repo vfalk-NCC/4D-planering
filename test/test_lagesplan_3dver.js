@@ -160,6 +160,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => l3vrToggle(false));
   const end = await page.evaluate(() => ({ vis: l3b.models[0] && l3b.models[0].visible, orig: l3b.orig, models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));
   ok(end.vis === true && end.orig === false && end.models === 1 && !end.active && !end.panel && end.col === 0, 'Stängd: ' + JSON.stringify(end));
+  // Versioner sparas aldrig bland hämtade modeller; gamla sådana poster ignoreras (annars blev alla v9 vid omstart)
+  ok(await page.evaluate(() => { localStorage.setItem(l3bRememberKey(), JSON.stringify([{ id: 'v:f1:v1', fileId: 'f1', name: 'Hus A · v1', version: 'v2:v1', on: true }, { id: 'f:f9', fileId: 'f9', name: 'Annan.ifc', version: '1', on: true }])); const a = l3bRememberedAll().map(x => x.id).join(); l3bRemember({ id: 'v:f1:v2', fileId: 'f1', name: 'x', version: 'v2:v2' }, true); return a === 'f:f9' && l3bRememberedAll().map(x => x.id).join() === 'f:f9' && !localStorage.getItem(l3bRememberKey()).includes('v:f1:v2'); }), 'Versioner ligger inte bland sparade modeller');
   // Tidigare inlästa versioner (id börjar på v:) kan också väljas
   ok(await page.evaluate(() => { l3vr.src = 'loaded'; return l3vrLoadedList().length === l3b.models.length; }), 'Alla inlästa modeller kan väljas');
   await page.evaluate(() => { l3vr.src = 'tc'; });

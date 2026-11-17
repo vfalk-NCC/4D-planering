@@ -223,10 +223,11 @@ function l3bRemove(id) {
    under Hämtade 3D-modeller tills de tas bort med soptunnan). De tända visas direkt (ur cachen) nästa gång
    3D-vyn öppnas; de släckta står i listan och läses in när de tänds. */
 const l3bRememberKey = () => `lagesplan-bldg-${projectId}`;
-function l3bRememberedAll() { try { return JSON.parse(localStorage.getItem(l3bRememberKey()) || "[]") || []; } catch (e) { return []; } }
+/* Versioner som lästs in för en jämförelse (id v:…) är tillfälliga och sparas aldrig bland hämtade modeller – annars läses de om vid nästa start, och eftersom filens nyaste version då är "nyare" ersätts alla av den (Victor 2026-11-17: v1 … v9 blev alla v9). Gamla sådana poster ignoreras här. */
+function l3bRememberedAll() { try { return (JSON.parse(localStorage.getItem(l3bRememberKey()) || "[]") || []).filter(x => !String((x && x.id) || "").startsWith("v:")); } catch (e) { return []; } }
 function l3bRemembered() { return l3bRememberedAll().filter(x => x.on !== false); }
 function l3bRemember(w, on) {
-  if (!w || !w.id) return;
+  if (!w || !w.id || String(w.id).startsWith("v:")) return;
   const list = l3bRememberedAll().filter(x => x.id !== w.id);
   list.push({ id: w.id, fileId: w.fileId || null, versionId: w.versionId || null, expectBytes: w.expectBytes || 0, plName: w.plName || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
   try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-30))); } catch (e) { /* privat läge */ }
