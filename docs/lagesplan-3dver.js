@@ -12,7 +12,7 @@ const L3VR_COL = { added: "#16a34a", removed: "#dc2626", moved: "#2563eb", resha
 const L3VR_NAME = { added: "Tillkommit", removed: "Borttaget", moved: "Flyttat", reshaped: "Ändrad form", renamed: "Nytt namn/klass", same: "Oförändrat" };
 const L3VR_ORDER = ["added", "removed", "moved", "reshaped", "renamed", "same"];
 const l3vr = { noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
-  tol: 5, filter: { cls: "", q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
+  tol: 5, filter: { cls: new Set(), q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
 
 const l3vrEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const l3vrTick = () => new Promise(r => setTimeout(r, 8));
@@ -132,8 +132,9 @@ function l3vrApply() {
   const view = l3vr.view, want = new Map(); // modell → { hide:Set, alpha:Map }
   const slot = m => { let w = want.get(m); if (!w) { w = new Map(); want.set(m, w); } return w; };
   const mark = (e, hide, alpha) => { if (!e) return; let w = slot(e.mesh); if (!w.has(e.ri)) w.set(e.ri, {}); const o = w.get(e.ri); if (hide) o.hide = true; if (alpha != null) o.alpha = alpha; };
+  R.rows.forEach(r => { if (!l3vrInF(r)) { mark(r.a, true); mark(r.b, true); } });
   if (view === "diff") {
-    R.rows.forEach(r => {
+    R.rows.filter(l3vrInF).forEach(r => {
       const shown = r.st === "same" || l3vr.show[r.st];
       if (r.b) {
         if (r.st === "same") { if (!l3vr.show.same || l3vr.same === "hide") mark(r.b, true); else if (l3vr.same === "ghost") mark(r.b, false, 0.15); else l3vr.col.set(B.id + "|" + r.b.guid, l3vrHex(L3VR_COL.same)); }
@@ -254,10 +255,10 @@ function l3vrCss() {
 #view3d .v3-ver .vr-bar{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;display:flex;margin:2px 0}#view3d .v3-ver .vr-bar i{display:block;height:100%}`;
   document.head.appendChild(s);
 }
-function l3vrRows() {
-  const R = l3vr.res; if (!R) return []; const f = l3vr.filter, q = f.q.trim().toLowerCase();
-  return R.rows.filter(r => (!f.st || r.st === f.st) && (!f.cls || r.cls === f.cls) && (!q || (r.name + " " + r.cls + " " + r.why).toLowerCase().includes(q)));
-}
+const L3VR_PRESETS = [["Grundläggning", ["IFCFOOTING", "IFCPILE", "IFCPILECAP"]], ["Pelare och balkar", ["IFCCOLUMN", "IFCBEAM", "IFCMEMBER"]], ["Väggar", ["IFCWALL", "IFCWALLSTANDARDCASE"]], ["Plattor", ["IFCSLAB", "IFCPLATE"]], ["Armering", ["IFCREINFORCINGBAR", "IFCREINFORCINGMESH"]]];
+/* Klass- och namnfiltret (gäller listan, 3D-vyn och HTML-exporten; kategorierna Tillkommit … styrs för sig). */
+function l3vrInF(r) { const f = l3vr.filter, q = f.q.trim().toLowerCase(); return (!f.cls.size || f.cls.has(r.cls)) && (!q || (r.name + " " + r.cls + " " + r.why).toLowerCase().includes(q)); }
+function l3vrRows() { const R = l3vr.res; if (!R) return []; return R.rows.filter(r => (!l3vr.filter.st || r.st === l3vr.filter.st) && l3vrInF(r)); }
 function l3vrRender() {
   const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3Ver");
   if (!l3vr.open || !host) { if (el) el.remove(); return; }
@@ -300,10 +301,11 @@ function l3vrRender() {
       ${l3vr.view === "blink" ? `<div class="fe-note vr-blinkl">Äldre (A)</div>` : ""}</div></div>`;
     h += `<div class="fe-sec"><div class="fe-sub">Per klass</div><div class="fe-c" style="max-height:150px;overflow:auto"><table class="vr-tbl"><tr><th>Klass</th><th class="n">+</th><th class="n">−</th><th class="n">Flytt</th><th class="n">Form</th><th class="n">m³</th></tr>${R.cls.filter(c => c.added || c.removed || c.moved || c.reshaped || c.renamed).map(c => `<tr data-vr="cls" data-c="${e(c.cls)}" style="cursor:pointer"><td>${e(l3vrClsName(c.cls))}</td><td class="n">${c.added || ""}</td><td class="n">${c.removed || ""}</td><td class="n">${c.moved || ""}</td><td class="n">${c.reshaped || ""}</td><td class="n">${c.dvol ? (c.dvol > 0 ? "+" : "−") + Math.abs(c.dvol).toFixed(2).replace(".", ",") : ""}</td></tr>`).join("") || `<tr><td colspan="6">Inga skillnader.</td></tr>`}</table></div></div>`;
     const rows = l3vrRows(), clsList = [...new Set(R.rows.map(r => r.cls))].sort();
-    h += `<div class="fe-sec"><div class="fe-sub">Objekt (${rows.length})</div><div class="fe-c"><div class="fe-row"><label>Typ<select id="vrFSt"><option value="">Alla</option>${L3VR_ORDER.map(k => `<option value="${k}"${l3vr.filter.st === k ? " selected" : ""}>${L3VR_NAME[k]}</option>`).join("")}</select></label><label>Klass<select id="vrFCls"><option value="">Alla</option>${clsList.map(c => `<option value="${e(c)}"${l3vr.filter.cls === c ? " selected" : ""}>${e(l3vrClsName(c))}</option>`).join("")}</select></label></div>
+    h += `<div class="fe-sec"><div class="fe-sub">Objekt (${rows.length})</div><div class="fe-c"><div class="fe-row"><label>Typ<select id="vrFSt"><option value="">Alla</option>${L3VR_ORDER.map(k => `<option value="${k}"${l3vr.filter.st === k ? " selected" : ""}>${L3VR_NAME[k]}</option>`).join("")}</select></label></div><div class="fe-row">${L3VR_PRESETS.map(([n, cl], i) => `<button type="button" data-vr="preset" data-i="${i}" class="${cl.length && cl.every(c => l3vr.filter.cls.has(c)) && l3vr.filter.cls.size === cl.length ? "primary" : ""}">${n}</button>`).join("")}<button type="button" data-vr="presetx">Alla klasser</button></div>
+      <details><summary>Klasser (${l3vr.filter.cls.size ? l3vr.filter.cls.size + " valda" : "alla"})</summary><div style="max-height:130px;overflow:auto">${clsList.map(c => `<label class="fe-chk"><input type="checkbox" data-vr="clsck" data-c="${e(c)}"${l3vr.filter.cls.has(c) ? " checked" : ""}> ${e(l3vrClsName(c))}</label>`).join("")}</div></details>
       <input id="vrFQ" type="search" placeholder="Sök namn…" value="${e(l3vr.filter.q)}" style="width:100%">
       <div class="vr-list">${rows.slice(0, 300).map((r, i) => `<div class="vr-row${l3vr.sel === r.guid ? " on" : ""}" data-vr="row" data-g="${e(r.guid)}"><span class="vr-dot" style="background:${L3VR_COL[r.st]}"></span><span>${e(r.name || l3vrClsName(r.cls))}</span><small>${e(l3vrClsName(r.cls))}${r.why ? " · " + e(r.why) : ""}${r.reguid ? " · nytt GUID" : ""}</small></div>`).join("")}${rows.length > 300 ? `<div class="fe-note">…och ${rows.length - 300} till (filtrera för att se fler).</div>` : ""}</div>
-      <div class="fe-row"><button type="button" data-vr="selall" title="Markera de filtrerade objekten i 3D">Markera i 3D</button><button type="button" data-vr="csv">Exportera CSV</button></div>`;
+      <div class="fe-row"><button type="button" data-vr="selall" title="Markera de filtrerade objekten i 3D">Markera i 3D</button><button type="button" data-vr="csv">Exportera CSV</button><button type="button" data-vr="html" title="Sparar de filtrerade objekten som en fristående HTML-fil med reglage och kategorifilter (ingen uppkoppling behövs)">Exportera HTML</button></div>`;
     const sel = l3vr.sel && R.rows.find(r => r.guid === l3vr.sel);
     if (sel) {
       h += `<div class="fe-sub">${e(sel.name || l3vrClsName(sel.cls))} – ${L3VR_NAME[sel.st]}</div>`;
@@ -328,6 +330,40 @@ function l3vrCsv(rows) {
   rows.forEach(r => L.push([L3VR_NAME[r.st], r.name, r.cls, r.guid, r.why, n(r.dpos), r.a ? n(r.a.vol) : "", r.b ? n(r.b.vol) : "", n(r.dvol), r.reguid ? "ja" : ""].map(q).join(";")));
   const f = l3vr.file, blob = new Blob(["﻿" + L.join("\r\n")], { type: "text/csv;charset=utf-8" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Versionsjamforelse ${f ? f.name.replace(/\.ifc(zip)?$/i, "") : ""}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
+/* ---- HTML-export: de filtrerade objekten (alla kategorier) med geometri för båda versionerna i en fristående fil med 3D-visare ---- */
+function l3vrB64(buf) { const u = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength); let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+function l3vrGeom(t, O) {   // { mesh, ri } → { p, i } (hörn relativt O, trianglar)
+  const u = t.mesh.userData.l3b, pos = t.mesh.geometry.getAttribute("position").array, idx = u.origIdx, [s, c] = l3bsIdx(t.mesh, t.ri); t.mesh.updateMatrixWorld(true); const M = t.mesh.matrixWorld.elements;
+  const map = new Map(), P = [], I = [];
+  for (let i = s; i < s + c; i++) { const v = idx[i]; let k = map.get(v); if (k === undefined) { k = map.size; map.set(v, k); const x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2]; P.push(M[0] * x + M[4] * y + M[8] * z + M[12] - O[0], M[1] * x + M[5] * y + M[9] * z + M[13] - O[1], M[2] * x + M[6] * y + M[10] * z + M[14] - O[2]); } I.push(k); }
+  return { p: l3vrB64(new Float32Array(P)), i: l3vrB64(new Uint32Array(I)), tris: Math.floor(I.length / 3) };
+}
+async function l3vrExportHtml() {
+  const R = l3vr.res, f = l3vr.file; if (!R || !f) return;
+  const rows = R.rows.filter(l3vrInF), tris = rows.reduce((n, r) => n + (r.a ? 1 : 0) + (r.b ? 1 : 0), 0);
+  if (!rows.length) { l3Status("Inga objekt matchar filtret – inget att exportera.", true); return; }
+  if (rows.length > 40000 && typeof uiConfirm === "function" && !(await uiConfirm(`${rows.length} objekt ger en stor fil (kan bli flera hundra MB). Filtrera på klass först, till exempel Grundläggning. Exportera ändå?`, { ok: "Exportera" }))) return;
+  l3Status("Bygger HTML-filen…"); await l3vrTick();
+  const first = rows.find(r => r.b || r.a), t0 = first.b || first.a; t0.mesh.updateMatrixWorld(true); const e0 = t0.mesh.matrixWorld.elements, p0 = t0.mesh.geometry.getAttribute("position").array, v0 = t0.mesh.userData.l3b.origIdx[l3bsIdx(t0.mesh, t0.ri)[0]];
+  const O = [e0[0] * p0[v0 * 3] + e0[4] * p0[v0 * 3 + 1] + e0[8] * p0[v0 * 3 + 2] + e0[12], e0[1] * p0[v0 * 3] + e0[5] * p0[v0 * 3 + 1] + e0[9] * p0[v0 * 3 + 2] + e0[13], e0[2] * p0[v0 * 3] + e0[6] * p0[v0 * 3 + 1] + e0[10] * p0[v0 * 3 + 2] + e0[14]];
+  const objs = []; let tt = 0, n = 0;
+  for (const r of rows) {
+    const a = r.a ? l3vrGeom(r.a, O) : null, b = r.b ? l3vrGeom(r.b, O) : null; tt += (a ? a.tris : 0) + (b ? b.tris : 0);
+    objs.push({ n: r.name, c: r.cls, s: r.st, w: r.why, va: r.a ? Math.round(r.a.vol * 1e4) / 1e4 : null, vb: r.b ? Math.round(r.b.vol * 1e4) / 1e4 : null, re: r.reguid ? 1 : 0, a: a && { p: a.p, i: a.i }, b: b && { p: b.p, i: b.i } });
+    if (++n % 400 === 0) await l3vrTick();
+  }
+  const vs = l3vr.versions || [], vA = vs.find(v => v.versionId === l3vr.A) || {}, vB = vs.find(v => v.versionId === l3vr.B) || {}, clsNames = {}; rows.forEach(r => { clsNames[r.cls] = l3vrClsName(r.cls); });
+  const count = {}; L3VR_ORDER.forEach(k => { count[k] = 0; }); rows.forEach(r => { count[r.st]++; });
+  const data = { colors: L3VR_COL, names: L3VR_NAME, order: L3VR_ORDER, clsNames, objs, meta: { file: f.name, A: { no: vA.no || "", date: l3vrDate(vA.modified), by: vA.by || "" }, B: { no: vB.no || "", date: l3vrDate(vB.modified), by: vB.by || "" }, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), tol: R.tol, counts: count, tris: tt } };
+  const get = async u => { const r = await fetch(u); if (!r.ok) throw new Error(`${u} (${r.status})`); return r.text(); };
+  const [tpl, three, orbit] = await Promise.all([get("lagesplan-3dver-viewer.html"), get("vendor/three/three.min.js"), get("vendor/three/OrbitControls.js")]);
+  const safe = t => t.replace(/<\/(script)/gi, "<\\/$1");
+  const html = tpl.replace("/*__THREE__*/", () => safe(three)).replace("/*__ORBIT__*/", () => safe(orbit)).replace("/*__DATA__*/null", () => safe(JSON.stringify(data)));
+  const name = `Versionsjamforelse ${String(f.name).replace(/\.ifc(zip)?$/i, "")} v${vA.no || "A"}-v${vB.no || "B"}${l3vr.filter.cls.size ? " " + [...l3vr.filter.cls].map(c => l3vrClsName(c)).join("+").slice(0, 40) : ""}.html`.replace(/[\\/:*?"<>|]/g, "_");
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  l3Status(`HTML sparad: ${rows.length} objekt, ${(tt / 1000).toFixed(0)} tusen trianglar, ${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB.`);
+  return { name, size: blob.size, html };
+}
 function l3vrBind(el) {
   const q = s => el.querySelector(s), on = (s, f) => { const x = q(s); if (x) x.onchange = f; };
   on("#vrLoaded", ev => { const m = l3b.models.find(x => x.id === ev.target.value); if (m && m.src) l3vrPickFile(m.src.fileId, String(m.name).replace(/ · v\d+$/, ""), m.src.parentId); });
@@ -338,11 +374,12 @@ function l3vrBind(el) {
   on("#vrSame", ev => { l3vr.same = ev.target.value; l3vrApply(); });
   on("#vrColA", ev => { l3vr.colA = ev.target.value; l3vrApply(); }); on("#vrColB", ev => { l3vr.colB = ev.target.value; l3vrApply(); });
   on("#vrOld", ev => { l3vr.old = ev.target.checked; l3vrApply(); });
-  on("#vrFSt", ev => { l3vr.filter.st = ev.target.value; l3vrRender(); }); on("#vrFCls", ev => { l3vr.filter.cls = ev.target.value; l3vrRender(); });
-  const fq = q("#vrFQ"); if (fq) { fq.onkeydown = ev => ev.stopPropagation(); fq.onchange = () => { l3vr.filter.q = fq.value; l3vrRender(); }; }
+  on("#vrFSt", ev => { l3vr.filter.st = ev.target.value; l3vrRender(); });
+  const fq = q("#vrFQ"); if (fq) { fq.onkeydown = ev => ev.stopPropagation(); fq.onchange = () => { l3vr.filter.q = fq.value; l3vrApply(); l3vrRender(); }; }
   const sw = q("#vrSwipe"); if (sw) sw.oninput = () => { l3vr.swipe = Number(sw.value); l3vrSwipeMove(); };
+  el.querySelectorAll('[data-vr="clsck"]').forEach(i => { i.onchange = () => { if (i.checked) l3vr.filter.cls.add(i.dataset.c); else l3vr.filter.cls.delete(i.dataset.c); l3vrApply(); l3vrRender(); }; });
   el.onclick = async ev => {
-    const b = ev.target.closest("[data-vr]"); if (!b) return; const a = b.dataset.vr, R = l3vr.res; if (b.tagName === "A") ev.preventDefault();
+    const b = ev.target.closest("[data-vr]"); if (b && b.dataset.vr === "clsck") return; if (!b) return; const a = b.dataset.vr, R = l3vr.res; if (b.tagName === "A") ev.preventDefault();
     if (a === "dock") { if (typeof l3dkToggle === "function") l3dkToggle(); }
     else if (a === "x") l3vrToggle(false);
     else if (a === "tc") { l3vr.pick = !l3vr.pick; if (l3vr.pick && !l3vr.tc.items) l3vrTcOpen(null); else l3vrRender(); }
@@ -354,10 +391,13 @@ function l3vrBind(el) {
     else if (a === "iso") { if (l3bs.sel.length && typeof l3bsIsolate === "function") l3bsIsolate(); else l3Status("Markera något först (tryck på en kategori eller en rad).", true); }
     else if (a === "showall") { L3VR_ORDER.forEach(k => { l3vr.show[k] = 1; }); if (typeof l3bShowAllRanges === "function") l3bShowAllRanges(); l3vrApply(); l3vrRender(); }
     else if (a === "swaxis") { l3vrSwipeOn(); }
-    else if (a === "cls") { l3vr.filter.cls = l3vr.filter.cls === b.dataset.c ? "" : b.dataset.c; l3vrRender(); }
+    else if (a === "cls") { const c = b.dataset.c; if (l3vr.filter.cls.has(c)) l3vr.filter.cls.delete(c); else l3vr.filter.cls.add(c); l3vrApply(); l3vrRender(); }
+    else if (a === "preset") { const cl = L3VR_PRESETS[Number(b.dataset.i)][1], have = [...new Set(R.rows.map(r => r.cls))].filter(c => cl.includes(c)); l3vr.filter.cls = new Set(have.length ? have : cl); if (!have.length) l3Status("Inga objekt av de klasserna i den här filen.", true); l3vrApply(); l3vrRender(); }
+    else if (a === "presetx") { l3vr.filter.cls = new Set(); l3vrApply(); l3vrRender(); }
     else if (a === "row") { l3vrSelect(b.dataset.g, true); l3vrRender(); }
     else if (a === "selall") { const list = l3vrRows().map(r => (r.b && r.st !== "removed" ? r.b : r.a)).filter(Boolean).map(t => ({ mesh: t.mesh, ri: t.ri })); if (list.length) { l3bsSet(list.slice(0, 30000)); l3bsZoom(); } }
     else if (a === "csv") { if (R) l3vrCsv(l3vrRows()); }
+    else if (a === "html") { if (R) l3vrExportHtml().catch(er => l3Status(`HTML-exporten misslyckades: ${er.message}`, true)); }
     else if (a === "props") { const r = R && R.rows.find(x => x.guid === l3vr.sel); if (!r) return; l3vr.props = { guid: r.guid, rows: null }; l3vrRender(); try { l3vr.props = { guid: r.guid, rows: await l3vrPropDiff(r) || [] }; } catch (er) { l3vr.props = { guid: r.guid, rows: [] }; l3Status(`Egenskaperna gick inte att läsa: ${er.message}`, true); } l3vrRender(); }
   };
 }

@@ -133,6 +133,29 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const csv = await page.evaluate(() => { let t = ''; const B = Blob; window.Blob = function (p, o) { t = p.join(''); return new B(p, o); }; l3vrCsv(l3vrRows()); window.Blob = B; return t; });
   ok(/Typ;Namn;Klass;GUID/.test(csv) && /Tillkommit;Ny pelare/.test(csv) && /Borttaget;Pelare/.test(csv), 'CSV: ' + csv.slice(0, 160));
   await page.evaluate(() => { l3vr.filter.q = ''; });
+  // Filter: förval (klasser) gäller listan och 3D-vyn; HTML-export med fristående visare
+  await page.click('#v3Ver [data-vr="preset"][data-i="1"]');   // Pelare och balkar
+  ok(await page.evaluate(() => [...l3vr.filter.cls].sort().join() === 'IFCBEAM,IFCCOLUMN,IFCMEMBER' && l3vrRows().map(r => r.guid).sort().join() === 'g2,g3,g5,g9'), 'Förvalet Pelare och balkar filtrerar listan');
+  ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return [...u.cmpHide].map(i => u.ranges[i].guid).sort().join() === 'g0,g1'; }), 'Filtret döljer övriga i 3D (nyare versionen)');
+  const ex = await page.evaluate(async () => { const r = await l3vrExportHtml(); return { name: r.name, size: r.size, html: r.html }; });
+  ok(/\.html$/.test(ex.name) && ex.size > 100000 && /Pelare/.test(ex.name), 'HTML-filen har ett beskrivande namn: ' + ex.name + ' ' + ex.size);
+  { const pg = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage(); const perr = []; pg.on('pageerror', e => perr.push(e.message)); pg.on('console', m => { if (m.type() === 'error') perr.push(m.text()); });
+    await pg.setContent(ex.html, { waitUntil: 'load' }); await pg.waitForFunction(() => window.__ver && window.__ver.groups().length > 0, null, { timeout: 15000 });
+    const v1 = await pg.evaluate(() => ({ n: __ver.objs.length, chips: document.querySelectorAll('.chip').length, cnt: [...document.querySelectorAll('.chip b')].map(b => b.textContent).join(), cls: document.querySelectorAll('#cls input').length, list: document.querySelectorAll('#list .it').length, title: document.getElementById('ttl').textContent, sub: document.getElementById('sub').textContent }));
+    ok(v1.n === 4 && v1.chips === 6 && v1.cls === 3 && v1.list === 4 && /Hus A/.test(v1.title) && /v1/.test(v1.sub) && /v2/.test(v1.sub), 'Visaren öppnas med objekten, kategorierna och klasserna: ' + JSON.stringify(v1));
+    // kategori av/på
+    await pg.click('.chip[data-k="added"]'); ok(await pg.evaluate(() => __ver.objs.filter(o => o.s === 'added').every(o => !__ver.st.show.added) && document.querySelectorAll('#list .it').length === 3), 'Tillkommit av: listan krymper');
+    await pg.click('.chip[data-k="added"]');
+    // lägen
+    for (const m of ['overlay', 'before', 'after', 'swipe', 'blink', 'diff']) { await pg.click('#modes [data-m="' + m + '"]'); await pg.waitForTimeout(120); ok(await pg.evaluate(() => __ver.groups().length > 0), 'Läget ' + m + ' ritar'); }
+    await pg.click('#modes [data-m="swipe"]'); await pg.evaluate(() => { const s = document.getElementById('sw'); s.value = 0.25; s.dispatchEvent(new Event('input')); });
+    ok(await pg.evaluate(() => __ver.groups().every(g => g.mesh.material.clippingPlanes && g.mesh.material.clippingPlanes.length === 1)), 'Svep: klippplan på alla delar');
+    await pg.click('#modes [data-m="diff"]');
+    // klassfilter + markering
+    await pg.click('#clsum'); await pg.uncheck('#cls input[data-c="IFCMEMBER"]'); ok(await pg.evaluate(() => document.querySelectorAll('#list .it').length === 3), 'Klass av: listan krymper');
+    await pg.click('#list .it >> nth=0'); ok(await pg.evaluate(() => __ver.st.sel >= 0 && /m³/.test(document.getElementById('info').textContent)), 'Klick i listan markerar och visar info');
+    await pg.screenshot({ path: '/tmp/ver-viewer.png' }); ok(!perr.length, 'Visaren: fel i konsolen: ' + perr.join(' | ')); await pg.context().close(); }
+  await page.evaluate(() => { l3vr.filter.cls = new Set(); l3vrApply(); });
   // Stäng: versionerna tas bort och färgerna är borta
   await page.evaluate(() => l3vrToggle(false));
   const end = await page.evaluate(() => ({ vis: l3b.models[0] && l3b.models[0].visible, orig: l3b.orig, models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Versionsjämförelse</title>
+<style>
+:root{--bg:#f1f5f9;--pn:#ffffff;--fg:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#2563eb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--pn:#1e293b;--fg:#e2e8f0;--mut:#94a3b8;--line:#334155;--acc:#60a5fa}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg);display:flex;flex-direction:column}
+header{padding:8px 14px;background:var(--pn);border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline}
+header h1{font-size:15px;margin:0}header span{color:var(--mut)}
+main{flex:1;display:flex;min-height:0}#cv{flex:1;position:relative;min-width:0}#cv canvas{display:block;width:100%;height:100%}
+aside{width:350px;max-width:46vw;background:var(--pn);border-left:1px solid var(--line);overflow:auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+@media (max-width:760px){main{flex-direction:column}aside{width:100%;max-width:none;max-height:46vh;border-left:0;border-top:1px solid var(--line)}}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:0 0 4px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button,select,input[type=search]{font:inherit;color:var(--fg);background:var(--pn);border:1px solid var(--line);border-radius:7px;padding:4px 8px}button{cursor:pointer}button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.chip{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;cursor:pointer;user-select:none}.chip.off{opacity:.4}.chip b{margin-left:auto}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+#list{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.it{display:flex;gap:6px;align-items:baseline;padding:3px 7px;border-bottom:1px solid var(--line);cursor:pointer}.it:hover{background:var(--bg)}.it.on{background:rgba(250,204,21,.25)}.it small{color:var(--mut)}
+#sw{width:100%}#info{border:1px solid var(--line);border-radius:8px;padding:6px 8px;color:var(--mut)}#info b{color:var(--fg)}
+details summary{cursor:pointer;color:var(--mut)}label.c{display:flex;gap:5px;align-items:center}
+#bar{position:absolute;left:10px;top:10px;background:var(--pn);border:1px solid var(--line);border-radius:8px;padding:4px 8px;display:none;gap:8px;align-items:center}
+#tip{position:absolute;pointer-events:none;background:#0f172acc;color:#fff;border-radius:6px;padding:2px 7px;font-size:12px;display:none}
+</style></head><body>
+<header><h1 id="ttl"></h1><span id="sub"></span></header>
+<main><div id="cv"><div id="bar"><span id="barl"></span></div><div id="tip"></div></div>
+<aside>
+<section><h2>Visa</h2><div class="row" id="modes"></div>
+<div id="swrow" style="display:none;margin-top:6px"><div class="row"><span id="swl" style="color:var(--mut)">Äldre ◀ ▶ Nyare</span><button id="swax" title="Lägg svepet tvärs vyns riktning nu">Efter vyn</button></div><input id="sw" type="range" min="0" max="1" step="0.002" value="0.5"></div>
+<div id="ovrow" style="display:none;margin-top:6px" class="row"><label class="c">Äldre <input id="ca" type="color" value="#ef4444"></label><label class="c">Nyare <input id="cb" type="color" value="#2563eb"></label></div>
+<div id="dfrow" style="margin-top:6px" class="row"><label class="c"><input id="old" type="checkbox" checked> Gammalt läge som röd skugga</label><label class="c">Oförändrat <select id="same"><option value="ghost">Spöke</option><option value="grey">Grått</option></select></label></div></section>
+<section><h2>Kategorier</h2><div class="chips" id="chips"></div><div class="row" style="margin-top:5px"><button id="all">Alla</button><button id="none">Ingen</button><button id="chg">Bara ändringar</button></div></section>
+<section><h2>Klass</h2><details><summary id="clsum">Alla klasser</summary><div id="cls" style="max-height:160px;overflow:auto;margin-top:4px"></div></details><div class="row" style="margin-top:4px"><button id="clall">Alla</button><button id="clnone">Ingen</button></div></section>
+<section><h2>Objekt <span id="cnt"></span></h2><input type="search" id="q" placeholder="Sök namn…" style="width:100%;margin-bottom:5px"><div id="list"></div><div class="row" style="margin-top:5px"><button id="csv">Exportera CSV</button><button id="fit">Återställ vy</button></div></section>
+<section id="info">Tryck på ett objekt i vyn eller i listan.</section>
+<section class="row" style="color:var(--mut)" id="foot"></section>
+</aside></main>
+<script>/*__THREE__*/</script>
+<script>/*__ORBIT__*/</script>
+<script>
+var DATA = /*__DATA__*/null;
+(function () {
+  var COL = DATA.colors, NAME = DATA.names, ORDER = DATA.order, M = DATA.meta;
+  function $(i) { return document.getElementById(i); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function b64(s, T) { var bin = atob(s), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i); return new T(u.buffer); }
+  $("ttl").textContent = "Versionsjämförelse – " + M.file;
+  $("sub").textContent = "Äldre (A): v" + M.A.no + (M.A.date ? " " + M.A.date : "") + (M.A.by ? " · " + M.A.by : "") + "   |   Nyare (B): v" + M.B.no + (M.B.date ? " " + M.B.date : "") + (M.B.by ? " · " + M.B.by : "");
+  $("foot").textContent = "Exporterad " + M.exported + " ur 4D-planering. Tolerans " + M.tol + " mm. Filen är fristående och behöver ingen uppkoppling.";
+  var objs = DATA.objs; objs.forEach(function (o, i) { o.id = i; ["a", "b"].forEach(function (k) { if (o[k]) { o[k].P = b64(o[k].p, Float32Array); o[k].I = b64(o[k].i, Uint32Array); } }); });
+  var st = { mode: "diff", show: {}, cls: {}, q: "", sel: -1, colA: "#ef4444", colB: "#2563eb", old: true, same: "ghost", sw: 0.5, ax: [1, 0] };
+  ORDER.forEach(function (k) { st.show[k] = true; });
+  var classes = []; objs.forEach(function (o) { if (classes.indexOf(o.c) < 0) classes.push(o.c); }); classes.sort(); classes.forEach(function (c) { st.cls[c] = true; });
+  // ---- 3D ----
+  var cv = $("cv"), R = new THREE.WebGLRenderer({ antialias: true }); R.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); R.localClippingEnabled = true; cv.appendChild(R.domElement); R.setClearColor(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 0x0b1220 : 0xe9eef5, 1);
+  var scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(45, 1, 0.1, 1e5); cam.up.set(0, 0, 1);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.75)); var dl = new THREE.DirectionalLight(0xffffff, 0.7); dl.position.set(-1, -2, 3); scene.add(dl); var dl2 = new THREE.DirectionalLight(0xffffff, 0.3); dl2.position.set(2, 1, 1); scene.add(dl2);
+  var ctl = new THREE.OrbitControls(cam, R.domElement); ctl.enableDamping = false;
+  var root = new THREE.Group(), hi = new THREE.Group(); scene.add(root); scene.add(hi);
+  var bb = new THREE.Box3(); objs.forEach(function (o) { ["a", "b"].forEach(function (k) { if (o[k]) { var P = o[k].P; for (var i = 0; i < P.length; i += 3) bb.expandByPoint(new THREE.Vector3(P[i], P[i + 1], P[i + 2])); } }); });
+  if (bb.isEmpty()) bb.set(new THREE.Vector3(-5, -5, -5), new THREE.Vector3(5, 5, 5));
+  function home() { var c = bb.getCenter(new THREE.Vector3()), r = Math.max(5, bb.getSize(new THREE.Vector3()).length()); cam.near = r / 1000; cam.far = r * 20; cam.position.set(c.x - r * 0.55, c.y - r * 0.8, c.z + r * 0.6); ctl.target.copy(c); cam.updateProjectionMatrix(); ctl.update(); }
+  function size() { var w = cv.clientWidth, h = cv.clientHeight; R.setSize(w, h, false); cam.aspect = w / Math.max(1, h); cam.updateProjectionMatrix(); draw(); }
+  var raf = 0; function draw() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; R.render(scene, cam); }); }
+  ctl.addEventListener("change", draw); window.addEventListener("resize", size);
+  // ---- visibilitet ----
+  function inF(o) { if (!st.cls[o.c]) return false; if (st.q && (o.n + " " + o.c + " " + o.w).toLowerCase().indexOf(st.q) < 0) return false; return true; }
+  function vis(o) { return inF(o) && st.show[o.s]; }
+  function gcolor(side, o) {
+    if (st.mode === "overlay") return side === "a" ? st.colA : st.colB;
+    return COL[o.s];
+  }
+  // (side, statusgrupp, material) → slå ihop trianglar
+  var groups = [], clipA = null, clipB = null;
+  function clearGroups() { groups.forEach(function (g) { root.remove(g.mesh); g.mesh.geometry.dispose(); g.mesh.material.dispose(); }); groups = []; }
+  function build() {
+    clearGroups(); var plan = {};
+    objs.forEach(function (o) {
+      if (!vis(o)) return;
+      ["a", "b"].forEach(function (side) {
+        var d = o[side]; if (!d) return; var m = st.mode, op = 1, key, hide = false;
+        if (m === "before" && side === "b") hide = true; if (m === "after" && side === "a") hide = true;
+        if (m === "diff") {
+          if (side === "b") { if (o.s === "same") { if (st.same === "ghost") op = 0.14; } }
+          else { if (o.s === "removed") op = 1; else if ((o.s === "moved" || o.s === "reshaped") && st.old) op = 0.3; else hide = true; }
+        }
+        if (m === "blink" && ((side === "a") !== blinkA)) hide = true;
+        if (hide) return;
+        var col = gcolor(side, o); key = side + "|" + col + "|" + op;
+        var g = plan[key] || (plan[key] = { side: side, col: col, op: op, list: [] }); g.list.push(o);
+      });
+    });
+    Object.keys(plan).forEach(function (k) {
+      var g = plan[k], np = 0, ni = 0; g.list.forEach(function (o) { var d = o[g.side]; np += d.P.length; ni += d.I.length; });
+      var P = new Float32Array(np), I = new Uint32Array(ni), po = 0, io = 0, starts = [], ids = [];
+      g.list.forEach(function (o) { var d = o[g.side], base = po / 3; starts.push(io / 3); ids.push(o.id); P.set(d.P, po); po += d.P.length; for (var i = 0; i < d.I.length; i++) I[io + i] = d.I[i] + base; io += d.I.length; });
+      starts.push(io / 3);
+      var geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(P, 3)); geo.setIndex(new THREE.BufferAttribute(I, 1));
+      var mat = new THREE.MeshPhongMaterial({ color: g.col, flatShading: true, shininess: 8, side: THREE.DoubleSide, transparent: g.op < 1, opacity: g.op, depthWrite: g.op >= 1 });
+      if (st.mode === "overlay" && g.side === "b") { mat.polygonOffset = true; mat.polygonOffsetFactor = -2; mat.polygonOffsetUnits = -2; }
+      if (st.mode === "swipe") mat.clippingPlanes = [g.side === "a" ? clipA : clipB];
+      var mesh = new THREE.Mesh(geo, mat); mesh.userData = { starts: starts, ids: ids, side: g.side }; if (g.op < 1) mesh.renderOrder = 2; root.add(mesh); g.mesh = mesh; groups.push(g);
+    });
+    draw();
+  }
+  // ---- svep ----
+  function swipe() {
+    var n = new THREE.Vector3(st.ax[0], st.ax[1], 0), p = [[bb.min.x, bb.min.y], [bb.max.x, bb.min.y], [bb.min.x, bb.max.y], [bb.max.x, bb.max.y]].map(function (q) { return q[0] * n.x + q[1] * n.y; });
+    var lo = Math.min.apply(null, p), hi2 = Math.max.apply(null, p), c = lo + (hi2 - lo) * st.sw;
+    clipA = new THREE.Plane(n.clone().negate(), c); clipB = new THREE.Plane(n.clone(), -c);
+    groups.forEach(function (g) { g.mesh.material.clippingPlanes = [g.side === "a" ? clipA : clipB]; }); draw();
+  }
+  function axisFromView() { var d = new THREE.Vector3(); cam.getWorldDirection(d); var r = new THREE.Vector3(-d.y, d.x, 0); if (r.lengthSq() < 1e-6) r.set(1, 0, 0); r.normalize(); st.ax = [r.x, r.y]; swipe(); }
+  var blinkA = true, blinkT = 0;
+  function setMode(m) {
+    st.mode = m; if (blinkT) { clearInterval(blinkT); blinkT = 0; } blinkA = true;
+    [].forEach.call($("modes").children, function (b) { b.classList.toggle("on", b.dataset.m === m); });
+    $("swrow").style.display = m === "swipe" ? "" : "none"; $("ovrow").style.display = m === "overlay" ? "" : "none"; $("dfrow").style.display = m === "diff" ? "" : "none";
+    var bar = $("bar"); bar.style.display = m === "blink" ? "flex" : "none";
+    if (m === "swipe") { clipA = clipB = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0); axisFromView(); }
+    if (m === "blink") { $("barl").textContent = "Äldre (A)"; blinkT = setInterval(function () { blinkA = !blinkA; $("barl").textContent = blinkA ? "Äldre (A)" : "Nyare (B)"; build(); }, 900); }
+    build(); if (m === "swipe") swipe();
+  }
+  var MODES = [["diff", "Skillnader"], ["overlay", "Överlägg"], ["before", "Äldre"], ["after", "Nyare"], ["swipe", "Svep"], ["blink", "Blinka"]];
+  MODES.forEach(function (x) { var b = document.createElement("button"); b.dataset.m = x[0]; b.textContent = x[1]; b.onclick = function () { setMode(x[0]); }; $("modes").appendChild(b); });
+  // ---- kategorier, klasser, lista ----
+  var cnt = {}; ORDER.forEach(function (k) { cnt[k] = 0; }); objs.forEach(function (o) { cnt[o.s]++; });
+  function chips() { $("chips").innerHTML = ORDER.map(function (k) { return '<div class="chip' + (st.show[k] ? "" : " off") + '" data-k="' + k + '"><span class="dot" style="background:' + COL[k] + '"></span>' + NAME[k] + "<b>" + cnt[k] + "</b></div>"; }).join(""); }
+  $("chips").onclick = function (e) { var c = e.target.closest(".chip"); if (!c) return; st.show[c.dataset.k] = !st.show[c.dataset.k]; chips(); refresh(); };
+  $("all").onclick = function () { ORDER.forEach(function (k) { st.show[k] = true; }); chips(); refresh(); };
+  $("none").onclick = function () { ORDER.forEach(function (k) { st.show[k] = false; }); chips(); refresh(); };
+  $("chg").onclick = function () { ORDER.forEach(function (k) { st.show[k] = k !== "same"; }); chips(); refresh(); };
+  function clsUi() { $("cls").innerHTML = classes.map(function (c) { return '<label class="c"><input type="checkbox" data-c="' + esc(c) + '"' + (st.cls[c] ? " checked" : "") + "> " + esc(DATA.clsNames[c] || c) + "</label>"; }).join(""); var n = classes.filter(function (c) { return st.cls[c]; }).length; $("clsum").textContent = n === classes.length ? "Alla klasser (" + n + ")" : n + " av " + classes.length + " klasser"; }
+  $("cls").onchange = function (e) { var c = e.target.dataset.c; if (c != null) { st.cls[c] = e.target.checked; clsUi(); refresh(); } };
+  $("clall").onclick = function () { classes.forEach(function (c) { st.cls[c] = true; }); clsUi(); refresh(); }; $("clnone").onclick = function () { classes.forEach(function (c) { st.cls[c] = false; }); clsUi(); refresh(); };
+  $("q").oninput = function () { st.q = this.value.trim().toLowerCase(); refresh(); };
+  function list() { var v = objs.filter(vis); $("cnt").textContent = "(" + v.length + ")"; $("list").innerHTML = v.slice(0, 400).map(function (o) { return '<div class="it' + (st.sel === o.id ? " on" : "") + '" data-i="' + o.id + '"><span class="dot" style="background:' + COL[o.s] + '"></span><span>' + esc(o.n || DATA.clsNames[o.c] || o.c) + "</span><small>" + esc(DATA.clsNames[o.c] || o.c) + (o.w ? " · " + esc(o.w) : "") + "</small></div>"; }).join("") + (v.length > 400 ? '<div class="it"><small>…och ' + (v.length - 400) + " till (filtrera för att se fler)</small></div>" : ""); }
+  $("list").onclick = function (e) { var it = e.target.closest(".it"); if (it && it.dataset.i != null) select(+it.dataset.i, true); };
+  function refresh() { build(); list(); if (st.sel >= 0 && !vis(objs[st.sel])) select(-1); }
+  // ---- markering ----
+  function select(i, fly) {
+    st.sel = i; while (hi.children.length) { var c = hi.children[0]; hi.remove(c); c.geometry.dispose(); c.material.dispose(); }
+    if (i < 0) { $("info").innerHTML = "Tryck på ett objekt i vyn eller i listan."; list(); draw(); return; }
+    var o = objs[i], box = new THREE.Box3();
+    ["a", "b"].forEach(function (k) { var d = o[k]; if (!d) return; var g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(d.P, 3)); g.setIndex(new THREE.BufferAttribute(d.I, 1)); var e = new THREE.LineSegments(new THREE.EdgesGeometry(g, 20), new THREE.LineBasicMaterial({ color: k === "a" ? 0xb91c1c : 0xca8a04, depthTest: false })); e.renderOrder = 10; hi.add(e); g.computeBoundingBox(); box.union(g.boundingBox); });
+    var m3 = function (x) { return x == null ? "–" : x.toFixed(3).replace(".", ",") + " m³"; };
+    $("info").innerHTML = "<b>" + esc(o.n || DATA.clsNames[o.c] || o.c) + "</b><br>" + esc(DATA.clsNames[o.c] || o.c) + " · <span style='color:" + COL[o.s] + "'>" + NAME[o.s] + "</span>" + (o.w ? "<br>" + esc(o.w) : "") + "<br>Volym: " + m3(o.va) + " → " + m3(o.vb) + (o.re ? "<br>Fick nytt GUID vid exporten och parades ihop på klass, namn och läge." : "");
+    if (fly && !box.isEmpty()) { var c2 = box.getCenter(new THREE.Vector3()), r = Math.max(2, box.getSize(new THREE.Vector3()).length() * 1.6), dir = cam.position.clone().sub(ctl.target).normalize(); ctl.target.copy(c2); cam.position.copy(c2).add(dir.multiplyScalar(r)); ctl.update(); }
+    list(); draw();
+  }
+  var down = null; R.domElement.addEventListener("pointerdown", function (e) { down = [e.clientX, e.clientY]; });
+  var ray = new THREE.Raycaster();
+  function pick(e) {
+    var r = R.domElement.getBoundingClientRect(); ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), cam);
+    var hits = ray.intersectObjects(root.children, false); for (var h = 0; h < hits.length; h++) { var m = hits[h].object; if (m.material.transparent && m.material.opacity < 0.5 && hits.length > 1 && h < hits.length - 1) continue; var s = m.userData.starts, f = hits[h].faceIndex, lo = 0, hi2 = s.length - 2; while (lo < hi2) { var mid = (lo + hi2 + 1) >> 1; if (s[mid] <= f) lo = mid; else hi2 = mid - 1; } return m.userData.ids[lo]; }
+    return -1;
+  }
+  R.domElement.addEventListener("pointerup", function (e) { if (down && Math.abs(e.clientX - down[0]) < 4 && Math.abs(e.clientY - down[1]) < 4) { var id = pick(e); select(id, false); } down = null; });
+  R.domElement.addEventListener("pointermove", function (e) { if (e.buttons) { $("tip").style.display = "none"; return; } var id = pick(e), t = $("tip"); if (id < 0) { t.style.display = "none"; return; } var o = objs[id], r = cv.getBoundingClientRect(); t.textContent = (o.n || DATA.clsNames[o.c] || o.c) + " – " + NAME[o.s]; t.style.left = (e.clientX - r.left + 12) + "px"; t.style.top = (e.clientY - r.top + 12) + "px"; t.style.display = "block"; });
+  // ---- reglage ----
+  $("sw").oninput = function () { st.sw = +this.value; swipe(); }; $("swax").onclick = axisFromView;
+  $("ca").oninput = function () { st.colA = this.value; build(); }; $("cb").oninput = function () { st.colB = this.value; build(); };
+  $("old").onchange = function () { st.old = this.checked; build(); }; $("same").onchange = function () { st.same = this.value; build(); };
+  $("fit").onclick = function () { home(); draw(); };
+  $("csv").onclick = function () {
+    var q = function (v) { v = String(v == null ? "" : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }, L = [["Typ", "Namn", "Klass", "Anmärkning", "Volym A (m3)", "Volym B (m3)"].join(";")];
+    objs.filter(vis).forEach(function (o) { L.push([NAME[o.s], o.n, DATA.clsNames[o.c] || o.c, o.w, o.va == null ? "" : String(o.va).replace(".", ","), o.vb == null ? "" : String(o.vb).replace(".", ",")].map(q).join(";")); });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + L.join("\r\n")], { type: "text/csv;charset=utf-8" })); a.download = "Versionsjamforelse.csv"; document.body.appendChild(a); a.click(); a.remove();
+  };
+  window.__ver = { st: st, objs: objs, setMode: setMode, groups: function () { return groups; }, renderer: R };
+  chips(); clsUi(); size(); home(); setMode("diff"); list();
+})();
+</script></body></html>
