@@ -85,6 +85,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(V.bSameGhost && V.aHidden === 'g0,g4' && V.aGhost === 'g1,g3' && V.active && V.colB >= 3, 'Färgläget: ' + JSON.stringify(V));
   await page.evaluate(() => { const A = l3vrModel('A'); l3bRecolor(); window.__c = Array.from(A.meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });
   const colA = await page.evaluate(() => window.__c); ok(colA[0] > colA[1] + 100, 'Borttagen pelare är röd i 3D: ' + colA);
+  // Tidplanen av: Original-läget är på och skillnadsfärgerna syns ändå; av/på med kryssrutan
+  ok(await page.evaluate(() => l3b.orig === true && l3vr.setOrig === true), 'Tidplanen ignoreras som standard (Original-läget)');
+  await page.evaluate(() => { l3bRecolor(); window.__c = Array.from(l3vrModel('A').meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });
+  { const c2 = await page.evaluate(() => window.__c); ok(c2[0] > c2[1] + 100, 'Skillnadsfärgen gäller även i Original-läget: ' + c2); }
+  await page.uncheck('#v3Ver #vrNoPlan'); ok(await page.evaluate(() => l3b.orig === false), 'Kryssrutan av: tidplanen gäller igen');
+  await page.check('#v3Ver #vrNoPlan'); ok(await page.evaluate(() => l3b.orig === true), 'Kryssrutan på: Original-läget');
   // Dölj kategori, oförändrat = dölj
   await page.evaluate(() => { l3vr.show.added = 0; l3vr.same = 'hide'; l3vrApply(); });
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return [...u.cmpHide].map(i => u.ranges[i].guid).sort().join(); }) === 'g0,g5,g9', 'Dölj tillkommet och oförändrat');
@@ -106,8 +112,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => { l3vr.filter.q = ''; });
   // Stäng: versionerna tas bort och färgerna är borta
   await page.evaluate(() => l3vrToggle(false));
-  const end = await page.evaluate(() => ({ models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));
-  ok(end.models === 0 && !end.active && !end.panel && end.col === 0, 'Stängd: ' + JSON.stringify(end));
+  const end = await page.evaluate(() => ({ orig: l3b.orig, models: l3b.models.length, active: l3vr.active, panel: !!document.getElementById('v3Ver'), col: l3vr.col.size }));
+  ok(end.orig === false && end.models === 0 && !end.active && !end.panel && end.col === 0, 'Stängd: ' + JSON.stringify(end));
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
   console.log('OK: versioner och jämförelse – fil och versioner ur Trimble Connect, tillkommet/borttaget/flyttat/ändrad form/nytt GUID, färgläge, före/efter, svep, blinka, lista, CSV, stäng');
   await browser.close(); server.close();

@@ -11,7 +11,7 @@
 const L3VR_COL = { added: "#16a34a", removed: "#dc2626", moved: "#2563eb", reshaped: "#f59e0b", renamed: "#9333ea", same: "#94a3b8" };
 const L3VR_NAME = { added: "Tillkommit", removed: "Borttaget", moved: "Flyttat", reshaped: "Ändrad form", renamed: "Nytt namn/klass", same: "Oförändrat" };
 const L3VR_ORDER = ["added", "removed", "moved", "reshaped", "renamed", "same"];
-const l3vr = { open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1 },
+const l3vr = { noPlan: true, setOrig: false, open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1 },
   tol: 5, filter: { cls: "", q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
 
 const l3vrEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -107,10 +107,16 @@ async function l3vrPropDiff(e) {
   return out;
 }
 
+/* Tidplanen av/på under jämförelsen: på = som en vanlig viewer (Original-läget: modellens egna färger, inget dolt eller färgat efter status). */
+function l3vrPlanMode() {
+  if (typeof l3Original !== "function" || typeof l3b === "undefined") return;
+  if (l3vr.noPlan && !l3b.orig) { l3Original(true); l3vr.setOrig = true; }
+  else if (!l3vr.noPlan && l3b.orig && l3vr.setOrig) { l3Original(false); l3vr.setOrig = false; }
+}
 /* ---- Visningen i 3D ---- */
 function l3vrHex(h) { const c = new THREE.Color(h); return [c.r, c.g, c.b]; }
 const l3vrColorFor0 = typeof l3pColorFor === "function" ? l3pColorFor : null;
-l3pColorFor = function (m, r) { if (l3vr.active && l3vr.col.size) { const c = l3vr.col.get(m.id + "|" + r.guid); if (c) return c; } return l3vrColorFor0 ? l3vrColorFor0(m, r) : null; };
+l3pColorFor = function (m, r, orig) { if (l3vr.active && l3vr.col.size) { const c = l3vr.col.get(m.id + "|" + r.guid); if (c) return c; } return l3vrColorFor0 ? l3vrColorFor0(m, r, orig) : null; };
 function l3vrClear(keepCol) {
   [l3vrModel("A"), l3vrModel("B")].forEach(m => { if (!m) return; m.meshes.forEach(x => { const u = x.userData.l3b; if (!u) return; if (u.cmpHide || u.cmpAlpha) { u.cmpHide = null; u.cmpAlpha = null; l3bApplyHidden(x); } }); });
   l3vrSwipeOff(); if (l3vr.blink) { clearInterval(l3vr.blink); l3vr.blink = null; }
@@ -190,14 +196,14 @@ async function l3vrRun() {
     l3vr.ids.B = await l3vrLoadOne(f, vB); l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
     l3vr.res = await l3vrCompare(l3vrModel("A"), l3vrModel("B"), l3vr.tol);
     const sz = k => { const mm = typeof l3p !== "undefined" && l3p.mem ? l3p.mem.get(l3vr.ids[k]) : null; return mm && mm.blob ? mm.blob.size : 0; }; l3vr.res.info = { A: { id: vA.versionId, no: vA.no, bytes: sz("A"), tris: l3vrModel("A").tris }, B: { id: vB.versionId, no: vB.no, bytes: sz("B"), tris: l3vrModel("B").tris } };
-    l3vr.busy = ""; l3vrApply(); l3vrFit();
+    l3vr.busy = ""; l3vrPlanMode(); l3vrApply(); l3vrFit();
     l3Status(`Jämförelse klar: ${l3vr.res.count.added} tillkomna, ${l3vr.res.count.removed} borttagna, ${l3vr.res.count.moved} flyttade, ${l3vr.res.count.reshaped} med ändrad form.`);
   } catch (e) { l3vr.busy = ""; console.warn("Versionsjämförelse", e); l3Status(String(e.message || e), true); }
   l3vrRender();
 }
 function l3vrFit() { try { const bb = new THREE.Box3(); [l3vrModel("A"), l3vrModel("B")].forEach(m => m && m.meshes.forEach(x => { x.updateMatrixWorld(true); bb.expandByObject(x); })); if (!bb.isEmpty()) l3FlyTo(bb.getCenter(new THREE.Vector3()), Math.max(10, bb.getSize(new THREE.Vector3()).length()) * 0.95); } catch (e) { /* behåll vyn */ } }
 async function l3vrClose(keepModels) {
-  l3vrClear(); const ids = [l3vr.ids.A, l3vr.ids.B].filter(Boolean);
+  l3vrClear(); if (l3vr.setOrig && typeof l3Original === "function" && l3b.orig) l3Original(false); l3vr.setOrig = false; const ids = [l3vr.ids.A, l3vr.ids.B].filter(Boolean);
   if (!keepModels) ids.forEach(id => { try { l3bForget(id); } catch (e) { /* redan borta */ } });
   l3vr.ids = { A: null, B: null }; l3vr.res = null; l3vr.sel = null; l3vr.props = null; if (ids.length && !keepModels) { l3RenderLegend(); l3Render(); if (typeof l3LayersRender === "function") l3LayersRender(); }
 }
@@ -271,6 +277,7 @@ function l3vrRender() {
     h += `<div class="fe-sec"><div class="fe-sub">3. Resultat</div><div class="fe-c">${inf ? `<div class="fe-note">Hämtat: A = v${inf.A.no} (${l3vrMb(inf.A.bytes) || "okänd storlek"}, ${(inf.A.tris || 0).toLocaleString("sv-SE")} trianglar), B = v${inf.B.no} (${l3vrMb(inf.B.bytes) || "okänd storlek"}, ${(inf.B.tris || 0).toLocaleString("sv-SE")} trianglar). Versions-id A ${e(String(inf.A.id).slice(0, 12))} / B ${e(String(inf.B.id).slice(0, 12))}.</div>` : ""}${same ? `<div class="fe-note" style="color:#b45309">Alla objekt är identiska. Antingen är versionerna lika, eller så levererade Trimble Connect samma fil för båda. Är storleken ovan densamma för A och B är det troligen det senare.</div>` : ""}<div class="vr-kpi">${L3VR_ORDER.map(k => `<button type="button" class="vr-k${k !== "same" && !l3vr.show[k] ? " off" : ""}" data-vr="show" data-k="${k}" title="${k === "same" ? "Filtrera listan på oförändrade" : "Visa/dölj i 3D"}"><span class="vr-dot" style="background:${L3VR_COL[k]}"></span>${L3VR_NAME[k]}<b>${R.count[k]}</b></button>`).join("")}</div>
       <div class="vr-bar" title="Andel av objekten">${L3VR_ORDER.map(k => `<i style="width:${R.count[k] / tot * 100}%;background:${L3VR_COL[k]}"></i>`).join("")}</div>
       <div class="fe-note">Volym: ${R.volA.toFixed(1).replace(".", ",")} → ${R.volB.toFixed(1).replace(".", ",")} m³ (${dv >= 0 ? "+" : "−"}${Math.abs(dv).toFixed(1).replace(".", ",")} m³). ${R.reguid ? `${R.reguid} objekt hade fått nytt GUID och parades ihop på klass, namn och läge. ` : ""}${R.noGuid ? `${R.noGuid} delar saknar GUID och ingår inte.` : ""}</div>
+      <label class="fe-chk" title="På: modellerna visas med sina egna färger, utan tidplanens färger, dolda temporära objekt eller Gantt-filter – som en vanlig viewer. Av: tidplanen färgar som vanligt (skillnadsfärgerna ligger ändå överst)."><input id="vrNoPlan" type="checkbox"${l3vr.noPlan ? " checked" : ""}> Visa som viewer – ignorera tidplanen</label>
       <div class="fe-row"><label>Visa<select id="vrView"><option value="diff"${l3vr.view === "diff" ? " selected" : ""}>Skillnader (färgat)</option><option value="before"${l3vr.view === "before" ? " selected" : ""}>Bara äldre (A)</option><option value="after"${l3vr.view === "after" ? " selected" : ""}>Bara nyare (B)</option><option value="blink"${l3vr.view === "blink" ? " selected" : ""}>Blinka A / B</option><option value="swipe"${l3vr.view === "swipe" ? " selected" : ""}>Svep (delad bild)</option></select></label>
         ${l3vr.view === "diff" ? `<label>Oförändrat<select id="vrSame"><option value="ghost"${l3vr.same === "ghost" ? " selected" : ""}>Spöke</option><option value="grey"${l3vr.same === "grey" ? " selected" : ""}>Grått</option><option value="hide"${l3vr.same === "hide" ? " selected" : ""}>Dölj</option></select></label>` : ""}</div>
       ${l3vr.view === "diff" ? `<label class="fe-chk"><input id="vrOld" type="checkbox"${l3vr.old ? " checked" : ""}> Visa gammalt läge som röd skugga</label>` : ""}
@@ -311,6 +318,7 @@ function l3vrBind(el) {
   on("#vrLoaded", ev => { const m = l3b.models.find(x => x.id === ev.target.value); if (m && m.src) l3vrPickFile(m.src.fileId, String(m.name).replace(/ · v\d+$/, ""), m.src.parentId); });
   el.querySelectorAll('input[name="vrA"]').forEach(i => { i.onchange = () => { l3vr.A = i.value; }; }); el.querySelectorAll('input[name="vrB"]').forEach(i => { i.onchange = () => { l3vr.B = i.value; }; });
   on("#vrTol", ev => { l3vr.tol = Math.max(0, Number(ev.target.value) || 5); });
+  on("#vrNoPlan", ev => { l3vr.noPlan = ev.target.checked; l3vrPlanMode(); l3vrApply(); });
   on("#vrView", ev => { l3vr.view = ev.target.value; l3vrApply(); l3vrRender(); });
   on("#vrSame", ev => { l3vr.same = ev.target.value; l3vrApply(); });
   on("#vrOld", ev => { l3vr.old = ev.target.checked; l3vrApply(); });

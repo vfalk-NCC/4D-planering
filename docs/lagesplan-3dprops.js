@@ -373,7 +373,7 @@ function l3pColorOn() {
 }
 function l3pColorOff() { l3p.colorBy = null; if (typeof l3bRecolor === "function") { l3bRecolor(); l3Render(); } }
 /* Anropas av l3bRecolor: färgen för en bit när Färga efter värde är på (annars null). */
-function l3pColorFor(m, r) {
-  if (!l3p.colorBy) return null;
+function l3pColorFor(m, r, orig) {
+  if (orig || !l3p.colorBy) return null;   // Original-läget: ingen egenskapsfärgning
   return l3p.colorBy.map.get(m.id + "|" + r.guid) || [0.86, 0.87, 0.9];
 }
