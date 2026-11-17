@@ -103,6 +103,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#v3Ver [data-vr="show"][data-k="same"]');
   ok(await page.evaluate(() => { const B = l3vrModel('B'), u = B.meshes[0].userData.l3b; return l3vr.show.same && u.cmpHide.size === 0 && u.cmpAlpha.size === 2; }), 'Oförändrat visas igen som spöke');
   // Kategoriknapparna markerar objekten i 3D (även en avslagen kategori tänds), Ctrl lägger till, Isolera markerade
+  await page.waitForTimeout(900);   // vyn flyger till modellen efter jämförelsen
   const cam0 = await page.evaluate(() => l3.camera.position.toArray().concat(l3.orbit.target.toArray()).join());
   await page.click('#v3Ver [data-vr="selk"][data-k="removed"]');
   await page.waitForTimeout(700); ok(await page.evaluate(c => l3.camera.position.toArray().concat(l3.orbit.target.toArray()).join() === c, cam0), 'Kategoriknappen markerar utan att flytta vyn');
@@ -190,6 +191,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => l3lLoadRemembered('v:f1:v1')); await page.waitForTimeout(300);
   ok(await page.evaluate(() => window.__loads.length === 1 && window.__loads[0][1] === 'v1'), 'Sparad version läses in som sin egen version: ' + await page.evaluate(() => JSON.stringify(window.__loads)));
   await page.evaluate(() => { l3SetPref('verKeep', false); });
+  // Blanda: A = inläst modell (m:a = v1), B = version ur Trimble Connect (v2) – ägd bara på B-sidan
+  await page.evaluate(() => { l3vr.src = 'loaded'; l3vr.file = { fileId: 'f1', name: 'Hus A.ifc', parentId: 'root' }; l3SetPref('verKeep', false); l3vrToggle(true); });
+  await page.waitForSelector('#v3Ver #vrLdB option[value="tc:v2"]', { state: 'attached' });
+  await page.selectOption('#v3Ver #vrLdA', 'm:a'); await page.selectOption('#v3Ver #vrLdB', 'tc:v2');
+  await page.evaluate(() => { window.__loads.length = 0; }); await page.click('#v3Ver [data-vr="runl"]'); await page.waitForFunction(() => l3vr.res && !l3vr.busy, null, { timeout: 15000 });
+  const MX = await page.evaluate(() => ({ c: l3vr.res.count, own: JSON.stringify(l3vr.own), loads: window.__loads.map(x => x[1]).join(), info: /Jämför: A = Export 1.*B = v2/.test(document.getElementById('v3Ver').textContent), meta: JSON.stringify(l3vr.meta), nm: l3vr.cmpName }));
+  ok(MX.c.added === 1 && MX.c.removed === 1 && MX.c.moved === 1 && MX.c.reshaped === 1 && MX.c.same === 2 && MX.own === '{"A":false,"B":true}' && MX.info, 'Blandat: inläst A + TC-version B: ' + JSON.stringify(MX));
+  await page.evaluate(() => l3vrToggle(false));
+  ok(await page.evaluate(() => { const ids = l3b.models.map(m => m.id); return ids.includes('m:a') && !ids.includes('v:f1:v2') && l3b.models.find(m => m.id === 'm:a').visible; }), 'Stängs: den inlästa modellen finns kvar, den hämtade versionen tas bort');
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
   console.log('OK: versioner och jämförelse – fil och versioner ur Trimble Connect, tillkommet/borttaget/flyttat/ändrad form/nytt GUID, färgläge, före/efter, svep, blinka, lista, CSV, stäng');
   await browser.close(); server.close();

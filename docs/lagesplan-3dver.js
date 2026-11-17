@@ -218,15 +218,24 @@ async function l3vrRun() {
 }
 /* Jämför två modeller som redan är inlästa under 3D-modeller (valfria två, t.ex. två exporter från olika datum). De läses inte in igen och tas inte bort när jämförelsen stängs. */
 async function l3vrRunLoaded() {
-  const A = l3b.models.find(m => m.id === l3vr.ldA), B = l3b.models.find(m => m.id === l3vr.ldB);
-  if (!A || !B) { l3Status("Välj två inlästa modeller.", true); return; }
-  if (A.id === B.id) { l3Status("Välj två olika modeller.", true); return; }
-  l3vrClose(); l3vr.ids = { A: A.id, B: B.id }; l3vr.own = { A: false, B: false }; l3vr.cmpName = A.name === B.name ? A.name : `${A.name} ↔ ${B.name}`;
-  l3vr.sel = null; l3vr.props = null; l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
+  const resolve = v => { if (String(v).startsWith("tc:")) { const ver = (l3vr.versions || []).find(x => x.versionId === String(v).slice(3)); return ver && l3vr.file ? { tc: ver } : null; } const m = l3b.models.find(x => x.id === v); return m ? { m } : null; };
+  const rA = resolve(l3vr.ldA), rB = resolve(l3vr.ldB);
+  if (!rA || !rB) { l3Status("Välj två modeller.", true); return; }
+  if (l3vr.ldA === l3vr.ldB) { l3Status("Välj två olika modeller.", true); return; }
+  if ((rA.tc || rB.tc) && l3b.busy) { l3Status("Vänta tills den andra modellen är inläst.", true); return; }
+  l3vrClose(); l3vr.cmpName = ""; l3vr.sel = null; l3vr.props = null; l3vr.res = null; l3vr.ids = { A: null, B: null }; l3vr.own = { A: false, B: false };
   try {
+    for (const [k, r] of [["A", rA], ["B", rB]]) {
+      if (r.tc) { l3vr.busy = `Läser in ${k === "A" ? "äldre" : "nyare"} version…`; l3vrRender(); l3vr.ids[k] = await l3vrLoadOne(l3vr.file, r.tc); l3vr.own[k] = true; }
+      else l3vr.ids[k] = r.m.id;
+    }
+    const A = l3vrModel("A"), B = l3vrModel("B"), nm = (m, r) => r.tc ? `${l3vr.file.name.replace(/\.ifc(zip)?$/i, "")} · v${r.tc.no}` : m.name;
+    l3vr.cmpName = A.name === B.name ? A.name : `${nm(A, rA)} ↔ ${nm(B, rB)}`;
+    l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
     l3vr.res = await l3vrCompare(A, B, l3vr.tol);
-    l3vr.meta = { A: { label: A.name, date: "", by: "" }, B: { label: B.name, date: "", by: "" } };
-    l3vr.res.info = { local: true, A: { label: A.name, tris: A.tris, bytes: 0, local: true }, B: { label: B.name, tris: B.tris, bytes: 0, local: true } };
+    const meta = (r, m) => r.tc ? { label: `v${r.tc.no}`, date: l3vrDate(r.tc.modified), by: r.tc.by || "" } : { label: m.name, date: "", by: "" };
+    const side = (k, r, m) => { const mm = r.tc && typeof l3p !== "undefined" && l3p.mem ? l3p.mem.get(l3vr.ids[k]) : null; return { label: meta(r, m).label, tris: m.tris, bytes: mm && mm.blob ? mm.blob.size : 0, local: !r.tc, id: r.tc ? r.tc.versionId : "" }; };
+    l3vr.meta = { A: meta(rA, A), B: meta(rB, B) }; l3vr.res.info = { A: side("A", rA, A), B: side("B", rB, B) };
     l3vr.busy = ""; l3vrPlanMode(); l3vrApply(); l3vrFit();
     l3Status(`Jämförelse klar: ${l3vr.res.count.added} tillkomna, ${l3vr.res.count.removed} borttagna, ${l3vr.res.count.moved} flyttade, ${l3vr.res.count.reshaped} med ändrad form.`);
   } catch (e) { l3vr.busy = ""; console.warn("Jämförelse", e); l3Status(String(e.message || e), true); }
@@ -283,8 +292,22 @@ function l3vrRows() { const R = l3vr.res; if (!R) return []; return R.rows.filte
 /* Alla inlästa modeller att välja bland (även tidigare inlästa versioner, "Namn · v9"), utom de som en pågående Trimble Connect-jämförelse själv har läst in. */
 function l3vrLoadedList() { return l3b.models.filter(m => !(l3vr.own.A && m.id === l3vr.ids.A) && !(l3vr.own.B && m.id === l3vr.ids.B)); }
 function l3vrInfoHtml(inf) {
-  const part = (k, x) => `${k} = ${l3vrEsc(x.label)} (${l3vrMb(x.bytes) || (x.bytes === 0 && x.local ? "" : "okänd storlek")}${x.bytes || !x.local ? ", " : ""}${(x.tris || 0).toLocaleString("sv-SE")} trianglar)`;
-  return `<div class="fe-note">${inf.local ? "Jämför" : "Hämtat"}: ${part("A", inf.A)}, ${part("B", inf.B)}.${inf.local ? "" : ` Versions-id A ${l3vrEsc(String(inf.A.id).slice(0, 12))} / B ${l3vrEsc(String(inf.B.id).slice(0, 12))}.`}</div>`;
+  const part = (k, x) => `${k} = ${l3vrEsc(x.label)} (${x.local ? "" : (l3vrMb(x.bytes) || "okänd storlek") + ", "}${(x.tris || 0).toLocaleString("sv-SE")} trianglar)`;
+  const bothTc = !inf.A.local && !inf.B.local;
+  return `<div class="fe-note">${bothTc ? "Hämtat" : "Jämför"}: ${part("A", inf.A)}, ${part("B", inf.B)}.${bothTc ? ` Versions-id A ${l3vrEsc(String(inf.A.id).slice(0, 12))} / B ${l3vrEsc(String(inf.B.id).slice(0, 12))}.` : ""}</div>`;
+}
+function l3vrPickerHtml() {
+  const tc = l3vr.tc, e = l3vrEsc; let h = "";
+  h += `<div class="fe-row"><button type="button" data-vr="tc">${l3vr.pick ? "Dölj mapparna" : "Välj fil i Trimble Connect…"}</button></div>`;
+  if (l3vr.pick) {
+    if (tc.err) h += `<div class="fe-note" style="color:#b91c1c">${e(tc.err)}</div>`;
+    if (tc.items) {
+      h += `<div class="fe-note">${tc.stack.map((s, i) => `<a href="#" data-vr="dir" data-id="${e(s.id)}" data-nm="${e(s.name)}">${e(s.name)}</a>`).join(" › ")}</div><div class="vr-tc">`;
+      tc.items.filter(x => x.type === "folder" || /\.ifc(zip)?$/i.test(x.name)).forEach(x => { h += x.type === "folder" ? `<button type="button" data-vr="dir" data-id="${e(x.id)}" data-nm="${e(x.name)}">📁 ${e(x.name)}</button>` : `<button type="button" data-vr="file" data-id="${e(x.id)}" data-nm="${e(x.name)}" data-par="${e(tc.stack.length ? tc.stack[tc.stack.length - 1].id : "")}">${e(x.name)} <small>${l3vrMb(x.size)}</small></button>`; });
+      h += `</div>`;
+    } else h += `<div class="fe-note">${tc.busy ? "Hämtar projektets mappar…" : "Trimble Connect svarar inte – är 4D-planering öppen?"}</div>`;
+  }
+  return h;
 }
 function l3vrRender() {
   const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3Ver");
@@ -295,22 +318,15 @@ function l3vrRender() {
   const loaded = l3b.models.filter(m => m.src && m.src.fileId && !String(m.id).startsWith("v:"));
   let h = `<div class="fe-h"><b>🔀 Versioner och jämförelse</b><span>${f ? e(f.name) : ""}</span><button type="button" data-vr="dock" title="Docka till högermenyn">📌</button><button type="button" data-vr="x" title="Stäng (de inlästa versionerna tas bort)">✕</button></div><div class="fe-body">`;
   if (l3vr.busy) h += `<div class="fe-note"><span class="pm-spin"></span> ${e(l3vr.busy)}</div>`;
-  h += `<div class="fe-row" style="margin-bottom:4px"><button type="button" data-vr="src" data-s="tc" class="${l3vr.src === "tc" ? "primary" : ""}">Versioner i Trimble Connect</button><button type="button" data-vr="src" data-s="loaded" class="${l3vr.src === "loaded" ? "primary" : ""}">Inlästa modeller</button></div>`;
+  h += `<div class="fe-row" style="margin-bottom:4px"><button type="button" data-vr="src" data-s="tc" class="${l3vr.src === "tc" ? "primary" : ""}">Versioner i Trimble Connect</button><button type="button" data-vr="src" data-s="loaded" class="${l3vr.src === "loaded" ? "primary" : ""}">Blanda inlästa + Trimble Connect</button></div>`;
   if (l3vr.src === "loaded") {
-    const ms = l3vrLoadedList(), opt = v => ms.map(m => `<option value="${e(m.id)}"${v === m.id ? " selected" : ""}>${e(m.name)}${m.tris ? ` (${(m.tris / 1000).toFixed(0)}k)` : ""}</option>`).join("");
-    h += `<div class="fe-sec"><div class="fe-sub">1. Välj två inlästa modeller</div><div class="fe-c">${ms.length < 2 ? `<div class="fe-note">Läs in minst två modeller under Lager → 3D-modeller (t.ex. två exporter av samma modell). Välj sedan äldre och nyare här.</div>` : `<label>Äldre (A)<select id="vrLdA"><option value="">Välj…</option>${opt(l3vr.ldA)}</select></label><label>Nyare (B)<select id="vrLdB"><option value="">Välj…</option>${opt(l3vr.ldB)}</select></label><div class="fe-row"><label>Tolerans (mm)<input id="vrTol" type="number" min="0" max="500" step="1" value="${l3vr.tol}"></label><button type="button" class="primary" data-vr="runl"${l3vr.busy ? " disabled" : ""}>Jämför</button></div><div class="fe-note">Modellerna läses inte in igen och tas inte bort när du stänger. Övriga modeller släcks under jämförelsen och tänds igen efteråt.</div>`}</div></div>`;
+    const ms = l3vrLoadedList(), vs2 = l3vr.versions || [], f2 = l3vr.file;
+    const opt = v => `<optgroup label="Inlästa modeller">${ms.map(m => `<option value="${e(m.id)}"${v === m.id ? " selected" : ""}>${e(m.name)}${m.tris ? ` (${(m.tris / 1000).toFixed(0)}k)` : ""}</option>`).join("")}</optgroup>${vs2.length && f2 ? `<optgroup label="Trimble Connect – ${e(f2.name)}">${vs2.slice().reverse().map(x => `<option value="tc:${e(x.versionId)}"${v === "tc:" + x.versionId ? " selected" : ""}>v${x.no} · ${e(l3vrDate(x.modified))}${x.by ? " · " + e(x.by) : ""}${x.size ? " · " + l3vrMb(x.size) : ""}</option>`).join("")}</optgroup>` : ""}`;
+    h += `<div class="fe-sec"><div class="fe-sub">1. Välj två modeller – blanda fritt</div><div class="fe-c"><div class="fe-note">Äldre (A) och Nyare (B) kan var och en vara en inläst modell eller en version ur Trimble Connect. Välj en fil i Trimble Connect för att få dess versioner i listorna.</div>${l3vrPickerHtml()}<label>Äldre (A)<select id="vrLdA"><option value="">Välj…</option>${opt(l3vr.ldA)}</select></label><label>Nyare (B)<select id="vrLdB"><option value="">Välj…</option>${opt(l3vr.ldB)}</select></label><label class="fe-chk" title="På: versioner ur Trimble Connect tas inte bort när du stänger jämförelsen. De ligger kvar under Lager → 3D-modeller (släckta)."><input id="vrKeep" type="checkbox"${l3Prefs().verKeep ? " checked" : ""}> Spara hämtade versioner under 3D-modeller</label><div class="fe-row"><label>Tolerans (mm)<input id="vrTol" type="number" min="0" max="500" step="1" value="${l3vr.tol}"></label><button type="button" class="primary" data-vr="runl"${l3vr.busy ? " disabled" : ""}>Jämför</button></div><div class="fe-note">Inlästa modeller läses inte in igen och tas inte bort när du stänger. Övriga modeller släcks under jämförelsen och tänds igen efteråt.</div></div></div>`;
   } else {
   h += `<div class="fe-sec"><div class="fe-sub">1. Modell</div><div class="fe-c">`;
   if (loaded.length) h += `<div class="fe-row"><label>Inläst modell<select id="vrLoaded"><option value="">Välj…</option>${loaded.map(m => `<option value="${e(m.id)}"${f && m.src.fileId === f.fileId ? " selected" : ""}>${e(m.name)}</option>`).join("")}</select></label></div>`;
-  h += `<div class="fe-row"><button type="button" data-vr="tc">${l3vr.pick ? "Dölj mapparna" : "Välj fil i Trimble Connect…"}</button></div>`;
-  if (l3vr.pick) {
-    if (tc.err) h += `<div class="fe-note" style="color:#b91c1c">${e(tc.err)}</div>`;
-    if (tc.items) {
-      h += `<div class="fe-note">${tc.stack.map((s, i) => `<a href="#" data-vr="dir" data-id="${e(s.id)}" data-nm="${e(s.name)}">${e(s.name)}</a>`).join(" › ")}</div><div class="vr-tc">`;
-      tc.items.filter(x => x.type === "folder" || /\.ifc(zip)?$/i.test(x.name)).forEach(x => { h += x.type === "folder" ? `<button type="button" data-vr="dir" data-id="${e(x.id)}" data-nm="${e(x.name)}">📁 ${e(x.name)}</button>` : `<button type="button" data-vr="file" data-id="${e(x.id)}" data-nm="${e(x.name)}" data-par="${e(tc.stack.length ? tc.stack[tc.stack.length - 1].id : "")}">${e(x.name)} <small>${l3vrMb(x.size)}</small></button>`; });
-      h += `</div>`;
-    } else h += `<div class="fe-note">${tc.busy ? "Hämtar projektets mappar…" : "Trimble Connect svarar inte – är 4D-planering öppen?"}</div>`;
-  }
+  h += l3vrPickerHtml();
   h += `</div></div>`;
   if (vs) {
     h += `<div class="fe-sec"><div class="fe-sub">2. Versioner (A = äldre, B = nyare)</div><div class="fe-c">${vs.length ? `<table class="vr-tbl"><tr><th>A</th><th>B</th><th>Vers.</th><th>Datum</th><th>Av</th><th></th></tr>${vs.slice().reverse().map(v => `<tr><td><input type="radio" name="vrA" value="${e(v.versionId)}"${l3vr.A === v.versionId ? " checked" : ""}></td><td><input type="radio" name="vrB" value="${e(v.versionId)}"${l3vr.B === v.versionId ? " checked" : ""}></td><td>v${v.no}</td><td>${e(l3vrDate(v.modified))}</td><td>${e(v.by)}</td><td class="n">${l3vrMb(v.size)}</td></tr>`).join("")}</table>` : `<div class="fe-note">Inga versioner hittades.</div>`}
