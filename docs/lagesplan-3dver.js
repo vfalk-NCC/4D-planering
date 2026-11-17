@@ -181,7 +181,7 @@ function l3vrSwipeOff() { [l3vrModel("A"), l3vrModel("B")].forEach(m => m && m.m
 
 /* Den vanliga (inlästa) modellen av samma fil ligger annars kvar och täcker versionerna – spöken och skillnadsfärger syns då inte. Den släcks under jämförelsen och tänds igen när den stängs. */
 function l3vrHideCopies() {
-  const f = l3vr.file; if (!f) return; l3vrShowCopies();
+  const f = l3vr.file; if (!l3vr.ids.A) return; l3vrShowCopies();
   if (!l3vr.own.A && !l3vr.own.B) { l3b.models.forEach(m => { if (m.id !== l3vr.ids.A && m.id !== l3vr.ids.B && m.visible !== false) { l3vr.hid.push(m.id); l3bShow(m.id, false); } }); if (l3vr.hid.length) l3Status(`${l3vr.hid.length} andra modeller är släckta under jämförelsen (tänds igen när du stänger).`); return; }
   l3b.models.forEach(m => { if (m.id === l3vr.ids.A || m.id === l3vr.ids.B || m.visible === false) return; const same = (m.src && m.src.fileId === f.fileId) || String(m.name || "").toLowerCase() === String(f.name || "").toLowerCase(); if (same) { l3vr.hid.push(m.id); l3bShow(m.id, false); } });
   if (l3vr.hid.length) l3Status(`${l3vr.hid.length} vanlig modell av samma fil är släckt under jämförelsen (tänds igen när du stänger).`);
@@ -192,10 +192,11 @@ async function l3vrLoadOne(file, v) {
   const id = `v:${file.fileId}:${v.versionId}`;
   if (!l3b.models.some(m => m.id === id)) {
     const base = String(file.name || "modell").replace(/\.ifc(zip)?$/i, "");
-    const w = { id, fileId: file.fileId, versionId: v.versionId, name: `${base} · v${v.no}`, plName: file.name, on: true, parentId: file.parentId || null, version: "v2:" + v.versionId, expectBytes: v.size || 0 };
+    const w = { id, fileId: file.fileId, versionId: v.versionId, keep: !!l3Prefs().verKeep, name: `${base} · v${v.no}`, plName: file.name, on: true, parentId: file.parentId || null, version: "v2:" + v.versionId, expectBytes: v.size || 0 };
     await l3bLoad([w]);
     if (!l3b.models.some(m => m.id === id)) throw new Error(`Version ${v.no} gick inte att läsa in.`);
-    try { localStorage.setItem(l3bRememberKey(), JSON.stringify(l3bRememberedAll().filter(x => x.id !== id))); } catch (e) { /* privat läge */ }   // versionerna ska inte läsas in igen vid nästa start
+    if (w.keep) l3bRemember(w, false);   // sparad: står släckt under 3D-modeller och läses in (rätt version) när du tänder den
+    else { try { localStorage.setItem(l3bRememberKey(), JSON.stringify(l3bRememberedAll().filter(x => x.id !== id))); } catch (e) { /* privat läge */ } }   // annars tillfällig: läses inte in igen vid nästa start
   }
   return id;
 }
@@ -204,7 +205,7 @@ async function l3vrRun() {
   if (!f || !vA || !vB) { l3Status("Välj två versioner.", true); return; }
   if (vA.versionId === vB.versionId) { l3Status("Välj två olika versioner.", true); return; }
   if (l3b.busy) { l3Status("Vänta tills den andra modellen är inläst.", true); return; }
-  l3vrClear(); l3vr.res = null; l3vr.sel = null; l3vr.props = null; l3vr.busy = "Läser in äldre version…"; l3vrRender();
+  l3vrClear(); l3vr.cmpName = ""; l3vr.res = null; l3vr.sel = null; l3vr.props = null; l3vr.busy = "Läser in äldre version…"; l3vrRender();
   try {
     l3vr.ids.A = await l3vrLoadOne(f, vA); l3vr.busy = "Läser in nyare version…"; l3vrRender();
     l3vr.ids.B = await l3vrLoadOne(f, vB); l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
@@ -220,7 +221,7 @@ async function l3vrRunLoaded() {
   const A = l3b.models.find(m => m.id === l3vr.ldA), B = l3b.models.find(m => m.id === l3vr.ldB);
   if (!A || !B) { l3Status("Välj två inlästa modeller.", true); return; }
   if (A.id === B.id) { l3Status("Välj två olika modeller.", true); return; }
-  l3vrClose(); l3vr.ids = { A: A.id, B: B.id }; l3vr.own = { A: false, B: false }; l3vr.file = { fileId: null, name: A.name === B.name ? A.name : `${A.name} ↔ ${B.name}`, parentId: null };
+  l3vrClose(); l3vr.ids = { A: A.id, B: B.id }; l3vr.own = { A: false, B: false }; l3vr.cmpName = A.name === B.name ? A.name : `${A.name} ↔ ${B.name}`;
   l3vr.sel = null; l3vr.props = null; l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
   try {
     l3vr.res = await l3vrCompare(A, B, l3vr.tol);
@@ -235,7 +236,9 @@ function l3vrFit() { try { const bb = new THREE.Box3(); [l3vrModel("A"), l3vrMod
 async function l3vrClose(keepModels) {
   l3vrClear(); l3vrShowCopies(); if (l3vr.setOrig && typeof l3Original === "function" && l3b.orig) l3Original(false); l3vr.setOrig = false; const ids = [l3vr.own.A && l3vr.ids.A, l3vr.own.B && l3vr.ids.B].filter(Boolean);
   [l3vr.own.A ? null : l3vr.ids.A, l3vr.own.B ? null : l3vr.ids.B].filter(Boolean).forEach(id => { if (l3b.models.some(m => m.id === id)) l3bShow(id, true); });   // inlästa modeller som jämfördes tänds igen
-  if (!keepModels) ids.forEach(id => { try { l3bForget(id); } catch (e) { /* redan borta */ } });
+  const keepV = !!l3Prefs().verKeep && !keepModels;   // Spara versionerna: de ligger kvar under 3D-modeller (släckta) och sparas på listan
+  if (keepV) ids.forEach(id => { const m = l3b.models.find(x => x.id === id); if (m && m.src) { m.src.keep = true; l3bRemember(m.src, false); l3bShow(id, false); } });
+  if (!keepModels && !keepV) ids.forEach(id => { try { l3bForget(id); } catch (e) { /* redan borta */ } });
   l3vr.ids = { A: null, B: null }; l3vr.own = { A: false, B: false }; l3vr.res = null; l3vr.sel = null; l3vr.props = null; if (ids.length && !keepModels) { l3RenderLegend(); l3Render(); if (typeof l3LayersRender === "function") l3LayersRender(); }
 }
 
@@ -311,6 +314,7 @@ function l3vrRender() {
   h += `</div></div>`;
   if (vs) {
     h += `<div class="fe-sec"><div class="fe-sub">2. Versioner (A = äldre, B = nyare)</div><div class="fe-c">${vs.length ? `<table class="vr-tbl"><tr><th>A</th><th>B</th><th>Vers.</th><th>Datum</th><th>Av</th><th></th></tr>${vs.slice().reverse().map(v => `<tr><td><input type="radio" name="vrA" value="${e(v.versionId)}"${l3vr.A === v.versionId ? " checked" : ""}></td><td><input type="radio" name="vrB" value="${e(v.versionId)}"${l3vr.B === v.versionId ? " checked" : ""}></td><td>v${v.no}</td><td>${e(l3vrDate(v.modified))}</td><td>${e(v.by)}</td><td class="n">${l3vrMb(v.size)}</td></tr>`).join("")}</table>` : `<div class="fe-note">Inga versioner hittades.</div>`}
+      <label class="fe-chk" title="På: versionerna tas inte bort när du stänger jämförelsen. De ligger kvar under Lager → 3D-modeller (släckta) och kommer ihåg vilken version de är. Av: de tas bort och frigör minne."><input id="vrKeep" type="checkbox"${l3Prefs().verKeep ? " checked" : ""}> Spara versionerna under 3D-modeller</label>
       <div class="fe-row"><label>Tolerans (mm)<input id="vrTol" type="number" min="0" max="500" step="1" value="${l3vr.tol}"></label><button type="button" class="primary" data-vr="run"${l3vr.busy || !vs.length ? " disabled" : ""}>Läs in och jämför</button></div><div class="fe-note">Båda versionerna läses in som egna modeller (kan ta en stund). Inget ändras i Trimble Connect.</div></div></div>`;
   }
   }
@@ -369,7 +373,7 @@ function l3vrGeom(t, O) {   // { mesh, ri } → { p, i } (hörn relativt O, tria
   return { p: l3vrB64(new Float32Array(P)), i: l3vrB64(new Uint32Array(I)), tris: Math.floor(I.length / 3) };
 }
 async function l3vrExportHtml() {
-  const R = l3vr.res, f = l3vr.file; if (!R || !f) return;
+  const R = l3vr.res, f = { name: l3vr.cmpName || (l3vr.file || {}).name || "modell" }; if (!R) return;
   const rows = R.rows.filter(l3vrInF), tris = rows.reduce((n, r) => n + (r.a ? 1 : 0) + (r.b ? 1 : 0), 0);
   if (!rows.length) { l3Status("Inga objekt matchar filtret – inget att exportera.", true); return; }
   if (rows.length > 40000 && typeof uiConfirm === "function" && !(await uiConfirm(`${rows.length} objekt ger en stor fil (kan bli flera hundra MB). Filtrera på klass först, till exempel Grundläggning. Exportera ändå?`, { ok: "Exportera" }))) return;
@@ -399,6 +403,7 @@ function l3vrBind(el) {
   on("#vrLoaded", ev => { const m = l3b.models.find(x => x.id === ev.target.value); if (m && m.src) l3vrPickFile(m.src.fileId, String(m.name).replace(/ · v\d+$/, ""), m.src.parentId); });
   el.querySelectorAll('input[name="vrA"]').forEach(i => { i.onchange = () => { l3vr.A = i.value; }; }); el.querySelectorAll('input[name="vrB"]').forEach(i => { i.onchange = () => { l3vr.B = i.value; }; });
   on("#vrLdA", ev => { l3vr.ldA = ev.target.value; }); on("#vrLdB", ev => { l3vr.ldB = ev.target.value; });
+  on("#vrKeep", ev => { l3SetPref("verKeep", ev.target.checked); });
   on("#vrTol", ev => { l3vr.tol = Math.max(0, Number(ev.target.value) || 5); });
   on("#vrNoPlan", ev => { l3vr.noPlan = ev.target.checked; l3vrPlanMode(); l3vrApply(); });
   on("#vrView", ev => { l3vr.view = ev.target.value; l3vrApply(); l3vrRender(); });

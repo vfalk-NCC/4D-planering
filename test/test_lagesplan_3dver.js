@@ -178,6 +178,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => l3vrToggle(false));
   const LE = await page.evaluate(() => ({ n: l3b.models.length, vis: l3b.models.map(m => m.visible).join() }));
   ok(LE.n === 3 && LE.vis === 'true,true,true', 'Inlästa modeller finns kvar och är tända efter stängning: ' + JSON.stringify(LE));
+  // Spara versionerna: ligger kvar släckta under 3D-modeller, sparas med versions-id och läses in som rätt version när de tänds
+  await page.evaluate(() => { l3SetPref('verKeep', true); l3vr.src = 'tc'; l3vrToggle(true); });
+  await page.waitForSelector('#v3Ver [data-vr="run"]'); ok(await page.evaluate(() => document.getElementById('vrKeep').checked), 'Kryssrutan Spara versionerna är på');
+  await page.evaluate(() => { window.__loads.length = 0; }); await page.click('#v3Ver [data-vr="run"]'); await page.waitForFunction(() => l3vr.res && !l3vr.busy, null, { timeout: 15000 });
+  await page.evaluate(() => l3vrToggle(false));
+  const KP = await page.evaluate(() => { const r = l3bRememberedAll().filter(x => x.keep); return { n: l3b.models.length, vers: l3b.models.filter(m => String(m.id).startsWith('v:')).map(m => [m.id, m.visible].join('=')).join(), rem: r.map(x => [x.id, x.versionId, x.on].join('/')).sort().join() }; });
+  ok(KP.n === 5 && KP.vers === 'v:f1:v1=false,v:f1:v2=false' && KP.rem === 'v:f1:v1/v1/false,v:f1:v2/v2/false', 'Versionerna sparas (släckta, med versions-id): ' + JSON.stringify(KP));
+  // Tänds en sparad version som inte är inläst läses rätt version in (inte den senaste)
+  await page.evaluate(() => { l3bRemove('v:f1:v1'); window.__loads.length = 0; });
+  await page.evaluate(() => l3lLoadRemembered('v:f1:v1')); await page.waitForTimeout(300);
+  ok(await page.evaluate(() => window.__loads.length === 1 && window.__loads[0][1] === 'v1'), 'Sparad version läses in som sin egen version: ' + await page.evaluate(() => JSON.stringify(window.__loads)));
+  await page.evaluate(() => { l3SetPref('verKeep', false); });
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
   console.log('OK: versioner och jämförelse – fil och versioner ur Trimble Connect, tillkommet/borttaget/flyttat/ändrad form/nytt GUID, färgläge, före/efter, svep, blinka, lista, CSV, stäng');
   await browser.close(); server.close();

@@ -224,12 +224,12 @@ function l3bRemove(id) {
    3D-vyn öppnas; de släckta står i listan och läses in när de tänds. */
 const l3bRememberKey = () => `lagesplan-bldg-${projectId}`;
 /* Versioner som lästs in för en jämförelse (id v:…) är tillfälliga och sparas aldrig bland hämtade modeller – annars läses de om vid nästa start, och eftersom filens nyaste version då är "nyare" ersätts alla av den (Victor 2026-11-17: v1 … v9 blev alla v9). Gamla sådana poster ignoreras här. */
-function l3bRememberedAll() { try { return (JSON.parse(localStorage.getItem(l3bRememberKey()) || "[]") || []).filter(x => !String((x && x.id) || "").startsWith("v:")); } catch (e) { return []; } }
+function l3bRememberedAll() { try { return (JSON.parse(localStorage.getItem(l3bRememberKey()) || "[]") || []).filter(x => !String((x && x.id) || "").startsWith("v:") || (x && x.keep)); } catch (e) { return []; } }
 function l3bRemembered() { return l3bRememberedAll().filter(x => x.on !== false); }
 function l3bRemember(w, on) {
-  if (!w || !w.id || String(w.id).startsWith("v:")) return;
+  if (!w || !w.id || (String(w.id).startsWith("v:") && !w.keep)) return;
   const list = l3bRememberedAll().filter(x => x.id !== w.id);
-  list.push({ id: w.id, fileId: w.fileId || null, versionId: w.versionId || null, expectBytes: w.expectBytes || 0, plName: w.plName || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
+  list.push({ id: w.id, fileId: w.fileId || null, versionId: w.versionId || null, keep: !!w.keep, expectBytes: w.expectBytes || 0, plName: w.plName || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
   try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-30))); } catch (e) { /* privat läge */ }
 }
 /* Soptunnan: bort ur listan och ur vyn. Bara här i webbläsaren – inget i Trimble Connect ändras. */
@@ -275,7 +275,7 @@ async function l3bRestore() {
       onTc.forEach(w => { const m = tc.find(x => x.id === w.id); if (m && m.version && m.version !== w.version) fresh.push({ ...w, version: m.version }); });
     }
     const byFolder = new Map();
-    list.filter(w => w.fileId && w.parentId).forEach(w => { if (!byFolder.has(w.parentId)) byFolder.set(w.parentId, []); byFolder.get(w.parentId).push(w); });
+    list.filter(w => w.fileId && w.parentId && !w.versionId).forEach(w => { if (!byFolder.has(w.parentId)) byFolder.set(w.parentId, []); byFolder.get(w.parentId).push(w); });
     for (const [folderId, ws] of byFolder) {
       const items = (await askOpener("tcFolder", { folderId }, 30000)).items || [];
       ws.forEach(w => { const f = items.find(x => x.id === w.fileId); const v = f && (f.versionId || (f.modified ? String(f.modified) : "")); if (v && v !== w.version) fresh.push({ ...w, version: v }); });
