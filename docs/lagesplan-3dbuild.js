@@ -137,7 +137,7 @@ async function l3bLoad(list, opts = {}) {
       try { local = w.version && typeof l3pRawLocal === "function" ? await l3pRawLocal({ id: w.id, src: w }) : null; } catch (e) { local = null; }
       try {
         if (local && local.blob) { clearInterval(tick); r = { bytes: await local.blob.arrayBuffer(), placement: w.fileId ? null : local.placement || null, name: w.name, local: true }; }
-        else { arm(); r = await Promise.race([stall, w.fileId ? askOpener("tcFile", { fileId: w.fileId, name: w.name, ...(w.versionId ? { versionId: w.versionId } : {}) }, 0, dl).then(x => ({ ...x, name: w.name, placement: null })) : askOpener("ifcModelData", { modelId: w.id }, 0, dl)]); }
+        else { arm(); r = await Promise.race([stall, w.fileId ? askOpener("tcFile", { fileId: w.fileId, name: w.name, ...(w.versionId ? { versionId: w.versionId, expectBytes: w.expectBytes || 0 } : {}) }, 0, dl).then(x => ({ ...x, name: w.name, placement: null })) : askOpener("ifcModelData", { modelId: w.id }, 0, dl)]); }
         clearTimeout(stallT);
       } catch (er) {
         clearTimeout(stallT);
@@ -228,7 +228,7 @@ function l3bRemembered() { return l3bRememberedAll().filter(x => x.on !== false)
 function l3bRemember(w, on) {
   if (!w || !w.id) return;
   const list = l3bRememberedAll().filter(x => x.id !== w.id);
-  list.push({ id: w.id, fileId: w.fileId || null, versionId: w.versionId || null, plName: w.plName || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
+  list.push({ id: w.id, fileId: w.fileId || null, versionId: w.versionId || null, expectBytes: w.expectBytes || 0, plName: w.plName || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
   try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-30))); } catch (e) { /* privat läge */ }
 }
 /* Soptunnan: bort ur listan och ur vyn. Bara här i webbläsaren – inget i Trimble Connect ändras. */

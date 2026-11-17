@@ -288,23 +288,29 @@ async function ifcSubsetDownload(spec, onProgress = null, asBlob = false) {
   const project = await API.project.getProject();
   const base = await tcApiBase(tokenVal, project);
   const H = { Authorization: `Bearer ${tokenVal}` };
-  const fileId = spec.fileId || spec.id, q = spec.versionId && spec.versionId !== fileId ? `?versionId=${encodeURIComponent(spec.versionId)}` : "";
-  let url = null, lastErr = "";
-  for (const path of [`files/fs/${encodeURIComponent(fileId)}/downloadurl${q}`, `files/${encodeURIComponent(fileId)}/downloadurl${q}`]) {
+  const fileId = spec.fileId || spec.id, F = encodeURIComponent(fileId), ver = spec.versionId && spec.versionId !== fileId ? encodeURIComponent(spec.versionId) : null, expect = Number(spec.expectBytes) || 0;
+  /* En viss version: API:ets sätt att be om den skiljer sig mellan versioner, så flera prövas i tur och ordning, och filens storlek jämförs med versionens
+     (annars kan en äldre version tyst bli den senaste, som när två versioner jämfördes och blev identiska, Victor 2026-11-17). */
+  const paths = ver ? [`files/fs/${F}/downloadurl?versionId=${ver}`, `files/${F}/downloadurl?versionId=${ver}`, `files/fs/${F}/downloadurl?version=${ver}`, `files/${F}/versions/${ver}/downloadurl`, `files/fs/${ver}/downloadurl`] : [`files/fs/${F}/downloadurl`, `files/${F}/downloadurl`];
+  let res = null, lastErr = "", wrong = [];
+  for (const path of paths) {
+    let url = null;
     try {
-      const res = await fetch(`${base}/${path}`, { headers: H });
-      if (!res.ok) { lastErr = `${res.status}`; continue; }
-      const body = await res.text();
-      let d = body;
+      const r0 = await fetch(`${base}/${path}`, { headers: H });
+      if (!r0.ok) { lastErr = `${r0.status}`; continue; }
+      const body = await r0.text(); let d = body;
       try { d = JSON.parse(body); } catch (e) { /* ren text */ }
       url = typeof d === "string" ? d.replace(/^"|"$/g, "") : (d && (d.url || d.downloadUrl || d.downloadURL)) || null;
-      if (url) break;
-    } catch (e) { lastErr = e.message; }
+    } catch (e) { lastErr = e.message; continue; }
+    if (!url) continue;
+    let r = await fetch(url);
+    if (r.status === 401 || r.status === 403) r = await fetch(url, { headers: H });
+    if (!r.ok) { lastErr = `${r.status}`; continue; }
+    const len = Number(r.headers.get("Content-Length")) || 0;
+    if (ver && expect && len && Math.abs(len - expect) > Math.max(2048, expect * 0.02)) { wrong.push(`${path.split("?")[0].replace(/^files\//, "")}: ${len} byte`); try { r.body && r.body.cancel(); } catch (e) { /* */ } continue; }   // fel version
+    res = r; ifcSubsetDownload.lastPath = path; break;
   }
-  if (!url) throw new Error(`Kunde inte hämta modellfilen från Trimble Connect (${lastErr || "ingen länk"}).`);
-  let res = await fetch(url);
-  if (res.status === 401 || res.status === 403) res = await fetch(url, { headers: H });
-  if (!res.ok) throw new Error(`Kunde inte ladda ner modellfilen (${res.status}).`);
+  if (!res) throw new Error(wrong.length ? `Trimble Connect levererade inte den begärda versionen (väntade ${expect} byte, fick ${wrong.join("; ")}).` : `Kunde inte hämta modellfilen från Trimble Connect (${lastErr || "ingen länk"}).`);
   // Med procent (stora modeller tar tid): läs svaret bit för bit.
   const total = Number(res.headers.get("Content-Length")) || 0;
   // asBlob (punktmoln, ofta över 1 GB): filen lämnas som en Blob utan att packas ihop till en enda stor minnesbit – det frös fliken och minnet (Victor 2026-11-10).

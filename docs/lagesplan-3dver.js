@@ -178,7 +178,7 @@ async function l3vrLoadOne(file, v) {
   const id = `v:${file.fileId}:${v.versionId}`;
   if (!l3b.models.some(m => m.id === id)) {
     const base = String(file.name || "modell").replace(/\.ifc(zip)?$/i, "");
-    const w = { id, fileId: file.fileId, versionId: v.versionId, name: `${base} · v${v.no}`, plName: file.name, on: true, parentId: file.parentId || null, version: "v:" + v.versionId };
+    const w = { id, fileId: file.fileId, versionId: v.versionId, name: `${base} · v${v.no}`, plName: file.name, on: true, parentId: file.parentId || null, version: "v2:" + v.versionId, expectBytes: v.size || 0 };
     await l3bLoad([w]);
     if (!l3b.models.some(m => m.id === id)) throw new Error(`Version ${v.no} gick inte att läsa in.`);
     try { localStorage.setItem(l3bRememberKey(), JSON.stringify(l3bRememberedAll().filter(x => x.id !== id))); } catch (e) { /* privat läge */ }   // versionerna ska inte läsas in igen vid nästa start

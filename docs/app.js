@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-11-17 21:50";
+const APP_VERSION = "2026-11-17 21:54";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -450,7 +450,7 @@ async function lagesplanHandle(msg, reply, progress) {
       reply(await tcFileVersions(msg.fileId));
     } else if (msg.type === "tcFile") {
       if (msg.blob && !/\.ifczip$/i.test(msg.name || "")) { reply({ blob: await ifcSubsetDownload({ fileId: msg.fileId }, progress, true) }); return; }   // punktmoln: som Blob, inte en enda jättestor minnesbit
-      const bytes = await tcFileBytes(msg.fileId, msg.name, progress, msg.versionId || null);
+      const bytes = await tcFileBytes(msg.fileId, msg.name, progress, msg.versionId || null, Number(msg.expectBytes) || 0);
       const buf = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       reply({ bytes: buf }, [buf]);
     } else if (msg.type === "placementsChanged") {
@@ -679,9 +679,9 @@ async function tcFolderItems(folderId) {
   return { folderId: id, projectName: project.name || "", items };
 }
 /* En fil från TC som bytes (.ifczip packas upp till IFC). */
-async function tcFileBytes(fileId, name = "", onProgress = null, versionId = null) {
+async function tcFileBytes(fileId, name = "", onProgress = null, versionId = null, expectBytes = 0) {
   if (!fileId) throw new Error("Ingen fil vald.");
-  const bytes = await ifcSubsetDownload(versionId ? { fileId, versionId } : { fileId }, onProgress);
+  const bytes = await ifcSubsetDownload(versionId ? { fileId, versionId, expectBytes } : { fileId }, onProgress);
   return /\.ifczip$/i.test(name) ? ifcSubsetUnzip(bytes) : bytes;
 }
 
