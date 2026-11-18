@@ -79,12 +79,13 @@ function l3anTake(esc) {
   return { html: `${l3anKpis([{ v: l3anF(all.n, 0), l: "objekt", hi: true }, { v: l3anF(all.vol, 1), u: "m³", l: "volym" }, { v: l3anF(all.area, 0), u: "m²", l: "yta" }])}
     <div class="v3-an-r" style="align-items:center">${seg}${l3anSearch(l3anT.q, "Sök " + name.toLowerCase() + "…")}</div>
     ${view.length ? l3anTable(l3anT.cols, view, l3anT.sort, { total: tot }) : `<div class="an-empty">Inget matchar "${esc(l3anT.q)}".</div>`}
-    <div class="an-actions"><button type="button" data-an-go>${l3an.takeBusy || "↻ Räkna om"}</button><button type="button" data-an-csv>Exportera CSV</button></div><div class="an-note">Räknar det som är tänt och utlagt. Tryck på en rad för att markera i 3D, tryck på en kolumnrubrik för att sortera.</div>`,
+    <div class="an-actions"><button type="button" data-an-go>${l3an.takeBusy || "↻ Räkna om"}</button><button type="button" data-an-csv>Exportera CSV</button>${typeof l3gcExportAll === "function" ? `<button type="button" data-an-allcsv title="Volym, yta, formsida, mått, höjd, tyngdpunkt, vikt (ca) och nätkvalitet för varje objekt i de tända modellerna – räknat ur geometrin">Alla objekt (CSV)</button>` : ""}</div><div class="an-note">Räknar det som är tänt och utlagt. Tryck på en rad för att markera i 3D, tryck på en kolumnrubrik för att sortera.</div>`,
     bind: el => l3anTakeBind(el) };
 }
 function l3anTakeBind(el) {
   const g = el.querySelector("[data-an-gbs]"); if (g) g.querySelectorAll("button").forEach(b => { b.onclick = () => { l3an.gb = b.dataset.v; l3an.takeRows = null; l3anOpen(); }; });
   const go = el.querySelector("[data-an-go]"); if (go) go.onclick = () => l3anTakeRun();
+  const ac = el.querySelector("[data-an-allcsv]"); if (ac) ac.onclick = async () => { ac.disabled = true; try { await l3gcExportAll(); } catch (e) { l3Status(`Kunde inte räkna: ${e.message}`, true); } ac.disabled = false; };
   l3anBindTable(el, l3anT, () => l3anOpen(), i => { const r = (l3anT.view || [])[i]; if (!r) return; if (r.refs && r.refs.length) { l3bsSet(r.refs.map(x => ({ mesh: x.mesh, ri: x.ri }))); if (typeof l3bsZoom === "function") l3bsZoom(); } else if (r.pls && r.pls.length) { l3SelectIds(r.pls); } });
   const c = el.querySelector("[data-an-csv]"); if (c) c.onclick = () => { const rows = l3an.takeRows || []; l3anCsv([[(l3an.gb === "cls" ? "Klass" : l3an.gb === "model" ? "Modell" : "Namn"), "Antal", "Yta m2", "Volym m3"], ...rows.map(r => [r.k, r.n, Math.round(r.area * 100) / 100, Math.round(r.vol * 1000) / 1000])], "mangdning.csv"); };
 }

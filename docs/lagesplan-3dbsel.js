@@ -375,6 +375,7 @@ function l3bsRenderSide(side) {
   on("v3BsJump", () => askOpener("select", { ids: [...new Set(coupled.map(x => x.item.id))], jump: true }, 15000).then(() => l3Toast("Markerat i 4D-planering och i Trimble Connect.")).catch(e => l3Toast(e.message)));
   if (typeof l3gBindSel === "function") l3gBindSel(side);
   if (one && typeof l3pFillSide === "function") l3pFillSide(side, l3bs.sel[0]);
+  if (typeof l3gcSide === "function" && n >= 1) l3gcSide(side, one ? l3bs.sel[0] : null);   // volym m.m. ur geometrin (lagesplan-3dgeo.js)
 }
 
 /* Exportera markerade (Victor 2026-10-10: "markera objekten i modell och göra en separat IFC på just dom
