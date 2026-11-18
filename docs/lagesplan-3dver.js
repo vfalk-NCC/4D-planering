@@ -469,6 +469,7 @@ function l3vrReset() {
 async function l3vrSaveImage() {
   if (typeof l3rv !== "undefined" && l3rv.on) { l3Status("Renderingsläget är på – använd Rendera-knappen för bild, eller stäng av renderingsläget.", true); return; }
   const r = l3.renderer, dom = r.domElement, sz = r.getSize(new THREE.Vector2()), pr = r.getPixelRatio(), sc = l3vr.imgScale === 2 ? 2 : 1, draw = () => (typeof l3pcRenderScene === "function" ? l3pcRenderScene() : r.render(l3.scene, l3.camera));
+  const dim0 = [dom.width, dom.height];
   if (sc === 2) { r.setPixelRatio(pr * 2); r.setSize(sz.x, sz.y, false); }
   draw();
   const W = dom.width, H = dom.height, c2 = document.createElement("canvas"); c2.width = W; c2.height = H; const g = c2.getContext("2d"); g.drawImage(dom, 0, 0);
@@ -485,7 +486,7 @@ async function l3vrSaveImage() {
   const blob = await new Promise(res => c2.toBlob(res, "image/png")); if (!blob) { l3Status("Bilden kunde inte skapas.", true); return null; }
   const name = `Versionsjamforelse ${base} ${String(mt.A.label || "A").slice(0, 25)}-${String(mt.B.label || "B").slice(0, 25)} ${l3vr.view}.png`.replace(/[\\/:*?"<>|]/g, "_");
   if (typeof downloadBlob === "function") downloadBlob(blob, name); else { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
-  l3Status(`Bild sparad: ${W} × ${H} px.`);
+  l3Status(`Bild sparad: ${W} × ${H} px.`); l3vr.lastImg = { base: dim0, w: W, h: H, sc };
   return { name, w: W, h: H, size: blob.size };
 }
 function l3vrBind(el) {
