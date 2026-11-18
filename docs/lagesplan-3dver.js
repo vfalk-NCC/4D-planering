@@ -11,7 +11,7 @@
 const L3VR_COL = { added: "#16a34a", removed: "#dc2626", moved: "#2563eb", reshaped: "#f59e0b", renamed: "#9333ea", same: "#94a3b8" };
 const L3VR_NAME = { added: "Tillkommit", removed: "Borttaget", moved: "Flyttat", reshaped: "Ändrad form", renamed: "Nytt namn/klass", same: "Oförändrat" };
 const L3VR_ORDER = ["added", "removed", "moved", "reshaped", "renamed", "same"];
-const l3vr = { extra: new Set(), src: "tc", ldA: "", ldB: "", own: { A: false, B: false }, meta: null, noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
+const l3vr = { extra: new Set(), extraM: new Set(), src: "tc", ldA: "", ldB: "", own: { A: false, B: false }, meta: null, noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
   tol: 5, filter: { cls: new Set(), q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
 
 const l3vrEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -204,7 +204,7 @@ async function l3vrRun() {
   if (!f || !vA || !vB) { l3Status("Välj två versioner.", true); return; }
   if (vA.versionId === vB.versionId) { l3Status("Välj två olika versioner.", true); return; }
   if (l3b.busy) { l3Status("Vänta tills den andra modellen är inläst.", true); return; }
-  l3vrClear(); l3vr.cmpName = ""; l3vr.res = null; l3vr.sel = null; l3vr.props = null; l3vr.busy = "Läser in äldre version…"; l3vrRender();
+  l3vrClear(); l3vr.extra = new Set(); l3vr.extraM = new Set(); l3vr.cmpName = ""; l3vr.res = null; l3vr.sel = null; l3vr.props = null; l3vr.busy = "Läser in äldre version…"; l3vrRender();
   try {
     l3vr.ids.A = await l3vrLoadOne(f, vA); l3vr.busy = "Läser in nyare version…"; l3vrRender();
     l3vr.ids.B = await l3vrLoadOne(f, vB); l3vr.busy = "Jämför objekten…"; l3vrRender(); await l3vrTick();
@@ -222,7 +222,7 @@ async function l3vrRunLoaded() {
   if (!rA || !rB) { l3Status("Välj två modeller.", true); return; }
   if (l3vr.ldA === l3vr.ldB) { l3Status("Välj två olika modeller.", true); return; }
   if ((rA.tc || rB.tc) && l3b.busy) { l3Status("Vänta tills den andra modellen är inläst.", true); return; }
-  l3vrClose(); l3vr.cmpName = ""; l3vr.sel = null; l3vr.props = null; l3vr.res = null; l3vr.ids = { A: null, B: null }; l3vr.own = { A: false, B: false };
+  l3vrClose(); l3vr.extra = new Set(); l3vr.extraM = new Set(); l3vr.cmpName = ""; l3vr.sel = null; l3vr.props = null; l3vr.res = null; l3vr.ids = { A: null, B: null }; l3vr.own = { A: false, B: false };
   try {
     for (const [k, r] of [["A", rA], ["B", rB]]) {
       if (r.tc) { l3vr.busy = `Läser in ${k === "A" ? "äldre" : "nyare"} version…`; l3vrRender(); l3vr.ids[k] = await l3vrLoadOne(l3vr.file, r.tc); l3vr.own[k] = true; }
@@ -354,6 +354,7 @@ function l3vrRender() {
       <input id="vrFQ" type="search" placeholder="Sök namn…" value="${e(l3vr.filter.q)}" style="width:100%">
       <div class="vr-list">${rows.slice(0, 300).map((r, i) => `<div class="vr-row${l3vr.sel === r.guid ? " on" : ""}" data-vr="row" data-g="${e(r.guid)}"><span class="vr-dot" style="background:${L3VR_COL[r.st]}"></span><span>${e(r.name || l3vrClsName(r.cls))}</span><small>${e(l3vrClsName(r.cls))}${r.why ? " · " + e(r.why) : ""}${r.reguid ? " · nytt GUID" : ""}</small></div>`).join("")}${rows.length > 300 ? `<div class="fe-note">…och ${rows.length - 300} till (filtrera för att se fler).</div>` : ""}</div>
       ${l3vr.versions && l3vr.versions.length > 2 && l3vr.file && l3vr.file.fileId ? `<details><summary>Fler versioner i HTML-filen (${l3vr.extra.size} extra)</summary><div class="fe-note">A och B ingår alltid. Varje extra version läses in en i taget när du exporterar och släpps sedan igen (tar en stund). Bara de objekt som finns i A eller B och syns nu följer med. Välj därför A = äldsta och B = nyaste du bryr dig om. Objekt som bara finns i en version mitt emellan tas inte med.</div><div style="max-height:120px;overflow:auto">${l3vr.versions.slice().reverse().map(x => `<label class="fe-chk"><input type="checkbox" data-vr="extra" data-v="${e(x.versionId)}"${l3vr.extra.has(x.versionId) || x.versionId === l3vr.A || x.versionId === l3vr.B ? " checked" : ""}${x.versionId === l3vr.A || x.versionId === l3vr.B ? " disabled" : ""}> v${x.no} · ${e(l3vrDate(x.modified))}${x.by ? " · " + e(x.by) : ""}</label>`).join("")}</div></details>` : ""}
+      ${(() => { const ml = l3b.models.filter(m => m.id !== l3vr.ids.A && m.id !== l3vr.ids.B); return ml.length ? `<details><summary>Fler inlästa modeller i HTML-filen (${[...l3vr.extraM].filter(id => ml.some(m => m.id === id)).length} extra)</summary><div class="fe-note">Kryssa de inlästa modeller som ska med som extra versioner. De ordnas efter namn (t.ex. datum i filnamnet) och används som de är, utan att läsas in igen. Bara objekt som finns i A eller B och syns nu följer med.</div><div style="max-height:120px;overflow:auto">${ml.map(m => `<label class="fe-chk"><input type="checkbox" data-vr="extram" data-m="${e(m.id)}"${l3vr.extraM.has(m.id) ? " checked" : ""}> ${e(m.name)}</label>`).join("")}</div></details>` : ""; })()}
       <div class="fe-note">Exporten innehåller exakt det som syns i 3D-vyn. Filtrera med Organizer/Grupper (Visa bara, Dölj) eller kategoriknapparna ovan.</div><div class="fe-row"><button type="button" data-vr="selall" title="Markera de listade objekten i 3D">Markera i 3D</button><button type="button" data-vr="csv">Exportera CSV</button><button type="button" data-vr="html" title="Sparar exakt det som syns i 3D-vyn just nu som en fristående HTML-fil med reglage och kategorifilter (ingen uppkoppling behövs). Filtrera först med Organizer/Grupper (Visa bara, Dölj) eller kategorierna.">Exportera HTML</button></div>`;
     const sel = l3vr.sel && R.rows.find(r => r.guid === l3vr.sel);
     if (sel) {
@@ -399,7 +400,10 @@ function l3vrSlots() {
   ["A", "B"].forEach(k => { const vid = tcId(k), ver = vid ? vs.find(v => v.versionId === vid) : null, mt = (l3vr.meta || {})[k] || {}; out.push({ side: k, model: l3vrModel(k), ver, label: mt.label || k, date: mt.date || "", by: mt.by || "", key: ver ? ver.no : (k === "A" ? -1e9 : 1e9) }); });
   const have = new Set(out.map(o => o.ver && o.ver.versionId));
   vs.forEach(v => { if (l3vr.extra.has(v.versionId) && !have.has(v.versionId) && file && file.fileId) out.push({ side: "X", model: null, ver: v, label: `v${v.no}`, date: l3vrDate(v.modified), by: v.by || "", key: v.no }); });
-  out.sort((a, b) => a.key - b.key);
+  /* Extra inlästa modeller (kryssade): används som de är, ingen inläsning. */
+  l3b.models.forEach(m => { if (l3vr.extraM.has(m.id) && m.id !== l3vr.ids.A && m.id !== l3vr.ids.B) out.push({ side: "X", model: m, ver: null, label: m.name, date: "", by: "", key: 0 }); });
+  if (out.every(o => !o.ver)) out.sort((a, b) => String(a.label).localeCompare(String(b.label), "sv", { numeric: true }));   // bara inlästa modeller: i namnordning (t.ex. datum i filnamnet)
+  else out.sort((a, b) => a.key - b.key);
   return out;
 }
 async function l3vrExportHtml() {
@@ -475,9 +479,10 @@ function l3vrBind(el) {
   on("#vrFSt", ev => { l3vr.filter.st = ev.target.value; l3vrRender(); });
   const fq = q("#vrFQ"); if (fq) { fq.onkeydown = ev => ev.stopPropagation(); fq.onchange = () => { l3vr.filter.q = fq.value; l3vrApply(); l3vrRender(); }; }
   const sw = q("#vrSwipe"); if (sw) sw.oninput = () => { l3vr.swipe = Number(sw.value); l3vrSwipeMove(); };
+  el.querySelectorAll('[data-vr="extram"]').forEach(i => { i.onchange = () => { if (i.checked) l3vr.extraM.add(i.dataset.m); else l3vr.extraM.delete(i.dataset.m); const sm = i.closest("details").querySelector("summary"); if (sm) sm.textContent = `Fler inlästa modeller i HTML-filen (${[...l3vr.extraM].filter(id => l3b.models.some(m => m.id === id && m.id !== l3vr.ids.A && m.id !== l3vr.ids.B)).length} extra)`; }; });
   el.querySelectorAll('[data-vr="extra"]').forEach(i => { i.onchange = () => { if (i.checked) l3vr.extra.add(i.dataset.v); else l3vr.extra.delete(i.dataset.v); const sm = el.querySelector("details summary"); if (sm) sm.textContent = `Fler versioner i HTML-filen (${l3vr.extra.size} extra)`; }; });
   el.onclick = async ev => {
-    const b = ev.target.closest("[data-vr]"); if (!b || b.dataset.vr === "extra") return; const a = b.dataset.vr, R = l3vr.res; if (b.tagName === "A") ev.preventDefault();
+    const b = ev.target.closest("[data-vr]"); if (!b || b.dataset.vr === "extra" || b.dataset.vr === "extram") return; const a = b.dataset.vr, R = l3vr.res; if (b.tagName === "A") ev.preventDefault();
     if (a === "dock") { if (typeof l3dkToggle === "function") l3dkToggle(); }
     else if (a === "x") l3vrToggle(false);
     else if (a === "tc") { l3vr.pick = !l3vr.pick; if (l3vr.pick && !l3vr.tc.items) l3vrTcOpen(null); else l3vrRender(); }

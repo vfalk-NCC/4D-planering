@@ -253,6 +253,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await pg.click('#vplay'); await pg.waitForTimeout(2200); await pg.click('#vplay'); ok(await pg.evaluate(() => document.getElementById('vplay').textContent.includes('Spela')), 'Spela går att stoppa');
     await pg.click('#list .it >> nth=0'); ok(await pg.evaluate(() => __ver.st.sel >= 0), 'Objekt går att markera efter parbyte');
     ok(!perr.length, 'Visaren (flera versioner): fel i konsolen: ' + perr.join(' | ')); await pg.context().close(); }
+  // Flera inlästa modeller i HTML-filen: Export 1, 2 (A, B) + Export 3 som extra, ordnade efter namn
+  await page.evaluate(async () => { window.__three = false; await l3bLoad([{ id: 'm:c', fileId: 'x3', versionId: 'v3', name: 'Export 3.ifc' }]); l3vrToggle(false); l3vr.src = 'loaded'; l3vr.ldA = 'm:a'; l3vr.ldB = 'm:b'; l3vr.extraM = new Set(); l3vrToggle(true); });
+  await page.waitForSelector('#v3Ver [data-vr="runl"]'); await page.click('#v3Ver [data-vr="runl"]'); await page.waitForFunction(() => l3vr.res && !l3vr.busy, null, { timeout: 15000 });
+  await page.waitForTimeout(900); await page.click('#v3Ver details summary >> nth=0'); await page.check('#v3Ver input[data-vr="extram"][data-m="m:c"]');
+  ok(await page.evaluate(() => l3vr.extraM.has('m:c') && l3vrSlots().map(x => x.label).join() === 'Export 1.ifc,Export 2.ifc,Export 3.ifc'), 'Extra inläst modell väljs och ordnas efter namn: ' + await page.evaluate(() => l3vrSlots().map(x => x.label).join()));
+  const lx = await page.evaluate(async () => { window.__loads.length = 0; const r = await l3vrExportHtml(); return { html: await r.blob.text(), loads: window.__loads.length }; });
+  ok(lx.loads === 0, 'Inlästa modeller läses inte in igen');
+  { const pg = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage(); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.setContent(lx.html, { waitUntil: 'load' }); await pg.waitForFunction(() => window.__ver && window.__ver.groups().length > 0, null, { timeout: 15000 });
+    ok(await pg.evaluate(() => __ver.versions.map(v => v.label).join() === 'Export 1.ifc,Export 2.ifc,Export 3.ifc' && __ver.pair().join() === '0,1' && document.getElementById('vstep').style.display !== 'none'), 'Visaren har tre inlästa modeller som versioner');
+    await pg.selectOption('#va', '1'); await pg.selectOption('#vb', '2'); ok(await pg.evaluate(() => { const m = {}; __ver.objs.forEach(o => { if (o.live) m[o.g] = o.s; }); return m.g1 === 'moved' && m.g5 === 'removed'; }), 'Par Export 2 – Export 3 jämförs');
+    ok(!perr.length, 'Visaren (inlästa modeller): ' + perr.join(' | ')); await pg.context().close(); }
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
   console.log('OK: versioner och jämförelse – fil och versioner ur Trimble Connect, tillkommet/borttaget/flyttat/ändrad form/nytt GUID, färgläge, före/efter, svep, blinka, lista, CSV, stäng');
   await browser.close(); server.close();
