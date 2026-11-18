@@ -102,11 +102,39 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
     const txt = await page.textContent('.v3-org-sec');
     if (!/Etapper/.test(txt) || !/Etapp 1/.test(txt) || !/Etapp 2/.test(txt)) fail('Trädet: ' + txt);
     if ((await page.$$('[data-orgeye]')).length < 2) fail('Ögat ska finnas på Organizer-grupperna');
+    // Sortering och filter i Organizer-menyn: A–Ö, Ö–A, sökord (med föräldrar), bara grupper med objekt i modellen, återställ
+    {
+      const names = () => page.evaluate(() => [...document.querySelectorAll('.v3-org-sec [data-orgsel]')].map(b => b.textContent.trim()));
+      await page.waitForSelector('#v3OrgSort'); const base = await names();
+      await page.selectOption('#v3OrgSort', 'za'); const za = await names();
+      if (za.indexOf('Etapp 2') > za.indexOf('Etapp 1')) fail('Ö–A: Etapp 2 före Etapp 1: ' + JSON.stringify(za));
+      await page.selectOption('#v3OrgSort', 'az'); const az = await names();
+      if (az.indexOf('Etapp 1') > az.indexOf('Etapp 2')) fail('A–Ö: Etapp 1 före Etapp 2: ' + JSON.stringify(az));
+      await page.fill('#v3OrgQ', 'räcke'); await page.waitForTimeout(500); const q1 = await names();
+      if (!q1.some(x => /Räcke/.test(x)) || q1.some(x => /Etapp 2/.test(x)) || !q1.includes('Etapp 1')) fail('Sökord visar träffen med sin förälder: ' + JSON.stringify(q1));
+      if (!(await page.evaluate(() => document.activeElement && document.activeElement.id === 'v3OrgQ'))) fail('Sökrutan behåller fokus när listan ritas om');
+      await page.click('#v3OrgRst'); await page.waitForTimeout(300);
+      await page.check('#v3OrgHere'); await page.click('[data-orgfold="N1"]'); const here = await names();
+      if (here.some(x => /Räcke/.test(x)) || !here.some(x => /Fundament/.test(x))) fail('Bara med objekt här: grupper utan objekt i modellen döljs: ' + JSON.stringify(here));
+      if (!(await page.evaluate(() => l3Prefs().orgUi && l3Prefs().orgUi.here === true))) fail('Valet kommer ihåg sig');
+      await page.click('#v3OrgRst'); await page.waitForTimeout(300); await page.click('[data-orgfold="N1"]'); const back = await names();
+      if (JSON.stringify(back) !== JSON.stringify(base)) fail('Återställ ger ursprunglig ordning och alla grupper: ' + JSON.stringify(back) + ' ' + JSON.stringify(base));
+    }
     // Snabbknapp Visa bara på varje Organizer-grupp: markerar gruppens objekt direkt och isolerar dem
     if ((await page.$$('.v3-gr-iso[data-orgiso]')).length < 2) fail('Snabbknappen Visa bara ska finnas på grupperna');
     await page.evaluate(() => { window.__sel = null; });
     await page.click('.v3-gr-iso[data-orgiso="N1"]'); await page.waitForTimeout(200);
     if (!(await page.evaluate(() => window.__sel && window.__sel.length === 2))) fail('Snabbknappen markerar gruppens objekt: ' + await page.evaluate(() => JSON.stringify(window.__sel)));
+    // Addera markerade objekt till en Organizer-grupp direkt på raden (＋) och i ⋯-menyn
+    if ((await page.$$('.v3-gr-add[data-orgadd]')).length) fail('＋ ska bara synas när något är markerat');
+    await page.evaluate(() => { l3bs.sel = [{ mesh: { userData: { l3b: { ranges: [{ guid: 'ZZ-NEW-1' }, { guid: 'ZZ-NEW-2' }] } } }, ri: 0 }, { mesh: { userData: { l3b: { ranges: [{ guid: 'ZZ-NEW-1' }, { guid: 'ZZ-NEW-2' }] } } }, ri: 1 }]; l3orgRender(); });
+    if ((await page.$$('.v3-gr-add[data-orgadd]')).length < 2) fail('＋ ska finnas på varje Organizer-grupp när objekt är markerade');
+    await page.click('.v3-gr-add[data-orgadd="N1"]'); await page.waitForTimeout(500);
+    const added = await page.evaluate(() => { const a = l3oa.list.find(x => x.node === 'N1'); return a ? a.guids.slice().sort().join() : null; });
+    if (added !== 'ZZ-NEW-1,ZZ-NEW-2') fail('De markerade ska läggas i Organizer-gruppen: ' + added);
+    await page.evaluate(() => { l3org.open = 'N1'; l3orgRender(); });
+    if (!(await page.isEnabled('[data-orgout="N1"]')) || !/Ta ur \(2\)/.test(await page.textContent('[data-orgout="N1"]'))) fail('Ta ur ska finnas för det som lagts i gruppen');
+    await page.evaluate(async () => { l3bs.sel = []; l3org.open = null; await l3oaWrite(() => [], 'test: städa'); window.__oaw = []; l3orgRender(); });   // städa så att nästa test börjar tomt
     // URL-kodade namn från Organizer avkodas (Victor 2026-10-12: "742%20-%20Bj%C3%A4lklag").
     const dec = await page.evaluate(() => { const t = l3orgTree({ id: 'TX', groups: [{ id: 'a', name: '742%20-%20Sikthall/742%20-%20Bj%C3%A4lklag%20%2F%20d%C3%B6rrar', guids: [] }, { id: 'b', name: 'Trasig%E0%A4', guids: [] }] }); const r = Array.isArray(t) ? t : t.roots; return JSON.stringify(r.map(n => [n.name, n.kids.map(k => k.name)])); });
     if (dec !== JSON.stringify([['742 - Sikthall', ['742 - Bjälklag / dörrar']], ['Trasig%E0%A4', []]])) fail('Avkodade namn: ' + dec);

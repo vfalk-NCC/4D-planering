@@ -9,7 +9,13 @@
    – Senaste hämtningen sparas i webbläsaren, så indelningen finns även utan kontakt med Trimble Connect
      (t.ex. på iPhone/iPad). */
 
-const l3org = { data: null, loading: false, err: "", log: [], shut: new Set(), open: null, loaded: false };
+const l3org = { data: null, loading: false, err: "", log: [], shut: new Set(), open: null, loaded: false, ui: { q: "", sort: "org", here: false }, uiInit: false };
+/* Sortering och filter i Organizer-listan (sorteringen och "bara med objekt här" kommer ihåg sig; sökordet gör det inte). */
+function l3orgUi(patch) {
+  Object.assign(l3org.ui, patch); const { sort, here } = l3org.ui; try { l3SetPref("orgUi", { sort, here }); } catch (e) { /* privat läge */ }
+  const focus = "q" in patch; l3orgRender();
+  if (focus) { const q = document.getElementById("v3OrgQ"); if (q) { q.focus(); try { q.setSelectionRange(q.value.length, q.value.length); } catch (e) { /* */ } } }
+}
 
 /* Egna objekt i Organizer-grupperna (Victor 2026-10-12: "Jag ska kunna sortera in mina grejor i WBS -
    byggindelning mapparna också"). Sparas per projekt i projects/<id>/ifc_orgadds.json som
@@ -202,23 +208,31 @@ function l3orgHtml() {
   const esc = escHtml, I = L3_ICO, d = l3org.data;
   // Antal i scenen och om alla deras objekt är dolda (ögat).
   const here = guids => { let k = 0, hid = true; l3b.models.forEach(m => { const map = l3pEnts(m); guids.forEach(x => { const es = map.get(x); if (es) { k++; if (hid && !es.every(e => e.mesh.userData.l3b.hidden.has(e.ri))) hid = false; } }); }); return [k, k > 0 && hid]; };
-  const rowOf = (n, depth) => {
-    const all = l3orgAll(n), [hk, hid] = here(all), shut = !l3org.shut.has("o:" + n.id) && n.kids.length ? true : false, open = l3org.open === n.id;
-    const fold = n.kids.length ? `<button type="button" class="v3-org-f" data-orgfold="${esc(n.id)}" aria-expanded="${!shut}"><i>›</i></button>` : `<span class="v3-org-f"></span>`;
+  /* Filter och sortering (Victor 2026-11-18: "sortera på A–Ö, filtrering mm"): sökord (en grupp som matchar visar alla sina undergrupper), bara grupper med objekt i de inlästa modellerna, och ordning. */
+  if (!l3org.uiInit) { l3org.uiInit = true; try { Object.assign(l3org.ui, l3Prefs().orgUi || {}); } catch (e) { /* */ } }
+  const U = l3org.ui, qn = String(U.q || "").trim().toLowerCase(), memo = new Map(), hereOf = n => { let r = memo.get(n.id); if (!r) { r = here(l3orgAll(n)); memo.set(n.id, r); } return r; };
+  const nmOf = n => String(n.name || "").toLowerCase();
+  const cmp = { az: (a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }), za: (a, b) => String(b.name).localeCompare(String(a.name), "sv", { numeric: true }), big: (a, b) => l3orgAll(b).size - l3orgAll(a).size, here: (a, b) => hereOf(b)[0] - hereOf(a)[0] }[U.sort];
+  const keep = (n, allv) => (allv || !qn || nmOf(n).includes(qn) || n.kids.some(k => keep(k, false))) && (!U.here || hereOf(n)[0] > 0 || n.kids.some(k => keep(k, allv)));
+  const visKids = (list, allv) => { const out = list.filter(n => keep(n, allv)); return cmp ? out.slice().sort(cmp) : out; };
+  const rowOf = (n, depth, allv) => {
+    const all = l3orgAll(n), [hk, hid] = here(all), allKids = allv || (!!qn && nmOf(n).includes(qn)), kids = visKids(n.kids, allKids), shut = !l3org.shut.has("o:" + n.id) && kids.length && !qn ? true : false, open = l3org.open === n.id;   // med sökord fälls träffarnas föräldrar ut
+    const fold = kids.length ?`<button type="button" class="v3-org-f" data-orgfold="${esc(n.id)}" aria-expanded="${!shut}"><i>›</i></button>` : `<span class="v3-org-f"></span>`;
     return `<div class="v3-gr v3-org ${open ? "open" : ""}" style="margin-left:${depth * 12}px"><div class="v3-gr-h">${fold}
         <button type="button" class="v3-gr-n" data-orgsel="${esc(n.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(n.name)}</button>
         ${n.added ? (() => { const a = l3oa.list.find(x => x.node === n.id), p = a ? l3oaPending(a).length : 0; return `<span class="v3-gr-mine ${p ? "pend" : ""}" title="${n.added.length} objekt som du har lagt i gruppen här${p ? ` – ${p} väntar på att skrivas till Organizer i Trimble Connect` : " – skrivna till Organizer i Trimble Connect"}">+${n.added.length}${p ? " ⏳" : " ✓"}</span>`; })() : ""}
         <em title="${hk} av ${all.size} finns i de inlästa modellerna">${!all.size ? "0" : hk === all.size ? all.size : `${hk}/${all.size}`}</em>
+        ${(() => { const k = typeof l3gSelGuids === "function" ? l3gSelGuids().length : 0; return k ? `<button type="button" class="v3-ic v3-gr-add" data-orgadd="${esc(n.id)}" title="Lägg de ${k} markerade objekten i gruppen – skrivs till Organizer i Trimble Connect">＋</button>` : ""; })()}
         <button type="button" class="v3-ic v3-gr-iso" data-orgiso="${esc(n.id)}" ${hk ? "" : "disabled"} title="${hk ? "Visa bara gruppen (tryck igen för att ångra)" : "Inga objekt i de inlästa modellerna"}">${I.isolate}</button>
         <button type="button" class="v3-ic v3-gr-eye ${hid ? "off" : ""}" data-orgeye="${esc(n.id)}" ${hk ? "" : "disabled"} title="${!hk ? "Inga objekt i de inlästa modellerna" : hid ? "Tänd gruppen" : "Släck gruppen"}">${hid ? I.eyeOff : I.eye}</button>
         <button type="button" class="v3-ic" data-orgmore="${esc(n.id)}" title="Fler val" aria-expanded="${open}">⋯</button></div>
-        ${open ? `<div class="v3-gr-acts"><button type="button" data-orgiso="${esc(n.id)}">${I.isolate} Visa bara</button><button type="button" data-orghide="${esc(n.id)}">${I.eyeOff} Dölj</button><button type="button" data-orgzoom="${esc(n.id)}">${I.focus} Zooma</button><button type="button" data-orgcopy="${esc(n.id)}" title="Som egen grupp: kan färgas och skrivas in som UDA i IFC">＋ Kopiera till egen grupp</button></div>` : ""}
-      </div>` + (shut ? "" : n.kids.map(k => rowOf(k, depth + 1)).join(""));
+        ${open ? `<div class="v3-gr-acts"><button type="button" data-orgiso="${esc(n.id)}">${I.isolate} Visa bara</button><button type="button" data-orghide="${esc(n.id)}">${I.eyeOff} Dölj</button><button type="button" data-orgzoom="${esc(n.id)}">${I.focus} Zooma</button><button type="button" data-orgcopy="${esc(n.id)}" title="Som egen grupp: kan färgas och skrivas in som UDA i IFC">＋ Kopiera till egen grupp</button>${(() => { const sel = typeof l3gSelGuids === "function" ? l3gSelGuids() : [], ad = l3oa.list.find(x => x.node === n.id), mine = ad ? sel.filter(g => (ad.guids || []).includes(g)).length : 0; return `<button type="button" data-orgadd="${esc(n.id)}" ${sel.length ? "" : "disabled"} title="Lägg de markerade i gruppen – skrivs till Organizer i Trimble Connect">＋ Lägg de markerade här${sel.length ? ` (${sel.length})` : ""}</button><button type="button" data-orgout="${esc(n.id)}" ${mine ? "" : "disabled"} title="Ta de markerade ur det du lagt i gruppen härifrån">－ Ta ur${mine ? ` (${mine})` : ""}</button>`; })()}</div>` : ""}
+      </div>` + (shut ? "" : kids.map(k => rowOf(k, depth + 1, allKids)).join(""));
   };
   let body = "";
   if (d && d.trees.length) body = d.trees.map(t => {
-    const k = "t:" + t.id, shut = l3org.shut.has(k), roots = l3orgTree(t);
-    return `<div class="v3-gf ${shut ? "shut" : ""}"><button type="button" class="v3-gf-t" data-orgtree="${esc(t.id)}" aria-expanded="${!shut}"><i>›</i><b>${esc(l3orgDec(t.name))}</b><em>${t.groups.length} grupper</em></button></div>${shut ? "" : `<div class="v3-gf-b">${roots.map(n => rowOf(n, 0)).join("") || `<div class="v3-pal-hint">Inga grupper i trädet.</div>`}</div>`}`;
+    const k = "t:" + t.id, shut = l3org.shut.has(k), roots = visKids(l3orgTree(t), false);
+    return `<div class="v3-gf ${shut ? "shut" : ""}"><button type="button" class="v3-gf-t" data-orgtree="${esc(t.id)}" aria-expanded="${!shut}"><i>›</i><b>${esc(l3orgDec(t.name))}</b><em>${t.groups.length} grupper</em></button></div>${shut ? "" : `<div class="v3-gf-b">${roots.map(n => rowOf(n, 0, false)).join("") || `<div class="v3-pal-hint">${qn || U.here ? "Inga grupper matchar filtret." : "Inga grupper i trädet."}</div>`}</div>`}`;
   }).join("");
   else if (d) body = `<div class="v3-pal-hint">Organizer har inga träd i det här projektet.</div>`;
   else if (!l3org.loading && !l3org.err) body = `<div class="v3-pal-hint">Tryck ↻ för att hämta indelningen du gjort i Organizer i Trimble Connect.</div>`;
@@ -226,11 +240,15 @@ function l3orgHtml() {
   const pend = l3oa.list.reduce((k, a) => k + l3oaPending(a).length, 0);
   const sync = pend ? `<div class="v3-org-sync"><span>${pend} tillagda objekt väntar på att skrivas till Organizer i Trimble Connect.</span><button type="button" id="v3OrgSync" ${l3oa.syncing ? "disabled" : ""}>${l3oa.syncing ? '<span class="pm-spin"></span> Skickar…' : "Skicka"}</button></div>` : "";
   const warn = !l3org.err && l3org.log.some(x => /kunde inte tolkas/.test(x)) ? `<details class="v3-org-log"><summary>Alla länkar kunde inte kopplas till objekt</summary><ul>${l3org.log.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : "";
-  return `<section class="v3-org-sec"><div class="v3-org-h"><b>Organizer i Trimble Connect</b>${d ? `<em title="Senast hämtad">${esc(String(d.at || "").slice(0, 16).replace("T", " "))}</em>` : ""}<button type="button" class="v3-ic" id="v3OrgGet" title="Hämta Organizer från Trimble Connect">${l3org.loading ? '<span class="pm-spin"></span>' : "↻"}</button></div>${err}${sync}${warn}${body}</section>`;
+  return `<section class="v3-org-sec"><div class="v3-org-h"><b>Organizer i Trimble Connect</b>${d ? `<em title="Senast hämtad">${esc(String(d.at || "").slice(0, 16).replace("T", " "))}</em>` : ""}<button type="button" class="v3-ic" id="v3OrgGet" title="Hämta Organizer från Trimble Connect">${l3org.loading ? '<span class="pm-spin"></span>' : "↻"}</button></div>${err}${sync}${warn}${d && d.trees.length ? `<div class="v3-org-tools"><input type="search" id="v3OrgQ" placeholder="Filtrera grupper…" value="${esc(U.q || "")}" aria-label="Filtrera Organizer-grupper"><select id="v3OrgSort" aria-label="Sortera grupperna" title="Ordning på grupperna"><option value="org"${U.sort === "org" ? " selected" : ""}>Som i Organizer</option><option value="az"${U.sort === "az" ? " selected" : ""}>A–Ö</option><option value="za"${U.sort === "za" ? " selected" : ""}>Ö–A</option><option value="big"${U.sort === "big" ? " selected" : ""}>Flest objekt</option><option value="here"${U.sort === "here" ? " selected" : ""}>Flest i modellen</option></select><label class="v3-org-chk" title="Visa bara grupper som har objekt i de inlästa modellerna"><input type="checkbox" id="v3OrgHere"${U.here ? " checked" : ""}> Bara med objekt här</label>${qn || U.here || U.sort !== "org" ? `<button type="button" class="v3-ic" id="v3OrgRst" title="Ta bort filter och sortering">↺</button>` : ""}</div>` : ""}${body}</section>`;
 }
 function l3orgBind(host) {
   const gb = host.querySelector("#v3OrgGet"); if (gb) gb.onclick = () => l3orgFetch();
   const sb = host.querySelector("#v3OrgSync"); if (sb) sb.onclick = () => l3oaSync();
+  const oq = host.querySelector("#v3OrgQ"); if (oq) { let tm = 0; oq.oninput = () => { clearTimeout(tm); tm = setTimeout(() => l3orgUi({ q: oq.value }), 220); }; oq.onkeydown = e => e.stopPropagation(); }
+  const os = host.querySelector("#v3OrgSort"); if (os) os.onchange = () => l3orgUi({ sort: os.value });
+  const oh = host.querySelector("#v3OrgHere"); if (oh) oh.onchange = () => l3orgUi({ here: oh.checked });
+  const orst = host.querySelector("#v3OrgRst"); if (orst) orst.onclick = () => l3orgUi({ q: "", sort: "org", here: false });
   host.querySelectorAll("[data-orgtree]").forEach(b => { b.onclick = () => { const k = "t:" + b.dataset.orgtree; l3org.shut.has(k) ? l3org.shut.delete(k) : l3org.shut.add(k); l3orgRender(); }; });
   host.querySelectorAll("[data-orgfold]").forEach(b => { b.onclick = () => { const k = "o:" + b.dataset.orgfold; l3org.shut.has(k) ? l3org.shut.delete(k) : l3org.shut.add(k); l3orgRender(); }; });
   host.querySelectorAll("[data-orgsel]").forEach(b => { b.onclick = e => l3orgSelect(b.dataset.orgsel, e.shiftKey || e.ctrlKey || e.metaKey); });
@@ -239,6 +257,8 @@ function l3orgBind(host) {
     const id = b.dataset.orgiso, was = typeof l3IsoPrev !== "undefined" && l3IsoPrev;
     if (was && typeof l3IsoBack === "function") { l3IsoBack(); if (l3org.isoQ === id) { l3org.isoQ = null; return; } }
     l3orgSelect(id); if (l3bs.sel.length) { l3bsIsolate(); l3org.isoQ = id; } }; });
+  host.querySelectorAll("[data-orgadd]").forEach(b => { b.onclick = () => { if (!b.disabled) l3oaAddSel(b.dataset.orgadd); }; });
+  host.querySelectorAll("[data-orgout]").forEach(b => { b.onclick = () => { if (!b.disabled) l3oaRemoveSel(b.dataset.orgout); }; });
   host.querySelectorAll("[data-orghide]").forEach(b => { b.onclick = () => l3orgHide(b.dataset.orghide); });
   host.querySelectorAll("[data-orgeye]").forEach(b => { b.onclick = () => { const n = l3orgFind(b.dataset.orgeye); if (!n) return; const ents = l3orgEnts(l3orgAll(n)); if (!ents.length) { l3Status(`${n.name} har inga objekt i de inlästa modellerna.`); return; } l3gVisEnts(ents, n.name, l3gEntsHidden(ents)); }; });
   host.querySelectorAll("[data-orgzoom]").forEach(b => { b.onclick = () => { l3orgSelect(b.dataset.orgzoom); if (l3bs.sel.length) l3bsZoom(); }; });
