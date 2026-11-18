@@ -11,7 +11,7 @@
 const L3VR_COL = { added: "#16a34a", removed: "#dc2626", moved: "#2563eb", reshaped: "#f59e0b", renamed: "#9333ea", same: "#94a3b8" };
 const L3VR_NAME = { added: "Tillkommit", removed: "Borttaget", moved: "Flyttat", reshaped: "Ändrad form", renamed: "Nytt namn/klass", same: "Oförändrat" };
 const L3VR_ORDER = ["added", "removed", "moved", "reshaped", "renamed", "same"];
-const l3vr = { src: "tc", ldA: "", ldB: "", own: { A: false, B: false }, meta: null, noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
+const l3vr = { extra: new Set(), src: "tc", ldA: "", ldB: "", own: { A: false, B: false }, meta: null, noPlan: true, setOrig: false, hid: [], colA: "#ef4444", colB: "#2563eb", modelCol: new Map(), open: false, file: null, versions: null, A: "", B: "", ids: { A: null, B: null }, busy: "", res: null, view: "diff", same: "ghost", old: true, show: { added: 1, removed: 1, moved: 1, reshaped: 1, renamed: 1, same: 1 },
   tol: 5, filter: { cls: new Set(), q: "", st: "" }, sel: null, props: null, swipe: 0.5, swipeAxis: [1, 0], blink: null, active: false, col: new Map(), tc: { stack: [], items: null, busy: false, err: "" }, pick: false };
 
 const l3vrEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -353,6 +353,7 @@ function l3vrRender() {
     h += `<div class="fe-sec"><div class="fe-sub">Objekt (${rows.length})</div><div class="fe-c"><div class="fe-row"><label>Typ<select id="vrFSt"><option value="">Alla</option>${L3VR_ORDER.map(k => `<option value="${k}"${l3vr.filter.st === k ? " selected" : ""}>${L3VR_NAME[k]}</option>`).join("")}</select></label></div>
       <input id="vrFQ" type="search" placeholder="Sök namn…" value="${e(l3vr.filter.q)}" style="width:100%">
       <div class="vr-list">${rows.slice(0, 300).map((r, i) => `<div class="vr-row${l3vr.sel === r.guid ? " on" : ""}" data-vr="row" data-g="${e(r.guid)}"><span class="vr-dot" style="background:${L3VR_COL[r.st]}"></span><span>${e(r.name || l3vrClsName(r.cls))}</span><small>${e(l3vrClsName(r.cls))}${r.why ? " · " + e(r.why) : ""}${r.reguid ? " · nytt GUID" : ""}</small></div>`).join("")}${rows.length > 300 ? `<div class="fe-note">…och ${rows.length - 300} till (filtrera för att se fler).</div>` : ""}</div>
+      ${l3vr.versions && l3vr.versions.length > 2 && l3vr.file && l3vr.file.fileId ? `<details><summary>Fler versioner i HTML-filen (${l3vr.extra.size} extra)</summary><div class="fe-note">A och B ingår alltid. Varje extra version läses in en i taget när du exporterar och släpps sedan igen (tar en stund). Bara de objekt som finns i A eller B och syns nu följer med. Välj därför A = äldsta och B = nyaste du bryr dig om. Objekt som bara finns i en version mitt emellan tas inte med.</div><div style="max-height:120px;overflow:auto">${l3vr.versions.slice().reverse().map(x => `<label class="fe-chk"><input type="checkbox" data-vr="extra" data-v="${e(x.versionId)}"${l3vr.extra.has(x.versionId) || x.versionId === l3vr.A || x.versionId === l3vr.B ? " checked" : ""}${x.versionId === l3vr.A || x.versionId === l3vr.B ? " disabled" : ""}> v${x.no} · ${e(l3vrDate(x.modified))}${x.by ? " · " + e(x.by) : ""}</label>`).join("")}</div></details>` : ""}
       <div class="fe-note">Exporten innehåller exakt det som syns i 3D-vyn. Filtrera med Organizer/Grupper (Visa bara, Dölj) eller kategoriknapparna ovan.</div><div class="fe-row"><button type="button" data-vr="selall" title="Markera de listade objekten i 3D">Markera i 3D</button><button type="button" data-vr="csv">Exportera CSV</button><button type="button" data-vr="html" title="Sparar exakt det som syns i 3D-vyn just nu som en fristående HTML-fil med reglage och kategorifilter (ingen uppkoppling behövs). Filtrera först med Organizer/Grupper (Visa bara, Dölj) eller kategorierna.">Exportera HTML</button></div>`;
     const sel = l3vr.sel && R.rows.find(r => r.guid === l3vr.sel);
     if (sel) {
@@ -380,45 +381,76 @@ function l3vrCsv(rows) {
 }
 /* ---- HTML-export: de filtrerade objekten (alla kategorier) med geometri för båda versionerna i en fristående fil med 3D-visare ---- */
 function l3vrB64(buf) { const u = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength); let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
-function l3vrGeom(t, O) {   // { mesh, ri } → { p, i } (hörn relativt O, trianglar)
-  const u = t.mesh.userData.l3b, pos = t.mesh.geometry.getAttribute("position").array, idx = u.origIdx, [s, c] = l3bsIdx(t.mesh, t.ri); t.mesh.updateMatrixWorld(true); const M = t.mesh.matrixWorld.elements;
-  const map = new Map(), P = [], I = [];
-  for (let i = s; i < s + c; i++) { const v = idx[i]; let k = map.get(v); if (k === undefined) { k = map.size; map.set(v, k); const x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2]; P.push(M[0] * x + M[4] * y + M[8] * z + M[12] - O[0], M[1] * x + M[5] * y + M[9] * z + M[13] - O[1], M[2] * x + M[6] * y + M[10] * z + M[14] - O[2]); } I.push(k); }
+/* Ett objekts hörn och trianglar (alla delar), hörnen relativt O. */
+function l3vrGeomAll(ent, O) {
+  const P = [], I = []; let base = 0;
+  (ent.parts || [ent]).forEach(t => {
+    const u = t.mesh.userData.l3b, pos = t.mesh.geometry.getAttribute("position").array, idx = u.origIdx, [s, c] = l3bsIdx(t.mesh, t.ri); t.mesh.updateMatrixWorld(true); const M = t.mesh.matrixWorld.elements, map = new Map();
+    for (let i = s; i < s + c; i++) { const v = idx[i]; let k = map.get(v); if (k === undefined) { k = map.size; map.set(v, k); const x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2]; P.push(M[0] * x + M[4] * y + M[8] * z + M[12] - O[0], M[1] * x + M[5] * y + M[9] * z + M[13] - O[1], M[2] * x + M[6] * y + M[10] * z + M[14] - O[2]); } I.push(base + k); }
+    base += map.size;
+  });
   return { p: l3vrB64(new Float32Array(P)), i: l3vrB64(new Uint32Array(I)), tris: Math.floor(I.length / 3) };
 }
+const l3vrR4 = x => Math.round(x * 1e4) / 1e4;
 function l3vrVisibleRows() { const R = l3vr.res; if (!R) return []; const alive = t => !!t && !l3bsDead(t.mesh, t.ri); return R.rows.filter(r => alive(r.b) || alive(r.a)); }
+/* Versionerna som ska med i HTML-filen: A och B (det som jämförs nu) plus de extra som kryssats, i ordning. */
+function l3vrSlots() {
+  const vs = l3vr.versions || [], file = l3vr.file, out = [], tcId = k => { const raw = l3vr.src === "loaded" ? (k === "A" ? l3vr.ldA : l3vr.ldB) : (k === "A" ? "tc:" + l3vr.A : "tc:" + l3vr.B); return String(raw).startsWith("tc:") ? String(raw).slice(3) : null; };
+  ["A", "B"].forEach(k => { const vid = tcId(k), ver = vid ? vs.find(v => v.versionId === vid) : null, mt = (l3vr.meta || {})[k] || {}; out.push({ side: k, model: l3vrModel(k), ver, label: mt.label || k, date: mt.date || "", by: mt.by || "", key: ver ? ver.no : (k === "A" ? -1e9 : 1e9) }); });
+  const have = new Set(out.map(o => o.ver && o.ver.versionId));
+  vs.forEach(v => { if (l3vr.extra.has(v.versionId) && !have.has(v.versionId) && file && file.fileId) out.push({ side: "X", model: null, ver: v, label: `v${v.no}`, date: l3vrDate(v.modified), by: v.by || "", key: v.no }); });
+  out.sort((a, b) => a.key - b.key);
+  return out;
+}
 async function l3vrExportHtml() {
   const R = l3vr.res, f = { name: l3vr.cmpName || (l3vr.file || {}).name || "modell" }; if (!R) return;
   /* Exakt det som syns i 3D-vyn: objekt som är dolda (Organizer/Grupper: Dölj eller Visa bara, isolering, släckta kategorier) följer inte med. Ett objekt räknas som synligt om någon av dess sidor (äldre/nyare) syns. */
-  const alive = t => !!t && !l3bsDead(t.mesh, t.ri), rows = l3vrVisibleRows();
+  const rows = l3vrVisibleRows();
   if (!rows.length) { l3Status("Inget syns i 3D-vyn – inget att exportera. Tänd objekt eller tryck Återställ filter.", true); return; }
-  if (rows.length > 40000 && typeof uiConfirm === "function" && !(await uiConfirm(`${rows.length} objekt ger en stor fil (kan bli flera hundra MB). Filtrera på klass först, till exempel Grundläggning. Exportera ändå?`, { ok: "Exportera" }))) return;
+  if (rows.length > 40000 && typeof uiConfirm === "function" && !(await uiConfirm(`${rows.length} objekt ger en stor fil (kan bli flera hundra MB). Dölj det som inte behövs först, till exempel med Visa bara i Organizer. Exportera ändå?`, { ok: "Exportera" }))) return;
+  const slots = l3vrSlots(); if (slots.length < 2) { l3Status("Minst två versioner behövs.", true); return; }
   l3Status("Bygger HTML-filen…"); await l3vrTick();
   const first = rows.find(r => r.b || r.a), t0 = first.b || first.a; t0.mesh.updateMatrixWorld(true); const e0 = t0.mesh.matrixWorld.elements, p0 = t0.mesh.geometry.getAttribute("position").array, v0 = t0.mesh.userData.l3b.origIdx[l3bsIdx(t0.mesh, t0.ri)[0]];
   const O = [e0[0] * p0[v0 * 3] + e0[4] * p0[v0 * 3 + 1] + e0[8] * p0[v0 * 3 + 2] + e0[12], e0[1] * p0[v0 * 3] + e0[5] * p0[v0 * 3 + 1] + e0[9] * p0[v0 * 3 + 2] + e0[13], e0[2] * p0[v0 * 3] + e0[6] * p0[v0 * 3 + 1] + e0[10] * p0[v0 * 3 + 2] + e0[14]];
-  const chunks = []; let tt = 0, n = 0, bytes = 0; const LIM = 400e6;   // datadelen får inte bli över ~400 MB: webbläsaren klarar inte ett skript över ~500 MB
-  for (const r of rows) {
-    const a = r.a ? l3vrGeom(r.a, O) : null, b = r.b ? l3vrGeom(r.b, O) : null; tt += (a ? a.tris : 0) + (b ? b.tris : 0);
-    const j = JSON.stringify({ n: r.name, c: r.cls, s: r.st, w: r.why, va: r.a ? Math.round(r.a.vol * 1e4) / 1e4 : null, vb: r.b ? Math.round(r.b.vol * 1e4) / 1e4 : null, re: r.reguid ? 1 : 0, a: a && { p: a.p, i: a.i }, b: b && { p: b.p, i: b.i } }); bytes += j.length;
-    if (bytes > LIM) throw new Error(`Filen blir för stor (över ${Math.round(LIM / 1e6)} MB, ${rows.length} objekt). Filtrera på klass först, till exempel Grundläggning, och exportera igen.`);
-    chunks.push(j);
-    if (++n % 300 === 0) { l3Status(`Bygger HTML-filen… ${n} av ${rows.length} objekt`); await l3vrTick(); }
+  const objs = rows.map(r => ({ g: r.guid, n: r.name, c: r.cls, re: r.reguid ? 1 : 0, ag: r.a ? r.a.guid : null, bg: r.b ? r.b.guid : null, e: new Array(slots.length).fill(null) }));
+  const geoms = [], gkey = new Map(); let bytes = 0, tt = 0; const LIM = 400e6;
+  for (let si = 0; si < slots.length; si++) {
+    const sl = slots[si]; let m = sl.model, tmp = false;
+    if (!m) {   // extra version: läses in, plockas ur och släpps igen (en i taget så att minnet räcker)
+      l3Status(`Läser in ${sl.label} (${si + 1} av ${slots.length}) för HTML-filen…`); const id = `v:${l3vr.file.fileId}:${sl.ver.versionId}`; tmp = !l3b.models.some(x => x.id === id);
+      try { await l3vrLoadOne(l3vr.file, sl.ver); } catch (er) { throw new Error(`${sl.label}: ${er.message}`); }
+      m = l3b.models.find(x => x.id === id); sl.id = id;
+    }
+    l3Status(`Plockar objekten ur ${sl.label} (${si + 1} av ${slots.length})…`); await l3vrTick();
+    const stats = l3vrStats(m); let n = 0;
+    for (let k = 0; k < objs.length; k++) {
+      const o = objs[k], guid = sl.side === "A" ? o.ag : sl.side === "B" ? o.bg : (o.bg || o.ag), ent = guid ? stats.get(guid) : null; if (!ent) continue;
+      const rel = ent.b.map((v, j) => l3vrR4(v - O[j % 3])), key = ent.sig + "@" + Math.round(rel[0] / 0.002) + "," + Math.round(rel[1] / 0.002) + "," + Math.round(rel[2] / 0.002);
+      let gi = gkey.get(key); if (gi === undefined) { const g = l3vrGeomAll(ent, O); gi = geoms.length; gkey.set(key, gi); const j = JSON.stringify({ p: g.p, i: g.i }); bytes += j.length; geoms.push(j); tt += g.tris; if (bytes > LIM) throw new Error(`Filen blir för stor (över ${Math.round(LIM / 1e6)} MB, ${rows.length} objekt, ${slots.length} versioner). Dölj det som inte behövs först, eller välj färre versioner.`); }
+      o.e[si] = { g: gi, v: l3vrR4(ent.vol), b: rel, c: ent.c.map((v, j) => l3vrR4(v - O[j])), s: ent.sig, vn: ent.n, n: ent.name, k: ent.cls };
+      if (++n % 500 === 0) await l3vrTick();
+    }
+    if (tmp && sl.id) { if (l3Prefs().verKeep) { const mm = l3b.models.find(x => x.id === sl.id); if (mm && mm.src) { mm.src.keep = true; l3bRemember(mm.src, false); l3bShow(sl.id, false); } } else { try { l3bForget(sl.id); } catch (er) { /* redan borta */ } } }
   }
-  const mt = l3vr.meta || { A: {}, B: {} }, clsNames = {}; rows.forEach(r => { clsNames[r.cls] = l3vrClsName(r.cls); });
-  const count = {}; L3VR_ORDER.forEach(k => { count[k] = 0; }); rows.forEach(r => { count[r.st]++; });
-  const head = JSON.stringify({ colors: L3VR_COL, names: L3VR_NAME, order: L3VR_ORDER, clsNames, meta: { file: f.name, A: { label: mt.A.label || "A", date: mt.A.date || "", by: mt.A.by || "" }, B: { label: mt.B.label || "B", date: mt.B.date || "", by: mt.B.by || "" }, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), tol: R.tol, counts: count, tris: tt } }).slice(0, -1) + ',"objs":[';
+  const clsNames = {}; objs.forEach(o => o.e.forEach(e => { if (e) clsNames[e.k] = l3vrClsName(e.k); }));
+  const iA = slots.findIndex(x => x.side === "A"), iB = slots.findIndex(x => x.side === "B");
+  const head = JSON.stringify({ colors: L3VR_COL, names: L3VR_NAME, order: L3VR_ORDER, clsNames, versions: slots.map(x => ({ label: x.label, date: x.date, by: x.by })), iA, iB, meta: { file: f.name, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), tol: R.tol, tris: tt } }).slice(0, -1);
+  const chunks = [], oj = objs.map(o => JSON.stringify({ g: o.g, n: o.n, c: o.c, e: o.e })); oj.forEach(j => { bytes += j.length; });
   const get = async u => { const r = await fetch(u); if (!r.ok) throw new Error(`${u} (${r.status})`); return r.text(); };
   const [tpl, three, orbit] = await Promise.all([get("lagesplan-3dver-viewer.html"), get("vendor/three/three.min.js"), get("vendor/three/OrbitControls.js")]);
   const safe = t => t.replace(/<\/(script)/gi, "<\\/$1");
   /* Filen sätts ihop som delar i en Blob (aldrig som en enda textsträng – den har en gräns på ~500 MB, "Invalid string length"). */
   const M1 = "/*__THREE__*/", M2 = "/*__ORBIT__*/", M3 = "/*__DATA__*/null", i1 = tpl.indexOf(M1), i2 = tpl.indexOf(M2), i3 = tpl.indexOf(M3);
   if (i1 < 0 || i2 < 0 || i3 < 0) throw new Error("Visarmallen är skadad.");
-  const parts = [tpl.slice(0, i1), safe(three), tpl.slice(i1 + M1.length, i2), safe(orbit), tpl.slice(i2 + M2.length, i3), safe(head)];
-  chunks.forEach((c, i) => { parts.push(i ? "," : ""); parts.push(safe(c)); });
+  const parts = [tpl.slice(0, i1), safe(three), tpl.slice(i1 + M1.length, i2), safe(orbit), tpl.slice(i2 + M2.length, i3), safe(head), ',"geoms":['];
+  geoms.forEach((c, i) => { parts.push(i ? "," : ""); parts.push(safe(c)); });
+  parts.push('],"objs":[');
+  oj.forEach((c, i) => { parts.push(i ? "," : ""); parts.push(safe(c)); });
   parts.push("]}", tpl.slice(i3 + M3.length));
-  const name = `Versionsjamforelse ${String(f.name).replace(/\.ifc(zip)?$/i, "")} ${String(mt.A.label || "A").slice(0, 30)}-${String(mt.B.label || "B").slice(0, 30)}${l3vr.filter.cls.size ? " " + [...l3vr.filter.cls].map(c => l3vrClsName(c)).join("+").slice(0, 40) : ""}.html`.replace(/[\\/:*?"<>|]/g, "_");
+  const lab = k => String(slots[k].label).slice(0, 30), vtxt = slots.length > 2 ? `${slots.length} versioner` : `${lab(0)}-${lab(1)}`;
+  const name = `Versionsjamforelse ${String(f.name).replace(/\.ifc(zip)?$/i, "")} ${vtxt}.html`.replace(/[\\/:*?"<>|]/g, "_");
   const blob = new Blob(parts, { type: "text/html;charset=utf-8" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
-  l3Status(`HTML sparad: ${rows.length} objekt, ${(tt / 1000).toFixed(0)} tusen trianglar, ${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB.`);
+  l3Status(`HTML sparad: ${rows.length} objekt, ${slots.length} versioner, ${(tt / 1000).toFixed(0)} tusen trianglar, ${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB.`);
   return { name, size: blob.size, blob };
 }
 /* Återställ: tar bort alla filter (klass, namn, typ, kategorier), isolering och val i visningen och återgår till jämförelsen (Skillnader). */
@@ -443,8 +475,9 @@ function l3vrBind(el) {
   on("#vrFSt", ev => { l3vr.filter.st = ev.target.value; l3vrRender(); });
   const fq = q("#vrFQ"); if (fq) { fq.onkeydown = ev => ev.stopPropagation(); fq.onchange = () => { l3vr.filter.q = fq.value; l3vrApply(); l3vrRender(); }; }
   const sw = q("#vrSwipe"); if (sw) sw.oninput = () => { l3vr.swipe = Number(sw.value); l3vrSwipeMove(); };
+  el.querySelectorAll('[data-vr="extra"]').forEach(i => { i.onchange = () => { if (i.checked) l3vr.extra.add(i.dataset.v); else l3vr.extra.delete(i.dataset.v); const sm = el.querySelector("details summary"); if (sm) sm.textContent = `Fler versioner i HTML-filen (${l3vr.extra.size} extra)`; }; });
   el.onclick = async ev => {
-    const b = ev.target.closest("[data-vr]"); if (!b) return; const a = b.dataset.vr, R = l3vr.res; if (b.tagName === "A") ev.preventDefault();
+    const b = ev.target.closest("[data-vr]"); if (!b || b.dataset.vr === "extra") return; const a = b.dataset.vr, R = l3vr.res; if (b.tagName === "A") ev.preventDefault();
     if (a === "dock") { if (typeof l3dkToggle === "function") l3dkToggle(); }
     else if (a === "x") l3vrToggle(false);
     else if (a === "tc") { l3vr.pick = !l3vr.pick; if (l3vr.pick && !l3vr.tc.items) l3vrTcOpen(null); else l3vrRender(); }

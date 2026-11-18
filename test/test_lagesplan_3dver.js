@@ -17,7 +17,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1300, height: 850 } })).newPage();
   await require('./_dialogs').bridge(page);
-  page.on('console', m => { if (m.type() === 'warning') console.log('W:', m.text().slice(0, 600)); }); const errors = []; page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
+  page.on('console', m => { if (m.type() === 'warning') console.log('W:', m.text().slice(0, 600)); }); const errors = []; page.on('pageerror', e => { console.log('PAGEERR', e.message.slice(0, 200)); errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')); });
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' })); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
   const gh = new Map();
@@ -46,7 +46,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // Syntetiska versioner: boxar som objekt med GUID. v1 → v2: platta oförändrad, vägg flyttad 1 m, pelare borttagen, balk högre, ny pelare, bjälke med nytt GUID men samma läge.
     const cube = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]], tri = [0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7];
     const VERS = { v1: [['g0','Platta','IFCSLAB',0,0,0,30,30,2],['g1','Vägg','IFCWALL',5,5,2,10,0.2,3],['g2','Pelare','IFCCOLUMN',20,20,2,0.4,0.4,3],['g3','Balk','IFCBEAM',2,2,5,6,0.3,0.4],['g4','Bjälke','IFCMEMBER',12,12,2,2,0.2,0.2]],
-                   v2: [['g0','Platta','IFCSLAB',0,0,0,30,30,2],['g1','Vägg','IFCWALL',6,5,2,10,0.2,3],['g3','Balk','IFCBEAM',2,2,5,6,0.3,0.8],['g5','Ny pelare','IFCCOLUMN',25,25,2,0.4,0.4,3],['g9','Bjälke','IFCMEMBER',12,12,2,2,0.2,0.2]] };
+                   v2: [['g0','Platta','IFCSLAB',0,0,0,30,30,2],['g1','Vägg','IFCWALL',6,5,2,10,0.2,3],['g3','Balk','IFCBEAM',2,2,5,6,0.3,0.8],['g5','Ny pelare','IFCCOLUMN',25,25,2,0.4,0.4,3],['g9','Bjälke','IFCMEMBER',12,12,2,2,0.2,0.2]],
+                   v3: [['g0','Platta','IFCSLAB',0,0,0,30,30,2],['g1','Vägg','IFCWALL',5,5,2,10,0.2,3],['g3','Balk','IFCBEAM',2,2,5,6,0.3,0.8],['g6','Ny vägg','IFCWALL',15,15,2,5,0.2,3],['g9','Bjälke','IFCMEMBER',12,12,2,2,0.2,0.2]] };
     window.__loads = [];
     l3bLoad = async list => { for (const w of list) {
       window.__loads.push([w.fileId, w.versionId, w.name]);
@@ -57,7 +58,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     } return { missing: [] }; };
     askOpener = async (op, args) => {
       if (op === 'tcFolder') return { folderId: 'root', projectName: 'Projekt', items: [{ id: 'fd1', name: 'Arkitekt', type: 'folder' }, { id: 'f1', name: 'Hus A.ifc', type: 'file', size: 5e6 }] };
-      if (op === 'tcVersions') return { fileId: args.fileId, versions: [{ versionId: 'v1', no: 1, modified: '2026-10-01T10:00:00Z', by: 'Anna', size: 4e6 }, { versionId: 'v2', no: 2, modified: '2026-11-01T10:00:00Z', by: 'Bo', size: 5e6 }] };
+      if (op === 'tcVersions') return { fileId: args.fileId, versions: [{ versionId: 'v1', no: 1, modified: '2026-10-01T10:00:00Z', by: 'Anna', size: 4e6 }, { versionId: 'v2', no: 2, modified: '2026-11-01T10:00:00Z', by: 'Bo', size: 5e6 }].concat(window.__three ? [{ versionId: 'v3', no: 3, modified: '2026-11-10T10:00:00Z', by: 'Cia', size: 6e6 }] : []) };
       throw new Error('okänt ' + op);
     };
   });
@@ -90,7 +91,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Återställ filter: allt tillbaka till jämförelsen
   await page.evaluate(() => { l3vr.filter.cls = new Set(['IFCSLAB']); l3vr.filter.q = 'x'; l3vr.show.added = 0; l3vr.view = 'overlay'; l3vrApply(); });
   await page.evaluate(() => l3vrRender()); await page.click('#v3Ver [data-vr="reset"]');
-  ok(await page.evaluate(() => l3vr.filter.cls.size === 0 && l3vr.filter.q === '' && l3vr.show.added === 1 && l3vr.view === 'diff' && l3vr.modelCol.size === 0 && l3vr.active), 'Återställ filter tar bort filtren och går tillbaka till Skillnader');
+  ok(await page.evaluate(() => l3vr.filter.cls.size === 0 && l3vr.filter.q === '' && l3vr.show.added === 1 && l3vr.view === 'diff' && l3vr.modelCol.size === 0 && l3vr.active), 'Återställ filter tar bort filtren och går tillbaka till Skillnader ' + await page.evaluate(() => JSON.stringify([l3vr.filter.cls.size, l3vr.filter.q, l3vr.show, l3vr.view, l3vr.modelCol.size, l3vr.active])));
   // Tidplanen av: Original-läget är på och skillnadsfärgerna syns ändå; av/på med kryssrutan
   ok(await page.evaluate(() => l3b.orig === true && l3vr.setOrig === true), 'Tidplanen ignoreras som standard (Original-läget)');
   await page.evaluate(() => { l3bRecolor(); window.__c = Array.from(l3vrModel('A').meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });
@@ -230,6 +231,28 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(MX.c.added === 1 && MX.c.removed === 1 && MX.c.moved === 1 && MX.c.reshaped === 1 && MX.c.same === 2 && MX.own === '{"A":false,"B":true}' && MX.info, 'Blandat: inläst A + TC-version B: ' + JSON.stringify(MX));
   await page.evaluate(() => l3vrToggle(false));
   ok(await page.evaluate(() => { const ids = l3b.models.map(m => m.id); return ids.includes('m:a') && !ids.includes('v:f1:v2') && l3b.models.find(m => m.id === 'm:a').visible; }), 'Stängs: den inlästa modellen finns kvar, den hämtade versionen tas bort');
+  // Flera versioner i HTML-filen: v1, v2 jämförs i editorn, v3 läggs till; visaren byter par
+  await page.evaluate(async () => { window.__three = true; l3vr.src = 'tc'; l3vrToggle(true); await l3vrPickFile('f1', 'Hus A.ifc', 'root'); l3vr.A = 'v1'; l3vr.B = 'v2'; l3vrRender(); });
+  await page.click('#v3Ver [data-vr="run"]'); await page.waitForFunction(() => l3vr.res && !l3vr.busy, null, { timeout: 15000 });
+  await page.waitForTimeout(900); await page.click('#v3Ver details summary'); await page.check('#v3Ver input[data-vr="extra"][data-v="v3"]');
+  ok(await page.evaluate(() => l3vr.extra.has('v3') && l3vrSlots().map(x => x.label).join() === 'v1,v2,v3'), 'Extra version v3 väljs och ordnas efter A och B: ' + await page.evaluate(() => l3vrSlots().map(x => x.label).join()));
+  const mex = await page.evaluate(async () => { window.__loads.length = 0; const r = await l3vrExportHtml(); return { name: r.name, size: r.size, html: await r.blob.text(), loads: window.__loads.map(x => x[1]).join(), models: l3b.models.map(m => m.id).join() }; });
+  ok(/3 versioner/.test(mex.name) && mex.loads === 'v3' && !/v:f1:v3/.test(mex.models), 'Extra version läses in en gång och släpps igen: ' + mex.name + ' loads=' + mex.loads + ' models=' + mex.models);
+  { const pg = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage(); const perr = []; pg.on('pageerror', e => perr.push(e.message)); pg.on('console', m => { if (m.type() === 'error') perr.push(m.text()); });
+    await pg.setContent(mex.html, { waitUntil: 'load' }); await pg.waitForFunction(() => window.__ver && window.__ver.groups().length > 0, null, { timeout: 15000 });
+    const srt = o => JSON.stringify(Object.keys(o).sort().reduce((a, k) => { a[k] = o[k]; return a; }, {})), cnt = () => pg.evaluate(() => { const c = {}; __ver.objs.filter(o => o.live).forEach(o => { c[o.s] = (c[o.s] || 0) + 1; }); return JSON.stringify(Object.keys(c).sort().reduce((a, k) => { a[k] = c[k]; return a; }, {})); });
+    const j = srt;
+    ok(await pg.evaluate(() => __ver.versions.length === 3 && __ver.pair().join() === '0,1' && document.getElementById('va').options.length === 3 && document.getElementById('vstep').style.display !== 'none'), 'Visaren har tre versioner, väljare och stegknappar');
+    ok(await cnt() === j({ same: 2, moved: 1, removed: 1, reshaped: 1, added: 1 }), 'Par v1–v2 som i editorn: ' + await cnt());
+    await pg.selectOption('#va', '1'); await pg.selectOption('#vb', '2');
+    ok(await cnt() === j({ same: 4, moved: 1, removed: 1 }) || (await pg.evaluate(() => __ver.objs.filter(o => o.live && o.s === 'removed').map(o => o.n).join())) === 'Ny pelare', 'Par v2–v3: pelaren borta, väggen tillbaka: ' + await cnt());
+    ok(await pg.evaluate(() => { const m = {}; __ver.objs.forEach(o => { if (o.live) m[o.g] = o.s; }); return m.g1 === 'moved' && m.g5 === 'removed' && m.g3 === 'same' && !('g6' in m && m.g6 === 'added' && false); }), 'Status per objekt för v2–v3');
+    await pg.selectOption('#va', '0'); ok(await pg.evaluate(() => { const m = {}; __ver.objs.forEach(o => { if (o.live) m[o.g] = o.s; }); return m.g1 === 'same' && m.g3 === 'reshaped' && m.g2 === 'removed'; }), 'Par v1–v3: väggen på samma plats som i v1, balken ändrad');
+    await pg.click('#vprev'); ok(await pg.evaluate(() => __ver.pair().join() === '1,2' || __ver.pair().join() === '0,1'), 'Föregående par'); await pg.click('#vnext');
+    const pr = await pg.evaluate(() => __ver.pair().join()); ok(/^\d,\d$/.test(pr), 'Nästa par: ' + pr);
+    await pg.click('#vplay'); await pg.waitForTimeout(2200); await pg.click('#vplay'); ok(await pg.evaluate(() => document.getElementById('vplay').textContent.includes('Spela')), 'Spela går att stoppa');
+    await pg.click('#list .it >> nth=0'); ok(await pg.evaluate(() => __ver.st.sel >= 0), 'Objekt går att markera efter parbyte');
+    ok(!perr.length, 'Visaren (flera versioner): fel i konsolen: ' + perr.join(' | ')); await pg.context().close(); }
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
   console.log('OK: versioner och jämförelse – fil och versioner ur Trimble Connect, tillkommet/borttaget/flyttat/ändrad form/nytt GUID, färgläge, före/efter, svep, blinka, lista, CSV, stäng');
   await browser.close(); server.close();

@@ -39,6 +39,7 @@ details summary{cursor:pointer;color:var(--mut)}label.c{display:flex;gap:5px;ali
 <header><h1 id="ttl"></h1><span id="sub"></span></header>
 <main><div id="cv"><div id="dv"><div id="dvl"></div><div class="dvg" id="dvg1" title="Dra för att vrida"></div><div class="dvg" id="dvg2" title="Dra för att vrida"></div><div id="dvh" title="Dra för att flytta snittet. Dubbelklick centrerar.">◀▶</div><span class="dvt" id="dvta">Äldre</span><span class="dvt" id="dvtb">Nyare</span></div><div id="bar"><span id="barl"></span></div><div id="tip"></div></div>
 <aside>
+<section id="vsec"><h2>Versioner</h2><div class="row"><label class="c">Äldre (A) <select id="va"></select></label><label class="c">Nyare (B) <select id="vb"></select></label></div><div class="row" id="vstep" style="margin-top:5px;display:none"><button id="vprev">◀ Föregående par</button><button id="vnext">Nästa par ▶</button><button id="vplay">▶ Spela</button></div></section>
 <section><h2>Visa</h2><div class="row" id="modes"></div>
 <div id="swrow" style="display:none;margin-top:6px">
 <div class="row seg" id="swtype"><button data-t="screen" class="on">Skärmsvep</button><button data-t="plane">Snittplan i modellen</button></div>
@@ -70,19 +71,44 @@ var DATA = /*__DATA__*/null;
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function b64(s, T) { var bin = atob(s), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i); return new T(u.buffer); }
   $("ttl").textContent = "Versionsjämförelse – " + M.file;
-  $("sub").textContent = "Äldre (A): " + (M.A.label || "v" + M.A.no) + (M.A.date ? " " + M.A.date : "") + (M.A.by ? " · " + M.A.by : "") + "   |   Nyare (B): " + (M.B.label || "v" + M.B.no) + (M.B.date ? " " + M.B.date : "") + (M.B.by ? " · " + M.B.by : "");
   $("foot").textContent = "Exporterad " + M.exported + " ur 4D-planering. Tolerans " + M.tol + " mm. Filen är fristående och behöver ingen uppkoppling.";
-  var objs = DATA.objs; objs.forEach(function (o, i) { o.id = i; ["a", "b"].forEach(function (k) { if (o[k]) { o[k].P = b64(o[k].p, Float32Array); o[k].I = b64(o[k].i, Uint32Array); } }); });
+  var V = DATA.versions, GEOM = DATA.geoms, gcache = {}, objs = DATA.objs, TOL = (M.tol || 5) / 1000, ia = DATA.iA, ib = DATA.iB, classes = [], cnt = {};
+  function geom(i) { if (i == null || i < 0) return null; var c = gcache[i]; if (!c) { var g = GEOM[i]; c = gcache[i] = { P: b64(g.p, Float32Array), I: b64(g.i, Uint32Array) }; } return c; }
+  function vl(i) { var v = V[i]; return v.label + (v.date ? " " + v.date : "") + (v.by ? " · " + v.by : ""); }
+  function subTitle() { $("sub").textContent = "Äldre (A): " + vl(ia) + "   |   Nyare (B): " + vl(ib) + (V.length > 2 ? "   (" + V.length + " versioner i filen)" : ""); }
+  function vdist(p, q) { return Math.sqrt((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) + (p[2] - q[2]) * (p[2] - q[2])); }
+  function fm(x) { return x.toFixed(3).replace(".", ","); }
+  /* samma bedömning som i editorn: formsignatur, flytt, volym, namn/klass */
+  function classify(a, b) {
+    if (!a) return { s: "added", w: fm(b.v) + " m³" }; if (!b) return { s: "removed", w: fm(a.v) + " m³" };
+    var dc = vdist(a.c, b.c), dmin = Math.max(Math.abs(a.b[0] - b.b[0]), Math.abs(a.b[1] - b.b[1]), Math.abs(a.b[2] - b.b[2])), dsz = Math.max(Math.abs((a.b[3] - a.b[0]) - (b.b[3] - b.b[0])), Math.abs((a.b[4] - a.b[1]) - (b.b[4] - b.b[1])), Math.abs((a.b[5] - a.b[2]) - (b.b[5] - b.b[2])));
+    var dv = b.v - a.v, relv = a.v > 1e-9 ? Math.abs(dv) / a.v : (Math.abs(dv) > 1e-9 ? 1 : 0), same = a.s === b.s || (a.vn === b.vn && dsz <= TOL && relv < 1e-3), w = [];
+    if (!same) { if (dsz > TOL) w.push("mått ändrat " + Math.round(dsz * 1000) + " mm"); if (Math.abs(dv) > 1e-6) w.push("volym " + (dv > 0 ? "+" : "−") + fm(Math.abs(dv)) + " m³"); if (dc > TOL) w.push("flyttat " + Math.round(dc * 1000) + " mm"); return { s: "reshaped", w: w.join(", ") || "ändrad form" }; }
+    if (dc > TOL || dmin > TOL) return { s: "moved", w: "flyttat " + (dc >= 1 ? fm(dc).replace(/,?0+$/, "") + " m" : Math.round(dc * 1000) + " mm") };
+    if (a.n !== b.n || a.k !== b.k) return { s: "renamed", w: a.k !== b.k ? "klass " + (DATA.clsNames[a.k] || a.k) + " → " + (DATA.clsNames[b.k] || b.k) : 'namn "' + a.n + '" → "' + b.n + '"' };
+    return { s: "same", w: "" };
+  }
+  function recount() { ORDER.forEach(function (k) { cnt[k] = 0; }); objs.forEach(function (o) { if (o.live) cnt[o.s]++; }); }
+  function refreshClasses() { classes = []; objs.forEach(function (o) { if (o.live && classes.indexOf(o.c) < 0) classes.push(o.c); }); classes.sort(); classes.forEach(function (c) { if (!(c in st.cls)) st.cls[c] = true; }); }
+  function applyPair(x, y) {
+    ia = x; ib = y;
+    objs.forEach(function (o) {
+      var ea = o.e[x], eb = o.e[y]; o.live = !!(ea || eb); if (!o.live) return;
+      var r = classify(ea, eb), e = eb || ea; o.s = r.s; o.w = r.w; o.va = ea ? ea.v : null; o.vb = eb ? eb.v : null; o.n = e.n; o.c = e.k;
+      o.a = ea ? geom(ea.g) : null; o.b = eb ? geom(eb.g) : null;
+    });
+  }
+  objs.forEach(function (o, i) { o.id = i; });
   var st = { mode: "diff", show: {}, cls: {}, q: "", sel: -1, colA: "#ef4444", colB: "#2563eb", old: true, same: "ghost", sw: 0.5, ax: [1, 0] };
   ORDER.forEach(function (k) { st.show[k] = true; });
-  var classes = []; objs.forEach(function (o) { if (classes.indexOf(o.c) < 0) classes.push(o.c); }); classes.sort(); classes.forEach(function (c) { st.cls[c] = true; });
+  applyPair(ia, ib); recount(); refreshClasses(); subTitle();
   // ---- 3D ----
   var cv = $("cv"), R = new THREE.WebGLRenderer({ antialias: true }); R.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); R.localClippingEnabled = true; cv.appendChild(R.domElement); R.setClearColor(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 0x0b1220 : 0xe9eef5, 1);
   var scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(45, 1, 0.1, 1e5); cam.up.set(0, 0, 1);
   scene.add(new THREE.AmbientLight(0xffffff, 0.75)); var dl = new THREE.DirectionalLight(0xffffff, 0.7); dl.position.set(-1, -2, 3); scene.add(dl); var dl2 = new THREE.DirectionalLight(0xffffff, 0.3); dl2.position.set(2, 1, 1); scene.add(dl2);
   var ctl = new THREE.OrbitControls(cam, R.domElement); ctl.enableDamping = false;
   var root = new THREE.Group(), hi = new THREE.Group(); scene.add(root); scene.add(hi);
-  var bb = new THREE.Box3(); objs.forEach(function (o) { ["a", "b"].forEach(function (k) { if (o[k]) { var P = o[k].P; for (var i = 0; i < P.length; i += 3) bb.expandByPoint(new THREE.Vector3(P[i], P[i + 1], P[i + 2])); } }); });
+  var bb = new THREE.Box3(); objs.forEach(function (o) { o.e.forEach(function (e) { if (e && e.b) { bb.expandByPoint(new THREE.Vector3(e.b[0], e.b[1], e.b[2])); bb.expandByPoint(new THREE.Vector3(e.b[3], e.b[4], e.b[5])); } }); });
   if (bb.isEmpty()) bb.set(new THREE.Vector3(-5, -5, -5), new THREE.Vector3(5, 5, 5));
   function home() { var c = bb.getCenter(new THREE.Vector3()), r = Math.max(5, bb.getSize(new THREE.Vector3()).length()); cam.near = r / 1000; cam.far = r * 20; cam.position.set(c.x - r * 0.55, c.y - r * 0.8, c.z + r * 0.6); ctl.target.copy(c); cam.updateProjectionMatrix(); ctl.update(); }
   function size() { var w = cv.clientWidth, h = cv.clientHeight; R.setSize(w, h, false); cam.aspect = w / Math.max(1, h); cam.updateProjectionMatrix(); if (typeof placeDivider === "function" && st.sv) placeDivider(); draw(); }
@@ -90,7 +116,7 @@ var DATA = /*__DATA__*/null;
   ctl.addEventListener("change", draw); window.addEventListener("resize", size);
   // ---- visibilitet ----
   function inF(o) { if (!st.cls[o.c]) return false; if (st.q && (o.n + " " + o.c + " " + o.w).toLowerCase().indexOf(st.q) < 0) return false; return true; }
-  function vis(o) { return inF(o) && st.show[o.s]; }
+  function vis(o) { return o.live && inF(o) && st.show[o.s]; }
   function gcolor(side, o) {
     if (st.mode === "overlay") return side === "a" ? st.colA : st.colB;
     return COL[o.s];
@@ -229,7 +255,6 @@ var DATA = /*__DATA__*/null;
   var MODES = [["diff", "Skillnader"], ["overlay", "Överlägg"], ["before", "Äldre"], ["after", "Nyare"], ["swipe", "Svep"], ["blink", "Blinka"]];
   MODES.forEach(function (x) { var b = document.createElement("button"); b.dataset.m = x[0]; b.textContent = x[1]; b.onclick = function () { setMode(x[0]); }; $("modes").appendChild(b); });
   // ---- kategorier, klasser, lista ----
-  var cnt = {}; ORDER.forEach(function (k) { cnt[k] = 0; }); objs.forEach(function (o) { cnt[o.s]++; });
   function chips() { $("chips").innerHTML = ORDER.map(function (k) { return '<div class="chip' + (st.show[k] ? "" : " off") + '" data-k="' + k + '"><span class="dot" style="background:' + COL[k] + '"></span>' + NAME[k] + "<b>" + cnt[k] + "</b></div>"; }).join(""); }
   $("chips").onclick = function (e) { var c = e.target.closest(".chip"); if (!c) return; st.show[c.dataset.k] = !st.show[c.dataset.k]; chips(); refresh(); };
   $("all").onclick = function () { ORDER.forEach(function (k) { st.show[k] = true; }); chips(); refresh(); };
@@ -272,7 +297,20 @@ var DATA = /*__DATA__*/null;
     objs.filter(vis).forEach(function (o) { L.push([NAME[o.s], o.n, DATA.clsNames[o.c] || o.c, o.w, o.va == null ? "" : String(o.va).replace(".", ","), o.vb == null ? "" : String(o.vb).replace(".", ",")].map(q).join(";")); });
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + L.join("\r\n")], { type: "text/csv;charset=utf-8" })); a.download = "Versionsjamforelse.csv"; document.body.appendChild(a); a.click(); a.remove();
   };
-  window.__ver = { plane: plG, camera: cam, swipe: swipe, clipA: function () { return clipA; }, clipB: function () { return clipB; }, st: st, objs: objs, setMode: setMode, groups: function () { return groups; }, renderer: R };
+  window.__ver = { setPair: setPair, pair: function () { return [ia, ib]; }, versions: V, plane: plG, camera: cam, swipe: swipe, clipA: function () { return clipA; }, clipB: function () { return clipB; }, st: st, objs: objs, setMode: setMode, groups: function () { return groups; }, renderer: R };
+  /* flera versioner: välj vilka två som jämförs, stega par för par eller spela upp */
+  V.forEach(function (v, i) { [["va", ia], ["vb", ib]].forEach(function (q) { var o = document.createElement("option"); o.value = i; o.textContent = vl(i); $(q[0]).appendChild(o); }); });
+  $("va").value = ia; $("vb").value = ib; if (V.length > 2) $("vstep").style.display = "";
+  var playT = 0; function stopPlay() { if (playT) { clearInterval(playT); playT = 0; $("vplay").textContent = "▶ Spela"; } }
+  function setPair(x, y) {
+    st.sel = -1; applyPair(x, y); recount(); refreshClasses(); $("va").value = x; $("vb").value = y; subTitle();
+    while (hi.children.length) { var c = hi.children[0]; hi.remove(c); c.geometry.dispose(); c.material.dispose(); }
+    $("info").innerHTML = "Tryck på ett objekt i vyn eller i listan."; chips(); clsUi(); refresh();
+  }
+  $("va").onchange = function () { stopPlay(); setPair(+$("va").value, ib); }; $("vb").onchange = function () { stopPlay(); setPair(ia, +$("vb").value); };
+  $("vprev").onclick = function () { stopPlay(); var y = ia, x = ia - 1; if (x < 0) { x = V.length - 2; y = V.length - 1; } setPair(x, y); };
+  $("vnext").onclick = function () { stopPlay(); var x = ib, y = ib + 1; if (y >= V.length) { x = 0; y = 1; } setPair(x, y); };
+  $("vplay").onclick = function () { if (playT) { stopPlay(); return; } $("vplay").textContent = "❚❚ Stoppa"; playT = setInterval(function () { var x = ib, y = ib + 1; if (y >= V.length) { x = 0; y = 1; } setPair(x, y); }, 1800); };
   chips(); clsUi(); size(); home(); setMode("diff"); list();
 })();
 </script></body></html>
