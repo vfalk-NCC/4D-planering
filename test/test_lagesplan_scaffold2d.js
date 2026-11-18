@@ -240,6 +240,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!pl.has || pl.t1 !== '⏸' || !/Pausa/.test(pl.main1) || !pl.on || pl.t2 !== '▶' || !/Spela upp/.test(pl.main2) || !pl.off) fail('Play/Pause vid datumreglaget: ' + JSON.stringify(pl));
   console.log('OK: ▶/⏸ vid datumreglaget styr samma uppspelning', JSON.stringify(pl));
+  // 4) Alla ställningar → 3D i ett svep: nya skapas, redan skapade uppdateras (ingen dubblering), avbryt gör inget
+  {
+    const msgs = []; let answer = false; page.on('dialog', d => { msgs.push(d.message()); answer ? d.accept() : d.dismiss(); });
+    await page.evaluate(() => { siteItems.push({ id: 'sc2', type: 'scaffold', name: 'Gavel', pts: [[6512330, 150140], [6512360, 150140]], w: 0.9, h: 7, fack: 2.07, layer: 'Ställning' }); scaffoldAll3dSync(); });
+    const lbl = await page.textContent('#btnScaffoldAll3d'), tot = await page.evaluate(() => scaffoldsOnPlan().length), have = await page.evaluate(() => scaffoldsOnPlan().filter(r => placements.some(q => q.srcId === r.id)).length);
+    if (!new RegExp('\\(' + tot + '\\)').test(lbl) || tot < 2) fail('Knappen visar antalet ställningar: ' + lbl + ' (' + tot + ')');
+    const n0 = await page.evaluate(() => placements.filter(p => p.type === 'sm:stallningfri').length);
+    await page.click('#btnScaffoldAll3d'); await page.waitForTimeout(250);
+    if (!new RegExp(tot + ' ställningar').test(msgs[0] || '') || (have && !new RegExp(have + ' finns redan').test(msgs[0] || ''))) fail('Bekräftelsen ska nämna antal och redan skapade: ' + msgs[0]);
+    if (await page.evaluate(n => placements.filter(p => p.type === 'sm:stallningfri').length !== n, n0)) fail('Avbryt ska inte skapa något');
+    answer = true; await page.click('#btnScaffoldAll3d'); await page.waitForTimeout(400);
+    const res = await page.evaluate(() => { const ps = placements.filter(p => p.type === 'sm:stallningfri'); return { n: ps.length, src: ps.map(p => p.srcId).sort().join(), gavel: (ps.find(p => p.srcId === 'sc2') || {}).B }; });
+    if (res.n !== n0 + (tot - have) || !/sc2/.test(res.src) || res.gavel !== 0.9) fail('Alla ställningar → 3D: en ny skapad, den gamla uppdaterad: ' + JSON.stringify(res) + ' n0=' + n0);
+    answer = true; await page.click('#btnScaffoldAll3d'); await page.waitForTimeout(400);
+    if (await page.evaluate(([n, k]) => placements.filter(p => p.type === 'sm:stallningfri').length !== n + k, [n0, tot - have])) fail('Körs den igen ska inget dubbleras');
+    console.log('OK: 🧊 Alla ställningar → 3D – nya skapas, befintliga uppdateras, ingen dubblering');
+  }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_scaffold2d');
   await browser.close(); server.close();

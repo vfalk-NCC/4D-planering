@@ -1318,19 +1318,38 @@ function scaffoldFieldsHtml(rec) {
   </div>`;
 }
 /* Den ritade ställningen i plan blir ett riktigt 3D-objekt (Etablering → Ställning som följer berget): samma linje, bredd, höjd och fack. Markhöjden hämtas ur det tända punktmolnet (annars ritningens nivå). */
-function scaffoldTo3d(rec) {
+function scaffoldTo3d(rec, opts = {}) {
   if (typeof placeNew !== "function" || typeof SM === "undefined" || !SM.stallningfri || !Array.isArray(rec.pts) || rec.pts.length < 2) { alert("3D-ställningen kan inte skapas – 3D-biblioteket är inte inläst."); return null; }
   const z0 = (plan && plan.calib && plan.calib.model && plan.calib.model[0] && Number(plan.calib.model[0][2])) || 0;
-  if (typeof placeSnapshot === "function") placeSnapshot();
-  const p = placeNew("sm:stallningfri", [rec.pts[0][0], rec.pts[0][1], z0]);
+  if (typeof placeSnapshot === "function" && !opts.noSnapshot) placeSnapshot();
+  /* Finns 3D-ställningen redan (gjord av just den här ritade ställningen) uppdateras den i stället för att dubbleras. */
+  const old = rec.id ? placements.find(q => q.srcId === rec.id && q.type === "sm:stallningfri") : null;
+  const p = old || placeNew("sm:stallningfri", [rec.pts[0][0], rec.pts[0][1], z0]);
+  if (rec.id) p.srcId = rec.id;
   p.name = String(rec.name || "Ställning").replace(/\s*\n\s*/g, " "); p.pts = rec.pts.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000, z0, z0]); p.B = Math.max(0.6, Number(rec.w) || 0.75); p.H = Math.max(1, Number(rec.h) || 6);
   p.f = p.f || {}; const fk = Number(rec.fack) || 2.57; p.f.fack = ["1.57", "2.07", "2.57", "3.07"].reduce((b, v) => Math.abs(v - fk) < Math.abs(b - fk) ? v : b, "2.57");
   const day = ($("dateInput") || {}).value || ""; if (day && !p.start) { p.start = day; p.end = day; }
   let n = 0; if (typeof stallningFriFollow === "function" && typeof l3slZ === "function") n = stallningFriFollow(p, (x, y) => l3slZ(x, y, 0.8));
-  placements.push(p); placeTouch(p);
-  if (typeof l3 !== "undefined" && l3 && typeof l3AddPlacementMesh === "function") { try { l3AddPlacementMesh(p); if (typeof l3Changed === "function") l3Changed(); } catch (e) { console.warn("3D-ställning", e); } }
+  if (!old) placements.push(p); placeTouch(p);
+  if (typeof l3 !== "undefined" && l3 && typeof l3AddPlacementMesh === "function") { try { if (old && l3.placeMeshes && l3.placeMeshes.get(p.id)) { l3.groups.places.remove(l3.placeMeshes.get(p.id)); l3.placeMeshes.delete(p.id); } l3AddPlacementMesh(p); if (typeof l3Changed === "function") l3Changed(); } catch (e) { console.warn("3D-ställning", e); } }
+  p.updated3d = !!old;
   return p;
 }
+/* Alla ritade ställningar i planen → riktiga 3D-ställningar (Etablering → Ställning följer berget) i ett svep. Redan skapade uppdateras (ingen dubblering). */
+function scaffoldsOnPlan() { return siteItems.filter(x => x.type === "scaffold" && Array.isArray(x.pts) && x.pts.length >= 2); }
+async function scaffoldsAllTo3d() {
+  const list = scaffoldsOnPlan(); if (!list.length) { setSaveStatus("Det finns inga ritade ställningar i planen."); return []; }
+  const have = list.filter(r => placements.some(q => q.srcId === r.id && q.type === "sm:stallningfri")).length;
+  if (!(await uiConfirm(`${list.length} ställning${list.length === 1 ? "" : "ar"} i planen blir 3D-ställningar (Etablering → Ställning följer berget)${have ? `\n\n${have} finns redan som 3D-ställning och uppdateras med planens mått och linje (ingen dubblering).` : ""}\n\nCtrl+Z ångrar.`, { ok: "Skapa i 3D" }))) return [];
+  if (typeof placeSnapshot === "function") placeSnapshot();
+  const made = [];
+  for (const r of list) { try { const p = scaffoldTo3d(r, { noSnapshot: true }); if (p) made.push(p); } catch (e) { console.warn("3D-ställning", r.name, e); } }
+  const upd = made.filter(p => p.updated3d).length;
+  setSaveStatus(`🧊 ${made.length - upd} 3D-ställning${made.length - upd === 1 ? "" : "ar"} skapade${upd ? ` och ${upd} uppdaterade` : ""} – de syns i 3D-vyn under Etablering och sparas med planen.`);
+  return made;
+}
+function scaffoldAll3dSync() { const b = $("btnScaffoldAll3d"); if (!b) return; const n = scaffoldsOnPlan().length; b.textContent = `🧊 Alla ställningar → 3D${n ? " (" + n + ")" : ""}`; b.disabled = !n; }
+(function scaffoldAll3dBoot() { const t = () => { const b = $("btnScaffoldAll3d"); if (b) { if (!b.__bound) { b.__bound = true; b.onclick = () => scaffoldsAllTo3d(); } scaffoldAll3dSync(); } setTimeout(t, 2500); }; setTimeout(t, 1500); })();
 function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   const st = siteStyle(x, fontPx);
   const dates = datesText(x);
