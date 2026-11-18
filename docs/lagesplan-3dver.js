@@ -432,7 +432,7 @@ async function l3vrExportHtml() {
       const o = objs[k], guid = sl.side === "A" ? o.ag : sl.side === "B" ? o.bg : (o.bg || o.ag), ent = guid ? stats.get(guid) : null; if (!ent) continue;
       const rel = ent.b.map((v, j) => l3vrR4(v - O[j % 3])), key = ent.sig + "@" + Math.round(rel[0] / 0.002) + "," + Math.round(rel[1] / 0.002) + "," + Math.round(rel[2] / 0.002);
       let gi = gkey.get(key); if (gi === undefined) { const g = l3vrGeomAll(ent, O); gi = geoms.length; gkey.set(key, gi); const j = JSON.stringify({ p: g.p, i: g.i }); bytes += j.length; geoms.push(j); tt += g.tris; if (bytes > LIM) throw new Error(`Filen blir för stor (över ${Math.round(LIM / 1e6)} MB, ${rows.length} objekt, ${slots.length} versioner). Dölj det som inte behövs först, eller välj färre versioner.`); }
-      o.e[si] = { g: gi, v: l3vrR4(ent.vol), b: rel, c: ent.c.map((v, j) => l3vrR4(v - O[j])), s: ent.sig, vn: ent.n, n: ent.name, k: ent.cls };
+      o.e[si] = { g: gi, v: l3vrR4(ent.vol), ar: Math.round(ent.area * 1000) / 1000, b: rel, c: ent.c.map((v, j) => l3vrR4(v - O[j])), s: ent.sig, vn: ent.n, n: ent.name, k: ent.cls };
       if (++n % 500 === 0) await l3vrTick();
     }
     if (tmp && sl.id) { if (l3Prefs().verKeep) { const mm = l3b.models.find(x => x.id === sl.id); if (mm && mm.src) { mm.src.keep = true; l3bRemember(mm.src, false); l3bShow(sl.id, false); } } else { try { l3bForget(sl.id); } catch (er) { /* redan borta */ } } }

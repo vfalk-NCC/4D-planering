@@ -156,6 +156,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await pg.setContent(ex.html, { waitUntil: 'load' }); await pg.waitForFunction(() => window.__ver && window.__ver.groups().length > 0, null, { timeout: 15000 });
     const v1 = await pg.evaluate(() => ({ n: __ver.objs.length, chips: document.querySelectorAll('.chip').length, cnt: [...document.querySelectorAll('.chip b')].map(b => b.textContent).join(), cls: document.querySelectorAll('#cls input').length, list: document.querySelectorAll('#list .it').length, title: document.getElementById('ttl').textContent, sub: document.getElementById('sub').textContent }));
     ok(v1.n === 4 && v1.chips === 6 && v1.cls === 3 && v1.list === 4 && /Hus A/.test(v1.title) && /v1/.test(v1.sub) && /v2/.test(v1.sub), 'Visaren öppnas med objekten, kategorierna och klasserna: ' + JSON.stringify(v1));
+    { const vol = await pg.textContent('#vol'); console.log('VOL:', vol.replace(/\s+/g, ' ').slice(0, 300)); ok(/m³/.test(vol) && /Δ|Skillnad/i.test(vol), 'Volymsektionen visar summor i HTML-visaren'); }
     // kategori av/på
     await pg.click('.chip[data-k="added"]'); ok(await pg.evaluate(() => __ver.objs.filter(o => o.s === 'added').every(o => !__ver.st.show.added) && document.querySelectorAll('#list .it').length === 3), 'Tillkommit av: listan krymper');
     await pg.click('.chip[data-k="added"]');

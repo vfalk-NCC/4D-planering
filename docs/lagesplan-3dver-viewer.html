@@ -57,6 +57,7 @@ details summary{cursor:pointer;color:var(--mut)}label.c{display:flex;gap:5px;ali
 <div id="dfrow" style="margin-top:6px" class="row"><label class="c"><input id="old" type="checkbox" checked> Gammalt läge som röd skugga</label><label class="c">Oförändrat <select id="same"><option value="ghost">Spöke</option><option value="grey">Grått</option></select></label></div></section>
 <section><h2>Bild</h2><div class="row"><button id="png" title="Sparar vyn du står i som en PNG-bild">📷 Spara bild</button><label class="c">Storlek <select id="pngs"><option value="1">Som skärmen</option><option value="2" selected>2× (skarp)</option><option value="4">4× (stor)</option></select></label><label class="c"><input id="pngl" type="checkbox" checked> Med förklaring</label></div></section>
 <section><h2>Kategorier</h2><div class="chips" id="chips"></div><div class="row" style="margin-top:5px"><button id="all">Alla</button><button id="none">Ingen</button><button id="chg">Bara ändringar</button></div></section>
+<section id="volsec"><h2>Volym</h2><div id="vol"></div></section>
 <section><h2>Klass</h2><details><summary id="clsum">Alla klasser</summary><div id="cls" style="max-height:160px;overflow:auto;margin-top:4px"></div></details><div class="row" style="margin-top:4px"><button id="clall">Alla</button><button id="clnone">Ingen</button></div></section>
 <section><h2>Objekt <span id="cnt"></span></h2><input type="search" id="q" placeholder="Sök namn…" style="width:100%;margin-bottom:5px"><div id="list"></div><div class="row" style="margin-top:5px"><button id="csv">Exportera CSV</button><button id="fit">Återställ vy</button><button id="rst" title="Tar bort alla filter och går tillbaka till Skillnader">↺ Återställ filter</button></div></section>
 <section id="info">Tryck på ett objekt i vyn eller i listan.</section>
@@ -95,7 +96,7 @@ var DATA = /*__DATA__*/null;
     ia = x; ib = y;
     objs.forEach(function (o) {
       var ea = o.e[x], eb = o.e[y]; o.live = !!(ea || eb); if (!o.live) return;
-      var r = classify(ea, eb), e = eb || ea; o.s = r.s; o.w = r.w; o.va = ea ? ea.v : null; o.vb = eb ? eb.v : null; o.n = e.n; o.c = e.k;
+      var r = classify(ea, eb), e = eb || ea; o.s = r.s; o.w = r.w; o.va = ea ? ea.v : null; o.vb = eb ? eb.v : null; o.aa = ea ? ea.ar : null; o.ab = eb ? eb.ar : null; o.ea = ea; o.eb = eb; o.n = e.n; o.c = e.k;
       o.a = ea ? geom(ea.g) : null; o.b = eb ? geom(eb.g) : null;
     });
   }
@@ -267,7 +268,29 @@ var DATA = /*__DATA__*/null;
   $("q").oninput = function () { st.q = this.value.trim().toLowerCase(); refresh(); };
   function list() { var v = objs.filter(vis); $("cnt").textContent = "(" + v.length + ")"; $("list").innerHTML = v.slice(0, 400).map(function (o) { return '<div class="it' + (st.sel === o.id ? " on" : "") + '" data-i="' + o.id + '"><span class="dot" style="background:' + COL[o.s] + '"></span><span>' + esc(o.n || DATA.clsNames[o.c] || o.c) + "</span><small>" + esc(DATA.clsNames[o.c] || o.c) + (o.w ? " · " + esc(o.w) : "") + "</small></div>"; }).join("") + (v.length > 400 ? '<div class="it"><small>…och ' + (v.length - 400) + " till (filtrera för att se fler)</small></div>" : ""); }
   $("list").onclick = function (e) { var it = e.target.closest(".it"); if (it && it.dataset.i != null) select(+it.dataset.i, true); };
-  function refresh() { build(); list(); if (st.sel >= 0 && !vis(objs[st.sel])) select(-1); }
+  /* Volym för det som syns (kategorier, klasser, sökning): summor per kategori och skillnad per klass. Volymen är räknad ur geometrin (slutna ytor, tetraedersumma). */
+  function m3(x, d) { return (x == null ? 0 : x).toLocaleString("sv-SE", { minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d }) + " m³"; }
+  function sg(x) { return (x > 0 ? "+" : x < 0 ? "−" : "") + m3(Math.abs(x)); }
+  function volUi() {
+    var S = {}, byC = {}, ta = 0, tb = 0, n = 0;
+    objs.forEach(function (o) { if (!vis(o)) return; n++; var va = o.va || 0, vb = o.vb || 0; ta += va; tb += vb; var d = o.s === "added" ? vb : o.s === "removed" ? -va : vb - va;
+      S[o.s] = (S[o.s] || 0) + (o.s === "added" ? vb : o.s === "removed" ? -va : o.s === "reshaped" ? vb - va : vb);
+      var c = byC[o.c] || (byC[o.c] = { c: o.c, d: 0, n: 0 }); c.d += d; c.n++; });
+    var h = '<table style="width:100%;border-collapse:collapse"><tr><td>Äldre (A)</td><td style="text-align:right">' + m3(ta) + '</td></tr><tr><td>Nyare (B)</td><td style="text-align:right">' + m3(tb) + '</td></tr><tr><td><b>Skillnad</b></td><td style="text-align:right"><b>' + sg(tb - ta) + '</b></td></tr></table><div style="height:6px"></div>';
+    h += ORDER.filter(function (k) { return S[k] != null; }).map(function (k) { var lab = k === "added" ? "tillkommit" : k === "removed" ? "borttaget" : k === "reshaped" ? "ändring i form" : "oförändrad volym"; var v = S[k]; return '<div class="row" style="justify-content:space-between"><span><span class="dot" style="background:' + COL[k] + '"></span> ' + NAME[k] + '</span><span title="' + lab + '">' + (k === "added" || k === "removed" || k === "reshaped" ? sg(v) : m3(v)) + "</span></div>"; }).join("");
+    var cl = Object.keys(byC).map(function (k) { return byC[k]; }).filter(function (c) { return Math.abs(c.d) > 1e-6; }).sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d); }).slice(0, 8);
+    if (cl.length) h += '<div style="margin-top:6px;color:var(--mut)">Skillnad per klass</div>' + cl.map(function (c) { return '<div class="row" style="justify-content:space-between"><span>' + esc(DATA.clsNames[c.c] || c.c) + ' <small style="color:var(--mut)">' + c.n + " st</small></span><span>" + sg(c.d) + "</span></div>"; }).join("");
+    $("vol").innerHTML = n ? h : '<span style="color:var(--mut)">Inget syns just nu.</span>';
+  }
+  function dims(e) { if (!e || !e.b) return "–"; var b = e.b, d = [b[3] - b[0], b[4] - b[1], b[5] - b[2]]; return d.map(function (x) { return x.toFixed(2).replace(".", ","); }).join(" × ") + " m"; }
+  function objInfo(o) {
+    var dv = (o.vb || 0) - (o.va || 0), rowx = function (k, a, b, f) { return "<tr><td>" + k + "</td><td>" + (a == null ? "–" : f(a)) + "</td><td>" + (b == null ? "–" : f(b)) + "</td></tr>"; };
+    return '<table style="width:100%;margin-top:6px;border-collapse:collapse"><tr><th></th><th style="text-align:left">Äldre</th><th style="text-align:left">Nyare</th></tr>'
+      + rowx("Volym", o.va, o.vb, function (x) { return m3(x, 3); }) + rowx("Yta", o.aa, o.ab, function (x) { return m3(x, 2).replace("m³", "m²"); })
+      + "<tr><td>Rymdmått</td><td>" + dims(o.ea) + "</td><td>" + dims(o.eb) + "</td></tr></table>"
+      + (o.va != null && o.vb != null ? '<div style="margin-top:4px">Volymskillnad: <b>' + sg(dv) + "</b></div>" : "");
+  }
+  function refresh() { build(); list(); volUi(); if (st.sel >= 0 && !vis(objs[st.sel])) select(-1); }
   // ---- markering ----
   function select(i, fly) {
     st.sel = i; while (hi.children.length) { var c = hi.children[0]; hi.remove(c); c.geometry.dispose(); c.material.dispose(); }
@@ -275,7 +298,7 @@ var DATA = /*__DATA__*/null;
     var o = objs[i], box = new THREE.Box3();
     ["a", "b"].forEach(function (k) { var d = o[k]; if (!d) return; var g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(d.P, 3)); g.setIndex(new THREE.BufferAttribute(d.I, 1)); var e = new THREE.LineSegments(new THREE.EdgesGeometry(g, 20), new THREE.LineBasicMaterial({ color: k === "a" ? 0xb91c1c : 0xca8a04, depthTest: false })); e.renderOrder = 10; hi.add(e); g.computeBoundingBox(); box.union(g.boundingBox); });
     var m3 = function (x) { return x == null ? "–" : x.toFixed(3).replace(".", ",") + " m³"; };
-    $("info").innerHTML = "<b>" + esc(o.n || DATA.clsNames[o.c] || o.c) + "</b><br>" + esc(DATA.clsNames[o.c] || o.c) + " · <span style='color:" + COL[o.s] + "'>" + NAME[o.s] + "</span>" + (o.w ? "<br>" + esc(o.w) : "") + "<br>Volym: " + m3(o.va) + " → " + m3(o.vb) + (o.re ? "<br>Fick nytt GUID vid exporten och parades ihop på klass, namn och läge." : "");
+    $("info").innerHTML = "<b>" + esc(o.n || DATA.clsNames[o.c] || o.c) + "</b><br>" + esc(DATA.clsNames[o.c] || o.c) + " · <span style='color:" + COL[o.s] + "'>" + NAME[o.s] + "</span>" + (o.w ? "<br>" + esc(o.w) : "") + objInfo(o) + (o.re ? "<br>Fick nytt GUID vid exporten och parades ihop på klass, namn och läge." : "");
     if (fly && !box.isEmpty()) { var c2 = box.getCenter(new THREE.Vector3()), r = Math.max(2, box.getSize(new THREE.Vector3()).length() * 1.6), dir = cam.position.clone().sub(ctl.target).normalize(); ctl.target.copy(c2); cam.position.copy(c2).add(dir.multiplyScalar(r)); ctl.update(); }
     list(); draw();
   }
@@ -320,7 +343,7 @@ var DATA = /*__DATA__*/null;
     c2.toBlob(function (b) { if (!b) return; var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = ("Versionsjamforelse " + M.file.replace(/\.ifc(zip)?$/i, "") + " " + V[ia].label + "-" + V[ib].label + " " + st.mode + ".png").replace(/[\\/:*?"<>|]/g, "_"); document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 6000); }, "image/png");
   }
   $("png").onclick = savePng;
-  $("rst").onclick = function () { ORDER.forEach(function (k) { st.show[k] = true; }); classes.forEach(function (c) { st.cls[c] = true; }); st.q = ""; $("q").value = ""; st.old = true; $("old").checked = true; st.same = "ghost"; $("same").value = "ghost"; select(-1); chips(); clsUi(); setMode("diff"); list(); home(); draw(); };
+  $("rst").onclick = function () { ORDER.forEach(function (k) { st.show[k] = true; }); classes.forEach(function (c) { st.cls[c] = true; }); st.q = ""; $("q").value = ""; st.old = true; $("old").checked = true; st.same = "ghost"; $("same").value = "ghost"; select(-1); chips(); clsUi(); setMode("diff"); list(); volUi(); home(); draw(); };
   $("csv").onclick = function () {
     var q = function (v) { v = String(v == null ? "" : v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }, L = [["Typ", "Namn", "Klass", "Anmärkning", "Volym A (m3)", "Volym B (m3)"].join(";")];
     objs.filter(vis).forEach(function (o) { L.push([NAME[o.s], o.n, DATA.clsNames[o.c] || o.c, o.w, o.va == null ? "" : String(o.va).replace(".", ","), o.vb == null ? "" : String(o.vb).replace(".", ",")].map(q).join(";")); });
@@ -340,6 +363,6 @@ var DATA = /*__DATA__*/null;
   $("vprev").onclick = function () { stopPlay(); var y = ia, x = ia - 1; if (x < 0) { x = V.length - 2; y = V.length - 1; } setPair(x, y); };
   $("vnext").onclick = function () { stopPlay(); var x = ib, y = ib + 1; if (y >= V.length) { x = 0; y = 1; } setPair(x, y); };
   $("vplay").onclick = function () { if (playT) { stopPlay(); return; } $("vplay").textContent = "❚❚ Stoppa"; playT = setInterval(function () { var x = ib, y = ib + 1; if (y >= V.length) { x = 0; y = 1; } setPair(x, y); }, 1800); };
-  chips(); clsUi(); size(); home(); setMode("diff"); list();
+  chips(); clsUi(); size(); home(); setMode("diff"); list(); volUi();
 })();
 </script></body></html>
