@@ -22,12 +22,36 @@ button,select,input[type=search]{font:inherit;color:var(--fg);background:var(--p
 details summary{cursor:pointer;color:var(--mut)}label.c{display:flex;gap:5px;align-items:center}
 #bar{position:absolute;left:10px;top:10px;background:var(--pn);border:1px solid var(--line);border-radius:8px;padding:4px 8px;display:none;gap:8px;align-items:center}
 #tip{position:absolute;pointer-events:none;background:#0f172acc;color:#fff;border-radius:6px;padding:2px 7px;font-size:12px;display:none}
+
+#dv{position:absolute;inset:0;pointer-events:none;overflow:hidden;display:none}
+#dvl{position:absolute;width:26px;pointer-events:auto;cursor:ew-resize;touch-action:none}
+#dvl::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1.5px;border-radius:2px;background:linear-gradient(#fff7d6,#fff7d6);box-shadow:0 0 0 1px #ffc61a,0 0 7px 2px #ffc61a,0 0 22px 6px rgba(255,198,26,.55),0 0 48px 12px rgba(255,198,26,.22);animation:dvp 2.8s ease-in-out infinite}
+@keyframes dvp{0%,100%{opacity:.92}50%{opacity:1;filter:brightness(1.12)}}
+@media (prefers-reduced-motion:reduce){#dvl::after{animation:none}}
+#dvh{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(255,255,255,.94);border:2px solid #ffc61a;box-shadow:0 0 0 3px rgba(255,198,26,.25),0 0 14px 3px #ffc61a,0 0 36px 10px rgba(255,198,26,.4);pointer-events:auto;cursor:grab;touch-action:none;display:flex;align-items:center;justify-content:center;color:#7a5a00;font-size:15px;font-weight:700;letter-spacing:-2px}
+#dvh:active{cursor:grabbing}
+.dvg{position:absolute;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;background:#fff7d6;border:2px solid #ffc61a;box-shadow:0 0 10px 2px rgba(255,198,26,.8);pointer-events:auto;cursor:alias;touch-action:none}
+.dvt{position:absolute;font-size:11px;font-weight:600;padding:1px 7px;border-radius:9px;background:rgba(15,23,42,.72);color:#fff;transform:translate(-50%,-50%);pointer-events:none;white-space:nowrap}
+.seg{display:flex;gap:0}.seg button{border-radius:0}.seg button:first-child{border-radius:7px 0 0 7px}.seg button:last-child{border-radius:0 7px 7px 0}
+#swpl label,#swscr label{display:flex;gap:6px;align-items:center}
+.nr{width:78px}
 </style></head><body>
 <header><h1 id="ttl"></h1><span id="sub"></span></header>
-<main><div id="cv"><div id="bar"><span id="barl"></span></div><div id="tip"></div></div>
+<main><div id="cv"><div id="dv"><div id="dvl"></div><div class="dvg" id="dvg1" title="Dra för att vrida"></div><div class="dvg" id="dvg2" title="Dra för att vrida"></div><div id="dvh" title="Dra för att flytta snittet. Dubbelklick centrerar.">◀▶</div><span class="dvt" id="dvta">Äldre</span><span class="dvt" id="dvtb">Nyare</span></div><div id="bar"><span id="barl"></span></div><div id="tip"></div></div>
 <aside>
 <section><h2>Visa</h2><div class="row" id="modes"></div>
-<div id="swrow" style="display:none;margin-top:6px"><div class="row"><span id="swl" style="color:var(--mut)">Äldre ◀ ▶ Nyare</span><button id="swax" title="Lägg svepet tvärs vyns riktning nu">Efter vyn</button></div><input id="sw" type="range" min="0" max="1" step="0.002" value="0.5"></div>
+<div id="swrow" style="display:none;margin-top:6px">
+<div class="row seg" id="swtype"><button data-t="screen" class="on">Skärmsvep</button><button data-t="plane">Snittplan i modellen</button></div>
+<div id="swscr"><div class="row" style="margin-top:6px"><button id="scrc" title="Lägg dragaren mitt på skärmen, lodrät">Centrera</button><button id="scrv">Lodrät</button><button id="scrh">Vågrät</button><button id="scrf" title="Byt sida på äldre och nyare">⇄ Byt sida</button></div>
+<div class="row" style="margin-top:6px"><label style="flex:1">Vinkel <input id="scra" type="range" min="0" max="359" step="1" value="90" style="flex:1"><span id="scrav" style="width:34px;text-align:right">90°</span></label></div>
+<div class="row" style="margin-top:6px;color:var(--mut)">Dra i handtaget mitt på skärmen för att flytta snittet och i ändarna för att vrida. Dubbelklick på handtaget centrerar.</div></div>
+<div id="swpl" style="display:none"><div class="row" style="margin-top:6px"><label>Riktning <select id="plo"><option value="vert">Lodrätt snitt</option><option value="z">Vågrätt (höjd)</option><option value="x">Tvärs X</option><option value="y">Tvärs Y</option></select></label><label class="c"><input id="plsh" type="checkbox" checked> Visa snittplanet</label></div>
+<div class="row" id="plarow" style="margin-top:6px"><label style="flex:1">Vridning <input id="pla" type="range" min="0" max="359" step="1" value="0" style="flex:1"><span id="plav" style="width:34px;text-align:right">0°</span></label></div>
+<div class="row" style="margin-top:6px"><label style="flex:1">Läge <input id="plp" type="range" min="-10" max="10" step="0.01" value="0" style="flex:1"></label><input id="pln" class="nr" type="number" step="0.01" value="0" title="Meter från modellens mitt"> m</div>
+<div class="row" style="margin-top:6px"><button class="nu" data-d="-1">−1</button><button class="nu" data-d="-0.1">−0,1</button><button class="nu" data-d="0.1">+0,1</button><button class="nu" data-d="1">+1</button><button id="plf" title="Byt sida på äldre och nyare">⇄ Byt sida</button><button id="plc" title="Lägg snittet i modellens mitt">Mitten</button></div>
+<div class="row" style="margin-top:6px"><button id="pk2" title="Klicka två punkter i modellen: ett lodrätt snitt läggs genom dem">Två punkter…</button><button id="pk1" title="Klicka en punkt: ett vågrätt snitt läggs i den punktens höjd">Höjd i punkt…</button></div>
+<div class="row" id="pkh" style="margin-top:4px;color:var(--mut)">Dra i det gula snittplanet i vyn för att flytta det.</div></div>
+</div>
 <div id="ovrow" style="display:none;margin-top:6px" class="row"><label class="c">Äldre <input id="ca" type="color" value="#ef4444"></label><label class="c">Nyare <input id="cb" type="color" value="#2563eb"></label></div>
 <div id="dfrow" style="margin-top:6px" class="row"><label class="c"><input id="old" type="checkbox" checked> Gammalt läge som röd skugga</label><label class="c">Oförändrat <select id="same"><option value="ghost">Spöke</option><option value="grey">Grått</option></select></label></div></section>
 <section><h2>Kategorier</h2><div class="chips" id="chips"></div><div class="row" style="margin-top:5px"><button id="all">Alla</button><button id="none">Ingen</button><button id="chg">Bara ändringar</button></div></section>
@@ -61,8 +85,8 @@ var DATA = /*__DATA__*/null;
   var bb = new THREE.Box3(); objs.forEach(function (o) { ["a", "b"].forEach(function (k) { if (o[k]) { var P = o[k].P; for (var i = 0; i < P.length; i += 3) bb.expandByPoint(new THREE.Vector3(P[i], P[i + 1], P[i + 2])); } }); });
   if (bb.isEmpty()) bb.set(new THREE.Vector3(-5, -5, -5), new THREE.Vector3(5, 5, 5));
   function home() { var c = bb.getCenter(new THREE.Vector3()), r = Math.max(5, bb.getSize(new THREE.Vector3()).length()); cam.near = r / 1000; cam.far = r * 20; cam.position.set(c.x - r * 0.55, c.y - r * 0.8, c.z + r * 0.6); ctl.target.copy(c); cam.updateProjectionMatrix(); ctl.update(); }
-  function size() { var w = cv.clientWidth, h = cv.clientHeight; R.setSize(w, h, false); cam.aspect = w / Math.max(1, h); cam.updateProjectionMatrix(); draw(); }
-  var raf = 0; function draw() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; R.render(scene, cam); }); }
+  function size() { var w = cv.clientWidth, h = cv.clientHeight; R.setSize(w, h, false); cam.aspect = w / Math.max(1, h); cam.updateProjectionMatrix(); if (typeof placeDivider === "function" && st.sv) placeDivider(); draw(); }
+  var raf = 0; function draw() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; if (st.mode === "swipe" && st.sv && st.sv.type === "screen") updateScreenClip(); R.render(scene, cam); }); }
   ctl.addEventListener("change", draw); window.addEventListener("resize", size);
   // ---- visibilitet ----
   function inF(o) { if (!st.cls[o.c]) return false; if (st.q && (o.n + " " + o.c + " " + o.w).toLowerCase().indexOf(st.q) < 0) return false; return true; }
@@ -105,22 +129,102 @@ var DATA = /*__DATA__*/null;
     draw();
   }
   // ---- svep ----
-  function swipe() {
-    var n = new THREE.Vector3(st.ax[0], st.ax[1], 0), p = [[bb.min.x, bb.min.y], [bb.max.x, bb.min.y], [bb.min.x, bb.max.y], [bb.max.x, bb.max.y]].map(function (q) { return q[0] * n.x + q[1] * n.y; });
-    var lo = Math.min.apply(null, p), hi2 = Math.max.apply(null, p), c = lo + (hi2 - lo) * st.sw;
-    clipA = new THREE.Plane(n.clone().negate(), c); clipB = new THREE.Plane(n.clone(), -c);
-    groups.forEach(function (g) { g.mesh.material.clippingPlanes = [g.side === "a" ? clipA : clipB]; }); draw();
+  /* Två sätt: Skärmsvep = en dragare på skärmen (kan flyttas och vridas fritt, funkar i alla vyer) och Snittplan = ett plan i modellen som läggs exakt där man vill.
+     Båda är klippplan (äldre på ena sidan, nyare på andra). Skärmsvepets plan går genom kameran och uppdateras vid varje bild. */
+  clipA = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0); clipB = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
+  var c0 = bb.getCenter(new THREE.Vector3()), diag = Math.max(1, bb.getSize(new THREE.Vector3()).length());
+  st.sv = { type: "screen", cx: 0.5, cy: 0.5, ang: 90, flip: false }; st.pl = { orient: "vert", ang: 0, pos: 0, flip: false, show: true }; st.pick = null;
+  var plG = new THREE.Group(), plQuad = null; scene.add(plG);
+  (function () {
+    var q = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffc61a, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false })); q.renderOrder = 8; plG.add(q); plQuad = q;
+    var sq = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, -0.5, 0), new THREE.Vector3(0.5, -0.5, 0), new THREE.Vector3(0.5, 0.5, 0), new THREE.Vector3(-0.5, 0.5, 0)]);
+    [[1, 0.95], [1.015, 0.35], [1.035, 0.16]].forEach(function (k) { var l = new THREE.LineLoop(sq, new THREE.LineBasicMaterial({ color: 0xffc61a, transparent: true, opacity: k[1], depthTest: false })); l.scale.set(k[0], k[0], 1); l.renderOrder = 9; plG.add(l); });
+    plG.visible = false;
+  })();
+  function planeNormal() {
+    var o = st.pl.orient; if (o === "z") return new THREE.Vector3(0, 0, 1); if (o === "x") return new THREE.Vector3(1, 0, 0); if (o === "y") return new THREE.Vector3(0, 1, 0);
+    var a = st.pl.ang * Math.PI / 180; return new THREE.Vector3(Math.cos(a), Math.sin(a), 0);
   }
-  function axisFromView() { var d = new THREE.Vector3(); cam.getWorldDirection(d); var r = new THREE.Vector3(-d.y, d.x, 0); if (r.lengthSq() < 1e-6) r.set(1, 0, 0); r.normalize(); st.ax = [r.x, r.y]; swipe(); }
+  function planeRange(n) { var m = 0; for (var i = 0; i < 8; i++) { var c = new THREE.Vector3(i & 1 ? bb.max.x : bb.min.x, i & 2 ? bb.max.y : bb.min.y, i & 4 ? bb.max.z : bb.min.z); m = Math.max(m, Math.abs(n.dot(c.sub(c0)))); } return Math.max(0.1, m); }
+  function updatePlaneClip() {
+    var n = planeNormal(), d = n.dot(c0) + st.pl.pos, f = st.pl.flip;
+    clipA.set(f ? n.clone() : n.clone().negate(), f ? -d : d); clipB.set(f ? n.clone().negate() : n.clone(), f ? d : -d);
+    plG.visible = st.mode === "swipe" && st.sv.type === "plane" && st.pl.show;
+    plG.position.copy(c0).addScaledVector(n, st.pl.pos); plG.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); plG.scale.setScalar(diag * 1.05);
+  }
+  function updateScreenClip() {
+    var w = cv.clientWidth || 1, h = cv.clientHeight || 1, s2 = st.sv, th = s2.ang * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), cx = s2.cx * w, cy = s2.cy * h, L = Math.max(w, h);
+    cam.updateMatrixWorld(); var cp = cam.position;
+    function ray(px, py) { return new THREE.Vector3(px / w * 2 - 1, -(py / h) * 2 + 1, 0.5).unproject(cam).sub(cp).normalize(); }
+    var d1 = ray(cx - dx * L, cy - dy * L), d2 = ray(cx + dx * L, cy + dy * L), n = new THREE.Vector3().crossVectors(d1, d2).normalize(), dA = ray(cx - dy * 60, cy + dx * 60);
+    if (n.dot(dA) < 0) n.negate(); var c = -n.dot(cp), f = s2.flip;   // A = vänster om riktningen (lodrätt: vänster sida)
+    clipA.set(f ? n.clone().negate() : n.clone(), f ? -c : c); clipB.set(f ? n.clone() : n.clone().negate(), f ? c : -c);
+  }
+  function swipeClip() { if (st.sv.type === "screen") { plG.visible = false; updateScreenClip(); } else updatePlaneClip(); }
+  function swipe() { swipeClip(); placeDivider(); draw(); }
+  /* dragaren på skärmen */
+  function placeDivider() {
+    var dv = $("dv"), on = st.mode === "swipe" && st.sv.type === "screen"; dv.style.display = on ? "block" : "none"; if (!on) return;
+    var w = cv.clientWidth, h = cv.clientHeight, s2 = st.sv, th = s2.ang * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), cx = s2.cx * w, cy = s2.cy * h, len = Math.hypot(w, h) * 3;
+    var l = $("dvl"); l.style.left = cx + "px"; l.style.top = cy + "px"; l.style.height = len + "px"; l.style.marginLeft = "-13px"; l.style.marginTop = (-len / 2) + "px"; l.style.transformOrigin = "50% 50%"; l.style.transform = "rotate(" + (s2.ang - 90) + "deg)";
+    var h1 = $("dvh"); h1.style.left = cx + "px"; h1.style.top = cy + "px"; h1.style.transform = "rotate(" + (s2.ang - 90) + "deg)";
+    var D = Math.min(w, h) * 0.4; [["dvg1", 1], ["dvg2", -1]].forEach(function (q) { var g = $(q[0]); g.style.left = (cx + dx * D * q[1]) + "px"; g.style.top = (cy + dy * D * q[1]) + "px"; });
+    var f = s2.flip; $("dvta").textContent = f ? "Nyare" : "Äldre"; $("dvtb").textContent = f ? "Äldre" : "Nyare";
+    $("dvta").style.left = (cx - dy * 78) + "px"; $("dvta").style.top = (cy + dx * 78) + "px"; $("dvtb").style.left = (cx + dy * 78) + "px"; $("dvtb").style.top = (cy - dx * 78) + "px";
+    $("scra").value = Math.round(s2.ang) % 360; $("scrav").textContent = (Math.round(s2.ang) % 360) + "°";
+  }
+  function dragStart(el, onMove) {
+    el.addEventListener("pointerdown", function (e) { e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId); var r = cv.getBoundingClientRect(), last = null; var mv = function (ev) { onMove(ev.clientX - r.left, ev.clientY - r.top, last); last = [ev.clientX - r.left, ev.clientY - r.top]; swipe(); };
+      var up = function () { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); }; el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); mv(e); });
+  }
+  dragStart($("dvh"), function (x, y) { st.sv.cx = Math.max(0, Math.min(1, x / cv.clientWidth)); st.sv.cy = Math.max(0, Math.min(1, y / cv.clientHeight)); });
+  dragStart($("dvl"), function (x, y) { st.sv.cx = Math.max(0, Math.min(1, x / cv.clientWidth)); st.sv.cy = Math.max(0, Math.min(1, y / cv.clientHeight)); });
+  [["dvg1", 0], ["dvg2", 180]].forEach(function (q) { dragStart($(q[0]), function (x, y) { var cx = st.sv.cx * cv.clientWidth, cy = st.sv.cy * cv.clientHeight, a = Math.atan2(y - cy, x - cx) * 180 / Math.PI - q[1]; st.sv.ang = ((a % 360) + 360) % 360; }); });
+  $("dvh").addEventListener("dblclick", function () { st.sv.cx = 0.5; st.sv.cy = 0.5; swipe(); });
+  $("scrc").onclick = function () { st.sv.cx = 0.5; st.sv.cy = 0.5; swipe(); }; $("scrv").onclick = function () { st.sv.ang = 90; swipe(); }; $("scrh").onclick = function () { st.sv.ang = 0; swipe(); };
+  $("scrf").onclick = function () { st.sv.flip = !st.sv.flip; swipe(); }; $("scra").oninput = function () { st.sv.ang = +this.value; swipe(); };
+  /* snittplanet i modellen */
+  function plUi() {
+    var n = planeNormal(), r = planeRange(n); $("plp").min = -r; $("plp").max = r; $("plp").value = st.pl.pos; $("pln").value = (Math.round(st.pl.pos * 100) / 100); $("plo").value = st.pl.orient; $("plarow").style.display = st.pl.orient === "vert" ? "" : "none";
+    $("pla").value = st.pl.ang; $("plav").textContent = Math.round(st.pl.ang) + "°"; $("plsh").checked = st.pl.show;
+  }
+  function plSet(pos) { st.pl.pos = pos; plUi(); swipe(); }
+  $("swtype").onclick = function (e) { var b = e.target.closest("button"); if (!b) return; st.sv.type = b.dataset.t; [].forEach.call($("swtype").children, function (x) { x.classList.toggle("on", x === b); }); $("swscr").style.display = st.sv.type === "screen" ? "" : "none"; $("swpl").style.display = st.sv.type === "plane" ? "" : "none"; if (st.sv.type === "plane") plUi(); swipe(); };
+  $("plo").onchange = function () { st.pl.orient = this.value; st.pl.pos = 0; plUi(); swipe(); }; $("pla").oninput = function () { st.pl.ang = +this.value; plUi(); swipe(); };
+  $("plp").oninput = function () { st.pl.pos = +this.value; $("pln").value = Math.round(st.pl.pos * 100) / 100; swipe(); }; $("pln").onchange = function () { plSet(+this.value || 0); };
+  [].forEach.call(document.querySelectorAll(".nu"), function (b) { b.onclick = function () { plSet(st.pl.pos + (+b.dataset.d)); }; });
+  $("plf").onclick = function () { st.pl.flip = !st.pl.flip; swipe(); }; $("plc").onclick = function () { plSet(0); }; $("plsh").onchange = function () { st.pl.show = this.checked; swipe(); };
+  $("pk2").onclick = function () { st.pick = { mode: "two", pts: [] }; $("pkh").textContent = "Klicka första punkten i modellen…"; R.domElement.style.cursor = "crosshair"; };
+  $("pk1").onclick = function () { st.pick = { mode: "one", pts: [] }; $("pkh").textContent = "Klicka en punkt i modellen – snittet läggs i dess höjd."; R.domElement.style.cursor = "crosshair"; };
+  function pickDone(msg) { st.pick = null; R.domElement.style.cursor = ""; $("pkh").textContent = msg || "Dra i det gula snittplanet i vyn för att flytta det."; }
+  function pickPoint(e) { var r = R.domElement.getBoundingClientRect(); ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), cam); var hits = ray.intersectObjects(root.children, false); for (var i = 0; i < hits.length; i++) if (!(hits[i].object.material.transparent && hits[i].object.material.opacity < 0.5)) return hits[i].point.clone(); return hits[0] ? hits[0].point.clone() : null; }
+  function onPick(e) {
+    var pt = pickPoint(e); if (!pt) { $("pkh").textContent = "Ingen träff – klicka på modellen."; return; }
+    if (st.pick.mode === "one") { st.pl.orient = "z"; st.pl.pos = pt.z - c0.z; st.sv.type = "plane"; pickDone("Vågrätt snitt lagt i höjden " + (Math.round(pt.z * 100) / 100) + " (relativt visarens origo)."); setSwipeType("plane"); return; }
+    st.pick.pts.push(pt); if (st.pick.pts.length < 2) { $("pkh").textContent = "Klicka andra punkten…"; return; }
+    var a = st.pick.pts[0], b = st.pick.pts[1], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy);
+    if (L < 1e-4) { pickDone("Punkterna ligger lodrätt över varandra – välj två punkter med avstånd i sidled."); return; }
+    var n = new THREE.Vector3(-dy / L, dx / L, 0); st.pl.orient = "vert"; st.pl.ang = ((Math.atan2(n.y, n.x) * 180 / Math.PI) % 360 + 360) % 360; st.pl.pos = n.dot(a) - n.dot(c0); pickDone("Lodrätt snitt lagt genom punkterna (" + (Math.round(L * 100) / 100) + " m mellan dem)."); setSwipeType("plane");
+  }
+  function setSwipeType(t) { var b = $("swtype").querySelector('[data-t="' + t + '"]'); if (b) b.click(); else swipe(); }
+  /* dra snittplanet i 3D: förflyttningen på skärmen längs planets normal blir meter */
+  cv.addEventListener("pointerdown", function (e) {
+    if (st.mode !== "swipe" || st.sv.type !== "plane" || !st.pl.show || st.pick || e.target !== R.domElement) return;
+    var r = R.domElement.getBoundingClientRect(); ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), cam);
+    var hit = ray.intersectObject(plQuad, false)[0]; if (!hit) return; var solid = ray.intersectObjects(root.children, false)[0]; if (solid && solid.distance < hit.distance - 1e-6) return;   // objekt framför planet går före
+    e.stopPropagation(); e.preventDefault(); ctl.enabled = false;
+    var n = planeNormal(), p0 = plG.position.clone(), scr = function (v) { var q = v.clone().project(cam); return [(q.x + 1) / 2 * r.width, (1 - q.y) / 2 * r.height]; }, a0 = scr(p0), a1 = scr(p0.clone().add(n)), sv = [a1[0] - a0[0], a1[1] - a0[1]], l2 = sv[0] * sv[0] + sv[1] * sv[1] || 1, sx = e.clientX, sy = e.clientY, sp = st.pl.pos;
+    var mv = function (ev) { st.pl.pos = sp + ((ev.clientX - sx) * sv[0] + (ev.clientY - sy) * sv[1]) / l2; plUi(); swipe(); };
+    var up = function () { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); ctl.enabled = true; }; window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+  }, true);
   var blinkA = true, blinkT = 0;
   function setMode(m) {
     st.mode = m; if (blinkT) { clearInterval(blinkT); blinkT = 0; } blinkA = true;
     [].forEach.call($("modes").children, function (b) { b.classList.toggle("on", b.dataset.m === m); });
     $("swrow").style.display = m === "swipe" ? "" : "none"; $("ovrow").style.display = m === "overlay" ? "" : "none"; $("dfrow").style.display = m === "diff" ? "" : "none";
     var bar = $("bar"); bar.style.display = m === "blink" ? "flex" : "none";
-    if (m === "swipe") { clipA = clipB = new THREE.Plane(new THREE.Vector3(1, 0, 0), 0); axisFromView(); }
     if (m === "blink") { $("barl").textContent = "Äldre (A)"; blinkT = setInterval(function () { blinkA = !blinkA; $("barl").textContent = blinkA ? "Äldre (A)" : "Nyare (B)"; build(); }, 900); }
-    build(); if (m === "swipe") swipe();
+    build(); swipe();
   }
   var MODES = [["diff", "Skillnader"], ["overlay", "Överlägg"], ["before", "Äldre"], ["after", "Nyare"], ["swipe", "Svep"], ["blink", "Blinka"]];
   MODES.forEach(function (x) { var b = document.createElement("button"); b.dataset.m = x[0]; b.textContent = x[1]; b.onclick = function () { setMode(x[0]); }; $("modes").appendChild(b); });
@@ -156,10 +260,9 @@ var DATA = /*__DATA__*/null;
     var hits = ray.intersectObjects(root.children, false); for (var h = 0; h < hits.length; h++) { var m = hits[h].object; if (m.material.transparent && m.material.opacity < 0.5 && hits.length > 1 && h < hits.length - 1) continue; var s = m.userData.starts, f = hits[h].faceIndex, lo = 0, hi2 = s.length - 2; while (lo < hi2) { var mid = (lo + hi2 + 1) >> 1; if (s[mid] <= f) lo = mid; else hi2 = mid - 1; } return m.userData.ids[lo]; }
     return -1;
   }
-  R.domElement.addEventListener("pointerup", function (e) { if (down && Math.abs(e.clientX - down[0]) < 4 && Math.abs(e.clientY - down[1]) < 4) { var id = pick(e); select(id, false); } down = null; });
+  R.domElement.addEventListener("pointerup", function (e) { if (down && Math.abs(e.clientX - down[0]) < 4 && Math.abs(e.clientY - down[1]) < 4) { if (st.pick) onPick(e); else { var id = pick(e); select(id, false); } } down = null; });
   R.domElement.addEventListener("pointermove", function (e) { if (e.buttons) { $("tip").style.display = "none"; return; } var id = pick(e), t = $("tip"); if (id < 0) { t.style.display = "none"; return; } var o = objs[id], r = cv.getBoundingClientRect(); t.textContent = (o.n || DATA.clsNames[o.c] || o.c) + " – " + NAME[o.s]; t.style.left = (e.clientX - r.left + 12) + "px"; t.style.top = (e.clientY - r.top + 12) + "px"; t.style.display = "block"; });
   // ---- reglage ----
-  $("sw").oninput = function () { st.sw = +this.value; swipe(); }; $("swax").onclick = axisFromView;
   $("ca").oninput = function () { st.colA = this.value; build(); }; $("cb").oninput = function () { st.colB = this.value; build(); };
   $("old").onchange = function () { st.old = this.checked; build(); }; $("same").onchange = function () { st.same = this.value; build(); };
   $("fit").onclick = function () { home(); draw(); };
@@ -169,7 +272,7 @@ var DATA = /*__DATA__*/null;
     objs.filter(vis).forEach(function (o) { L.push([NAME[o.s], o.n, DATA.clsNames[o.c] || o.c, o.w, o.va == null ? "" : String(o.va).replace(".", ","), o.vb == null ? "" : String(o.vb).replace(".", ",")].map(q).join(";")); });
     var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + L.join("\r\n")], { type: "text/csv;charset=utf-8" })); a.download = "Versionsjamforelse.csv"; document.body.appendChild(a); a.click(); a.remove();
   };
-  window.__ver = { st: st, objs: objs, setMode: setMode, groups: function () { return groups; }, renderer: R };
+  window.__ver = { plane: plG, camera: cam, swipe: swipe, clipA: function () { return clipA; }, clipB: function () { return clipB; }, st: st, objs: objs, setMode: setMode, groups: function () { return groups; }, renderer: R };
   chips(); clsUi(); size(); home(); setMode("diff"); list();
 })();
 </script></body></html>

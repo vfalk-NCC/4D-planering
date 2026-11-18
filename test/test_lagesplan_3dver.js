@@ -154,8 +154,35 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await pg.click('.chip[data-k="added"]');
     // lägen
     for (const m of ['overlay', 'before', 'after', 'swipe', 'blink', 'diff']) { await pg.click('#modes [data-m="' + m + '"]'); await pg.waitForTimeout(120); ok(await pg.evaluate(() => __ver.groups().length > 0), 'Läget ' + m + ' ritar'); }
-    await pg.click('#modes [data-m="swipe"]'); await pg.evaluate(() => { const s = document.getElementById('sw'); s.value = 0.25; s.dispatchEvent(new Event('input')); });
+    // Svep: skärmdragare med glow (flyttas och vrids fritt) och snittplan i modellen
+    await pg.click('#modes [data-m="swipe"]'); await pg.waitForTimeout(150);
     ok(await pg.evaluate(() => __ver.groups().every(g => g.mesh.material.clippingPlanes && g.mesh.material.clippingPlanes.length === 1)), 'Svep: klippplan på alla delar');
+    const dv = await pg.evaluate(() => { const h = document.getElementById('dvh'), r = h.getBoundingClientRect(), c = document.getElementById('cv').getBoundingClientRect(); return { shown: getComputedStyle(document.getElementById('dv')).display === 'block', glow: /255, 198, 26/.test(getComputedStyle(h).boxShadow), cx: (r.left + r.width / 2 - c.left) / c.width, cy: (r.top + r.height / 2 - c.top) / c.height }; });
+    ok(dv.shown && dv.glow && Math.abs(dv.cx - 0.5) < 0.02 && Math.abs(dv.cy - 0.5) < 0.02, 'Dragaren ligger mitt på skärmen och har gul glow: ' + JSON.stringify(dv));
+    const side = () => pg.evaluate(() => { const L = new THREE.Vector3(-0.5, 0, 0.5).unproject(__ver.camera), Rr = new THREE.Vector3(0.5, 0, 0.5).unproject(__ver.camera); return [__ver.clipA().distanceToPoint(L) > 0, __ver.clipB().distanceToPoint(L) < 0, __ver.clipA().distanceToPoint(Rr) < 0, __ver.clipB().distanceToPoint(Rr) > 0].join(); });
+    ok(await side() === 'true,true,true,true', 'Äldre till vänster och nyare till höger om dragaren: ' + await side());
+    { const bx = await pg.locator('#dvh').boundingBox(); await pg.mouse.move(bx.x + bx.width / 2, bx.y + bx.height / 2); await pg.mouse.down(); await pg.mouse.move(bx.x + bx.width / 2 + 160, bx.y + bx.height / 2 + 40, { steps: 6 }); await pg.mouse.up(); }
+    ok(await pg.evaluate(() => __ver.st.sv.cx > 0.6 && __ver.st.sv.cy > 0.5), 'Handtaget kan dras fritt');
+    ok(await pg.evaluate(() => { const L = new THREE.Vector3(0.3, 0, 0.5).unproject(__ver.camera); __ver.swipe(); return __ver.clipA().distanceToPoint(L) > 0; }), 'Snittet följer handtaget (punkt till vänster om nya läget är äldre)');
+    await pg.evaluate(() => { const s = document.getElementById('scra'); s.value = 45; s.dispatchEvent(new Event('input')); });
+    ok(await pg.evaluate(() => Math.round(__ver.st.sv.ang) === 45 && /rotate\(-45deg\)/.test(document.getElementById('dvl').style.transform)), 'Vinkeln går att ställa och dragaren vrids');
+    { const gx = await pg.locator('#dvg1').boundingBox(), a0 = await pg.evaluate(() => __ver.st.sv.ang); await pg.mouse.move(gx.x + gx.width / 2, gx.y + gx.height / 2); await pg.mouse.down(); await pg.mouse.move(gx.x + gx.width / 2 - 60, gx.y + gx.height / 2 + 90, { steps: 5 }); await pg.mouse.up(); ok(await pg.evaluate(a => Math.abs(__ver.st.sv.ang - a) > 5, a0), 'Ändarna vrider dragaren'); }
+    await pg.click('#scrc'); await pg.click('#scrv'); ok(await pg.evaluate(() => __ver.st.sv.cx === 0.5 && __ver.st.sv.ang === 90), 'Centrera och lodrät');
+    await pg.click('#scrf'); ok(await side() === 'false,false,false,false' || (await pg.evaluate(() => { const L = new THREE.Vector3(-0.5, 0, 0.5).unproject(__ver.camera); return __ver.clipB().distanceToPoint(L) > 0 && __ver.clipA().distanceToPoint(L) < 0; })), 'Byt sida');
+    await pg.click('#scrf');
+    // Snittplan i modellen: exakt läge i meter, vågrätt snitt, flytta med knappar, byt sida
+    await pg.click('#swtype [data-t="plane"]'); await pg.waitForTimeout(100);
+    ok(await pg.evaluate(() => __ver.plane.visible && getComputedStyle(document.getElementById('dv')).display === 'none'), 'Snittplanet visas och skärmdragaren göms');
+    await pg.selectOption('#plo', 'z'); await pg.fill('#pln', '1.5'); await pg.dispatchEvent('#pln', 'change');
+    const zc = await pg.evaluate(() => { const bb = new THREE.Box3(); __ver.objs.forEach(o => ['a', 'b'].forEach(k => { if (o[k]) for (let i = 0; i < o[k].P.length; i += 3) bb.expandByPoint(new THREE.Vector3(o[k].P[i], o[k].P[i + 1], o[k].P[i + 2])); })); const mid = bb.getCenter(new THREE.Vector3()).z; const up = new THREE.Vector3(0, 0, mid + 2), dn = new THREE.Vector3(0, 0, mid + 1); return [__ver.clipB().distanceToPoint(up) > 0, __ver.clipA().distanceToPoint(up) < 0, __ver.clipA().distanceToPoint(dn) > 0, Math.abs(__ver.plane.position.z - (mid + 1.5)) < 1e-4].join(); });
+    ok(zc === 'true,true,true,true', 'Vågrätt snitt 1,5 m från mitten: nyare ovanför, äldre under, planet ritat där: ' + zc);
+    await pg.click('.nu[data-d="1"]'); ok(await pg.evaluate(() => Math.abs(__ver.st.pl.pos - 2.5) < 1e-9), 'Knapparna flyttar snittet 1 m');
+    await pg.click('#plf'); ok(await pg.evaluate(() => __ver.st.pl.flip === true), 'Byt sida i snittplanet');
+    await pg.click('#plf'); await pg.selectOption('#plo', 'vert'); await pg.evaluate(() => { const s = document.getElementById('pla'); s.value = 90; s.dispatchEvent(new Event('input')); });
+    ok(await pg.evaluate(() => { const n = __ver.clipB().normal; return Math.abs(n.y - 1) < 1e-6 && Math.abs(n.x) < 1e-6; }), 'Lodrätt snitt med vridning 90° har normalen längs Y');
+    await pg.click('#pk2'); ok(await pg.evaluate(() => __ver.st.pick && __ver.st.pick.mode === 'two'), 'Välj två punkter startar'); await pg.click('#pk1'); ok(await pg.evaluate(() => __ver.st.pick.mode === 'one'), 'Välj höjd i punkt startar');
+    await pg.screenshot({ path: '/tmp/ver-swipe-plane.png' });
+    await pg.click('#swtype [data-t="screen"]'); await pg.click('#scra'); await pg.screenshot({ path: '/tmp/ver-swipe-screen.png' });
     await pg.click('#modes [data-m="diff"]');
     // klassfilter + markering
     await pg.click('#clsum'); await pg.uncheck('#cls input[data-c="IFCMEMBER"]'); ok(await pg.evaluate(() => document.querySelectorAll('#list .it').length === 3), 'Klass av: listan krymper');
