@@ -50,3 +50,14 @@ Renderingsläget har ett eget utseende som **inte** påverkar 3D-editorns materi
 `tools.json` listar alla (status, screenshot, render_image, list_objects, get_object, list_library, list_site_items, create_box/prism/cylinder/polyline, create_wall/gable_roof/stairs, place_library, add_site_item, update_site_item,
 delete_site_item, update_object, transform_object, push_pull, offset_outline, array_copy, duplicate_object, delete_objects, select, fly_to, set_camera, set_view_mode, set_sun, measure, undo, redo, eval_js). Koordinater är projektets (meter); `status` visar origo och kamera.
 Nya verktyg läggs till i `docs/lagesplan-l3api.js` (`l3api.methods.<namn>`) och beskrivs i `tools.json` – testet `test/test_lagesplan_l3api.js` kontrollerar att de hänger ihop.
+
+## Starta med en knapp (Windows)
+
+Bryggan körs av Claude Code och startar av sig själv när du startar Claude Code (`claude`). Den behöver alltså inte startas för hand.
+Vill du ha en ikon att dubbelklicka på, hämta `starta-claude.cmd` till skrivbordet (kör i ett vanligt cmd-fönster):
+
+    curl -L -o "%USERPROFILE%\Desktop\Starta Claude.cmd" https://raw.githubusercontent.com/vfalk-NCC/4D-planering/main/tools/mcp/starta-claude.cmd
+
+Dubbelklicka på **Starta Claude** → Claude Code startar i ett fönster, bryggan startar med det. Öppna sedan 3D-vyn och klicka **Claude** nere till vänster.
+Vill du att 3D-editorn öppnas samtidigt: lägg dess adress (en rad) i `%USERPROFILE%\4D-brygga\editor-url.txt`.
+
