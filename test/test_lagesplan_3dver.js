@@ -92,6 +92,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => { l3vr.filter.cls = new Set(['IFCSLAB']); l3vr.filter.q = 'x'; l3vr.show.added = 0; l3vr.view = 'overlay'; l3vrApply(); });
   await page.evaluate(() => l3vrRender()); await page.click('#v3Ver [data-vr="reset"]');
   ok(await page.evaluate(() => l3vr.filter.cls.size === 0 && l3vr.filter.q === '' && l3vr.show.added === 1 && l3vr.view === 'diff' && l3vr.modelCol.size === 0 && l3vr.active), 'Återställ filter tar bort filtren och går tillbaka till Skillnader ' + await page.evaluate(() => JSON.stringify([l3vr.filter.cls.size, l3vr.filter.q, l3vr.show, l3vr.view, l3vr.modelCol.size, l3vr.active])));
+  // Bild-export i editorn: PNG av 3D-vyn (1× = vyns storlek, 2× = dubbelt)
+  { const shot = async () => { const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#v3Ver [data-vr="png"]')]); const buf = fs.readFileSync(await dl.path()); return { name: dl.suggestedFilename(), sig: buf.slice(0, 8).toString('hex'), w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), size: buf.length }; };
+    const dim = await page.evaluate(() => { const c = l3.renderer.domElement; return [c.width, c.height]; });
+    await page.selectOption('#v3Ver #vrImgS', '1'); const s1 = await shot(); ok(s1.sig === '89504e470d0a1a0a' && s1.w === dim[0] && s1.h === dim[1] && s1.size > 5000 && /Versionsjamforelse/.test(s1.name), 'Bild från editorn 1×: ' + JSON.stringify(s1) + ' ' + dim);
+    await page.selectOption('#v3Ver #vrImgS', '2'); const s2 = await shot(); ok(s2.w === dim[0] * 2 && s2.h === dim[1] * 2, 'Bild från editorn 2×: ' + s2.w + 'x' + s2.h);
+    ok(await page.evaluate(([w, h]) => { const c = l3.renderer.domElement; return c.width === w && c.height === h; }, dim), 'Vyn är orörd efter bildexporten');
+    await page.uncheck('#v3Ver #vrImgL'); const s3 = await shot(); ok(s3.size > 1000 && s3.size < s2.size * 1.5, 'Bild utan förklaring'); await page.check('#v3Ver #vrImgL'); }
   // Tidplanen av: Original-läget är på och skillnadsfärgerna syns ändå; av/på med kryssrutan
   ok(await page.evaluate(() => l3b.orig === true && l3vr.setOrig === true), 'Tidplanen ignoreras som standard (Original-läget)');
   await page.evaluate(() => { l3bRecolor(); window.__c = Array.from(l3vrModel('A').meshes[0].geometry.getAttribute('color').array.slice(48, 51)); });

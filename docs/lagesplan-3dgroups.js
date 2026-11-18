@@ -208,6 +208,7 @@ function l3gRenderTab() {
         <button type="button" class="v3-gr-n" data-gsel="${esc(g.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(g.name)}</button>
         <em title="${here} av ${tot} finns i de inlästa modellerna">${here === tot ? tot : `${here}/${tot}`}</em>
         ${mine ? `<span class="v3-gr-mine" title="${mine} av de markerade ligger i gruppen">${mine}✓</span>` : ""}
+        <button type="button" class="v3-ic v3-gr-iso" data-giso="${esc(g.id)}" ${here ? "" : "disabled"} title="${here ? "Visa bara gruppen (tryck igen för att ångra)" : "Inga objekt i de inlästa modellerna"}">${I.isolate}</button>
         ${(() => { const hid = here > 0 && l3gEntsHidden(l3gEnts(g)); return `<button type="button" class="v3-ic v3-gr-eye ${hid ? "off" : ""}" data-geye="${esc(g.id)}" ${here ? "" : "disabled"} title="${!here ? "Inga objekt i de inlästa modellerna" : hid ? "Tänd gruppen" : "Släck gruppen"}">${hid ? I.eyeOff : I.eye}</button>`; })()}
         <button type="button" class="v3-ic" data-gmore="${esc(g.id)}" title="Fler val" aria-expanded="${open}">⋯</button>
       </div>
@@ -253,7 +254,10 @@ function l3gBindTab(host) {
   host.querySelectorAll("[data-gmore]").forEach(b => { b.onclick = () => { l3gUi.open = l3gUi.open === b.dataset.gmore ? null : b.dataset.gmore; l3gRenderTab(); }; });
   host.querySelectorAll("[data-gadd]").forEach(b => { b.onclick = () => l3gAdd(b.dataset.gadd); });
   host.querySelectorAll("[data-gout]").forEach(b => { b.onclick = () => l3gRemoveSel(b.dataset.gout); });
-  host.querySelectorAll("[data-giso]").forEach(b => { b.onclick = () => { l3gSelect(b.dataset.giso); if (l3bs.sel.length) l3bsIsolate(); }; });
+  host.querySelectorAll("[data-giso]").forEach(b => { b.onclick = () => {
+    const id = b.dataset.giso, was = typeof l3IsoPrev !== "undefined" && l3IsoPrev;
+    if (was && typeof l3IsoBack === "function") { l3IsoBack(); if (l3g.isoQ === id) { l3g.isoQ = null; return; } }
+    l3gSelect(id); if (l3bs.sel.length) { l3bsIsolate(); l3g.isoQ = id; } }; });
   host.querySelectorAll("[data-ghide]").forEach(b => { b.onclick = () => l3gHide(b.dataset.ghide); });
   host.querySelectorAll("[data-geye]").forEach(b => { b.onclick = () => l3gVis(b.dataset.geye); });
   host.querySelectorAll("[data-gzoom]").forEach(b => { b.onclick = () => { l3gSelect(b.dataset.gzoom); l3bsZoom(); }; });

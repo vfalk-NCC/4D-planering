@@ -209,6 +209,7 @@ function l3orgHtml() {
         <button type="button" class="v3-gr-n" data-orgsel="${esc(n.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(n.name)}</button>
         ${n.added ? (() => { const a = l3oa.list.find(x => x.node === n.id), p = a ? l3oaPending(a).length : 0; return `<span class="v3-gr-mine ${p ? "pend" : ""}" title="${n.added.length} objekt som du har lagt i gruppen här${p ? ` – ${p} väntar på att skrivas till Organizer i Trimble Connect` : " – skrivna till Organizer i Trimble Connect"}">+${n.added.length}${p ? " ⏳" : " ✓"}</span>`; })() : ""}
         <em title="${hk} av ${all.size} finns i de inlästa modellerna">${!all.size ? "0" : hk === all.size ? all.size : `${hk}/${all.size}`}</em>
+        <button type="button" class="v3-ic v3-gr-iso" data-orgiso="${esc(n.id)}" ${hk ? "" : "disabled"} title="${hk ? "Visa bara gruppen (tryck igen för att ångra)" : "Inga objekt i de inlästa modellerna"}">${I.isolate}</button>
         <button type="button" class="v3-ic v3-gr-eye ${hid ? "off" : ""}" data-orgeye="${esc(n.id)}" ${hk ? "" : "disabled"} title="${!hk ? "Inga objekt i de inlästa modellerna" : hid ? "Tänd gruppen" : "Släck gruppen"}">${hid ? I.eyeOff : I.eye}</button>
         <button type="button" class="v3-ic" data-orgmore="${esc(n.id)}" title="Fler val" aria-expanded="${open}">⋯</button></div>
         ${open ? `<div class="v3-gr-acts"><button type="button" data-orgiso="${esc(n.id)}">${I.isolate} Visa bara</button><button type="button" data-orghide="${esc(n.id)}">${I.eyeOff} Dölj</button><button type="button" data-orgzoom="${esc(n.id)}">${I.focus} Zooma</button><button type="button" data-orgcopy="${esc(n.id)}" title="Som egen grupp: kan färgas och skrivas in som UDA i IFC">＋ Kopiera till egen grupp</button></div>` : ""}
@@ -234,7 +235,10 @@ function l3orgBind(host) {
   host.querySelectorAll("[data-orgfold]").forEach(b => { b.onclick = () => { const k = "o:" + b.dataset.orgfold; l3org.shut.has(k) ? l3org.shut.delete(k) : l3org.shut.add(k); l3orgRender(); }; });
   host.querySelectorAll("[data-orgsel]").forEach(b => { b.onclick = e => l3orgSelect(b.dataset.orgsel, e.shiftKey || e.ctrlKey || e.metaKey); });
   host.querySelectorAll("[data-orgmore]").forEach(b => { b.onclick = () => { l3org.open = l3org.open === b.dataset.orgmore ? null : b.dataset.orgmore; l3orgRender(); }; });
-  host.querySelectorAll("[data-orgiso]").forEach(b => { b.onclick = () => { l3orgSelect(b.dataset.orgiso); if (l3bs.sel.length) l3bsIsolate(); }; });
+  host.querySelectorAll("[data-orgiso]").forEach(b => { b.onclick = () => {   // snabbknappen: Visa bara – tryck igen på samma grupp ångrar, en annan grupp byter
+    const id = b.dataset.orgiso, was = typeof l3IsoPrev !== "undefined" && l3IsoPrev;
+    if (was && typeof l3IsoBack === "function") { l3IsoBack(); if (l3org.isoQ === id) { l3org.isoQ = null; return; } }
+    l3orgSelect(id); if (l3bs.sel.length) { l3bsIsolate(); l3org.isoQ = id; } }; });
   host.querySelectorAll("[data-orghide]").forEach(b => { b.onclick = () => l3orgHide(b.dataset.orghide); });
   host.querySelectorAll("[data-orgeye]").forEach(b => { b.onclick = () => { const n = l3orgFind(b.dataset.orgeye); if (!n) return; const ents = l3orgEnts(l3orgAll(n)); if (!ents.length) { l3Status(`${n.name} har inga objekt i de inlästa modellerna.`); return; } l3gVisEnts(ents, n.name, l3gEntsHidden(ents)); }; });
   host.querySelectorAll("[data-orgzoom]").forEach(b => { b.onclick = () => { l3orgSelect(b.dataset.orgzoom); if (l3bs.sel.length) l3bsZoom(); }; });
