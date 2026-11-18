@@ -110,6 +110,22 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
       if (za.indexOf('Etapp 2') > za.indexOf('Etapp 1')) fail('Ö–A: Etapp 2 före Etapp 1: ' + JSON.stringify(za));
       await page.selectOption('#v3OrgSort', 'az'); const az = await names();
       if (az.indexOf('Etapp 1') > az.indexOf('Etapp 2')) fail('A–Ö: Etapp 1 före Etapp 2: ' + JSON.stringify(az));
+      // Huvudmapparna (träden) sorteras och filtreras också
+      {
+        const trees = () => page.evaluate(() => [...document.querySelectorAll('.v3-org-sec [data-orgtree]')].map(b => b.querySelector('b').textContent.trim()));
+        await page.evaluate(() => { window.__orgSave = l3org.data; const g = (id, nm) => ({ id, name: nm, guids: [] }); l3org.data = { ...l3org.data, trees: [{ id: 'TA', name: '2.1.2 - Ö-mapp', groups: [g('a1', 'Grupp ett')] }, { id: 'TB', name: '1.3 - A-mapp', groups: [g('b1', 'Grupp två'), g('b2', 'Grupp tre')] }, { id: 'TC', name: '1.1 - M-mapp', groups: [g('c1', 'Räcke')] }] }; l3orgRender(); });
+        await page.selectOption('#v3OrgSort', 'az'); const t1 = await trees();
+        if (t1.join('|') !== '1.1 - M-mapp|1.3 - A-mapp|2.1.2 - Ö-mapp') fail('A–Ö sorterar huvudmapparna: ' + JSON.stringify(t1));
+        await page.selectOption('#v3OrgSort', 'za'); const t2 = await trees();
+        if (t2.join('|') !== '2.1.2 - Ö-mapp|1.3 - A-mapp|1.1 - M-mapp') fail('Ö–A sorterar huvudmapparna: ' + JSON.stringify(t2));
+        await page.selectOption('#v3OrgSort', 'big'); const t3 = await trees();
+        if (t3[0] !== '1.3 - A-mapp') fail('Flest grupper först: ' + JSON.stringify(t3));
+        await page.selectOption('#v3OrgSort', 'az'); await page.fill('#v3OrgQ', 'räcke'); await page.waitForTimeout(500); const t4 = await trees();
+        if (t4.join('|') !== '1.1 - M-mapp') fail('Sökord döljer mappar utan träff: ' + JSON.stringify(t4));
+        await page.fill('#v3OrgQ', 'a-mapp'); await page.waitForTimeout(500); const t5 = await trees();
+        if (t5.join('|') !== '1.3 - A-mapp') fail('Mappens namn matchar: ' + JSON.stringify(t5));
+        await page.click('#v3OrgRst'); await page.evaluate(() => { l3org.data = window.__orgSave; l3orgRender(); }); await page.waitForTimeout(200);
+      }
       await page.fill('#v3OrgQ', 'räcke'); await page.waitForTimeout(500); const q1 = await names();
       if (!q1.some(x => /Räcke/.test(x)) || q1.some(x => /Etapp 2/.test(x)) || !q1.includes('Etapp 1')) fail('Sökord visar träffen med sin förälder: ' + JSON.stringify(q1));
       if (!(await page.evaluate(() => document.activeElement && document.activeElement.id === 'v3OrgQ'))) fail('Sökrutan behåller fokus när listan ritas om');

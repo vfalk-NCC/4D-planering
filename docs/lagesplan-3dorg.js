@@ -230,8 +230,16 @@ function l3orgHtml() {
       </div>` + (shut ? "" : kids.map(k => rowOf(k, depth + 1, allKids)).join(""));
   };
   let body = "";
-  if (d && d.trees.length) body = d.trees.map(t => {
-    const k = "t:" + t.id, shut = l3org.shut.has(k), roots = visKids(l3orgTree(t), false);
+  /* Huvudmapparna (träden) sorteras och filtreras också: A–Ö/Ö–A på namnet, flest grupper/objekt, sökord (en mapp som matchar visar alla sina grupper, annars bara de som matchar) och "bara med objekt här" döljer tomma mappar. */
+  const treeName = t => String(l3orgDec(t.name) || ""), treeMatch = t => !!qn && treeName(t).toLowerCase().includes(qn);
+  const treeList = d && d.trees.length ? d.trees.map(t => ({ t, roots: visKids(l3orgTree(t), treeMatch(t)) })).filter(x => (!qn && !U.here) || x.roots.length) : [];
+  if (U.sort === "az") treeList.sort((a, b) => treeName(a.t).localeCompare(treeName(b.t), "sv", { numeric: true }));
+  else if (U.sort === "za") treeList.sort((a, b) => treeName(b.t).localeCompare(treeName(a.t), "sv", { numeric: true }));
+  else if (U.sort === "big") treeList.sort((a, b) => b.t.groups.length - a.t.groups.length);
+  else if (U.sort === "here") treeList.sort((a, b) => b.roots.reduce((s, n) => s + hereOf(n)[0], 0) - a.roots.reduce((s, n) => s + hereOf(n)[0], 0));
+  if (d && d.trees.length && !treeList.length) body = `<div class="v3-pal-hint">Inga grupper matchar filtret.</div>`;
+  else if (d && d.trees.length) body = treeList.map(({ t, roots }) => {
+    const k = "t:" + t.id, shut = l3org.shut.has(k) && !qn;
     return `<div class="v3-gf ${shut ? "shut" : ""}"><button type="button" class="v3-gf-t" data-orgtree="${esc(t.id)}" aria-expanded="${!shut}"><i>›</i><b>${esc(l3orgDec(t.name))}</b><em>${t.groups.length} grupper</em></button></div>${shut ? "" : `<div class="v3-gf-b">${roots.map(n => rowOf(n, 0, false)).join("") || `<div class="v3-pal-hint">${qn || U.here ? "Inga grupper matchar filtret." : "Inga grupper i trädet."}</div>`}</div>`}`;
   }).join("");
   else if (d) body = `<div class="v3-pal-hint">Organizer har inga träd i det här projektet.</div>`;

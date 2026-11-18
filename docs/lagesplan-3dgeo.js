@@ -61,7 +61,8 @@ function l3gcRowsHtml(g, w) {
 async function l3gcSide(side, ent) {
   if (!side) return;
   let host = side.querySelector("#v3BsGeo"); if (host) host.remove();
-  if (!ent) { l3gcSideMany(side); return; }
+  if (!ent) { l3gcSideMany(side).catch(e => console.warn("Geometrisumma", e)); return; }
+  if (!ent.mesh || !ent.mesh.geometry) return;
   const { cls, name } = l3gcRange(ent), sid = side.dataset.id;
   host = document.createElement("div"); host.id = "v3BsGeo"; host.className = "v3-geo"; host.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Räknar ur geometrin…</div>`;
   const pr = side.querySelector("#v3BsProps"); if (pr) pr.parentNode.insertBefore(host, pr); else side.appendChild(host);
@@ -82,7 +83,8 @@ async function l3gcSideMany(side) {
   const tot = { n: 0, vol: 0, area: 0, side: 0, kg: 0, open: 0 }, by = new Map(), rows = []; let k = 0;
   for (const e of sel) {
     if (side.dataset.id !== sid || !host.isConnected) return;
-    const g = l3gcCalc(e.mesh, e.ri); if (g) { const { cls, name, r } = l3gcRange(e), w = l3gcWeight(g, name, cls); tot.n++; tot.vol += g.vol; tot.area += g.area; tot.side += g.side; if (w) tot.kg += w.kg; if (!g.closed) tot.open++;
+    let g = null; try { g = e.mesh && e.mesh.geometry ? l3gcCalc(e.mesh, e.ri) : null; } catch (er) { g = null; }
+    if (g) { const { cls, name, r } = l3gcRange(e), w = l3gcWeight(g, name, cls); tot.n++; tot.vol += g.vol; tot.area += g.area; tot.side += g.side; if (w) tot.kg += w.kg; if (!g.closed) tot.open++;
       const c = by.get(cls) || { cls, n: 0, vol: 0, area: 0 }; c.n++; c.vol += g.vol; c.area += g.area; by.set(cls, c); rows.push({ e, g, w, name, cls, guid: r.guid }); }
     if (++k % 150 === 0) { host.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Räknar volym ur geometrin… ${k} av ${n}</div>`; await l3gcTick(); }
   }
