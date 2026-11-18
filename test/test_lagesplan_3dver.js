@@ -188,6 +188,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // klassfilter + markering
     await pg.click('#clsum'); await pg.uncheck('#cls input[data-c="IFCMEMBER"]'); ok(await pg.evaluate(() => document.querySelectorAll('#list .it').length === 3), 'Klass av: listan krymper');
     await pg.click('#list .it >> nth=0'); ok(await pg.evaluate(() => __ver.st.sel >= 0 && /m³/.test(document.getElementById('info').textContent)), 'Klick i listan markerar och visar info');
+    // Bild-export: PNG av vyn i vald storlek, även med svepets dragare
+    const png = async () => { const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#png')]); const buf = fs.readFileSync(await dl.path()); if (/swipe/.test(dl.suggestedFilename())) fs.copyFileSync(await dl.path(), '/tmp/ver-png-swipe.png'); return { name: dl.suggestedFilename(), sig: buf.slice(0, 8).toString('hex'), w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), size: buf.length }; };
+    const cvs = await pg.evaluate(() => [document.getElementById('cv').clientWidth, document.getElementById('cv').clientHeight]);
+    const p1 = await png(); ok(p1.sig === '89504e470d0a1a0a' && p1.w === cvs[0] * 2 && p1.h === cvs[1] * 2 && p1.size > 5000 && /\.png$/.test(p1.name) && /diff/.test(p1.name), 'Bild-export 2×: ' + JSON.stringify(p1) + ' ' + cvs);
+    await pg.selectOption('#pngs', '1'); const p2 = await png(); ok(p2.w === cvs[0] && p2.h === cvs[1], 'Bild-export som skärmen: ' + p2.w + 'x' + p2.h);
+    await pg.click('#modes [data-m="swipe"]'); const p3 = await png(); ok(/swipe/.test(p3.name) && p3.size > 5000, 'Bild-export i svep: ' + p3.name);
+    ok(await pg.evaluate(() => document.getElementById('cv').clientWidth > 0 && __ver.groups().length > 0), 'Visaren fungerar efter bild-export'); await pg.click('#modes [data-m="diff"]'); await pg.selectOption('#pngs', '2');
     await pg.click('#rst'); ok(await pg.evaluate(() => Object.values(__ver.st.show).every(Boolean) && Object.values(__ver.st.cls).every(Boolean) && __ver.st.q === '' && __ver.st.mode === 'diff' && document.querySelectorAll('#list .it').length === 4), 'Visarens återställ: alla filter borta'); await pg.screenshot({ path: '/tmp/ver-viewer.png' }); ok(!perr.length, 'Visaren: fel i konsolen: ' + perr.join(' | ')); await pg.context().close(); }
   await page.evaluate(() => { l3bShowAllRanges(); l3vr.filter.cls = new Set(); l3vrApply(); });
   // Stäng: versionerna tas bort och färgerna är borta
