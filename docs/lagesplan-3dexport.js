@@ -18,8 +18,10 @@ const l3xhB64Len = n => Math.ceil(n / 3) * 4;
 /* ---- Vad som finns att exportera ---- */
 function l3xhModels() { return (typeof l3b !== "undefined" ? l3b.models : []).filter(m => m && m.meshes && m.meshes.length && m.visible !== false); }
 function l3xhModelCount(m) { let tris = 0, verts = 0, objs = 0; m.meshes.forEach(mesh => { const u = mesh.userData.l3b; if (!u) return; u.ranges.forEach((r, ri) => { if (typeof l3bsDead === "function" && l3bsDead(mesh, ri)) return; objs++; verts += r.count; tris += (r.idxCount != null ? r.idxCount : r.count * 1.5) / 3; }); }); return { tris: Math.round(tris), verts, objs }; }
-function l3xhClouds() { return (typeof l3pc !== "undefined" ? l3pc.clouds : []).filter(c => c && c.group && c.visible !== false); }
-const l3xhCloudN = c => c.nTot || c.group.children.reduce((a, g) => a + (g.geometry ? g.geometry.getAttribute("position").count : 0), 0);
+function l3xhClouds() { return (typeof l3pc !== "undefined" ? l3pc.clouds : []).filter(c => c && c.group && c.visible !== false && l3xhPoints(c).length); }
+/* Punkterna som ligger i minnet för ett moln (hela molnet, eller översikten för stora okträdsmoln som ritas nod för nod). */
+function l3xhPoints(c) { const out = []; try { c.group.traverse(g => { if (g.isPoints && g.geometry && g.geometry.getAttribute("position")) out.push(g); }); } catch (e) { /* */ } return out; }
+const l3xhCloudN = c => { try { return l3xhPoints(c).reduce((a, g) => a + g.geometry.getAttribute("position").count, 0); } catch (e) { return c.nTot || 0; } };
 function l3xhAreas() {
   const M = new Map(); (typeof placements !== "undefined" ? placements : []).forEach(p => {
     if (!p.m || p.m.k === "curve" || (l3 && l3.hidden && l3.hidden.has(p.id))) return; const a = p.area || "(utan mapp)"; if (!M.has(a)) M.set(a, []); M.get(a).push(p);
@@ -54,7 +56,7 @@ function l3xhAreaLayer(area, list) {
   return { k: "objs", name: area, col: col || "#a8b3c4", pos, idx: new Uint32Array(F), objs };
 }
 function l3xhCloudLayer(c, limit) {
-  const pts = c.group.children.filter(g => g.isPoints && g.geometry), N = pts.reduce((a, g) => a + g.geometry.getAttribute("position").count, 0), stride = Math.max(1, Math.ceil(N / Math.max(1, limit))), M = Math.ceil(N / stride);
+  const pts = l3xhPoints(c), N = pts.reduce((a, g) => a + g.geometry.getAttribute("position").count, 0), stride = Math.max(1, Math.ceil(N / Math.max(1, limit))), M = Math.ceil(N / stride);
   const pos = new Float32Array(M * 3), vc = new Uint8Array(M * 3), v = new THREE.Vector3(); let o = 0, run = 0;
   c.group.updateWorldMatrix(true, true);
   pts.forEach(g => { const P = g.geometry.getAttribute("position"), Cc = g.geometry.getAttribute("color"), u8 = Cc && Cc.array instanceof Uint8Array; g.updateWorldMatrix(true, false); const W = g.matrixWorld;
@@ -115,7 +117,8 @@ async function l3xhExport(sel) {
   } finally { l3xh.busy = false; }
 }
 /* ---- Panel i högermenyn ---- */
-function l3xhOpen() {
+function l3xhOpen() { try { l3xhOpen0(); } catch (e) { console.error(e); l3Status("Kunde inte öppna exportpanelen: " + e.message, true); } }
+function l3xhOpen0() {
   if (typeof l3bfPanel !== "function") { l3Status("Panelen finns inte i den här versionen.", true); return; }
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), models = l3xhModels(), clouds = l3xhClouds(), areas = l3xhAreas(), f = (n, d = 0) => Number(n).toLocaleString("sv-SE", { maximumFractionDigits: d });
   const hasDocs = !!(typeof l3bf !== "undefined" && l3bf.docs && l3bf.docs.length);
@@ -131,6 +134,6 @@ function l3xhOpen() {
     <div class="an-actions"><button type="button" id="v3XhGo">🌐 Exportera HTML</button></div>`);
   const $ = id => d.querySelector("#" + id), pick = () => ({ models: models.filter((_, i) => (d.querySelector(`[data-xm="${i}"]`) || {}).checked), clouds: clouds.filter((_, i) => (d.querySelector(`[data-xc="${i}"]`) || {}).checked), areas: areas.filter((_, i) => (d.querySelector(`[data-xa="${i}"]`) || {}).checked), budget: $("v3XhBud") ? +$("v3XhBud").value : 0, docs: !!($("v3XhDocs") || {}).checked, title: ($("v3XhName").value || "3D-vy").trim() });
   const est = () => { const s = pick(); let b = 0; s.models.forEach(m => { const c = l3xhModelCount(m); b += c.verts * 15 * 1.34 + c.tris * 12 * 1.34; }); const totN = s.clouds.reduce((a, c) => a + l3xhCloudN(c), 0); b += Math.min(totN, s.budget) * 15 * 1.34; s.areas.forEach(([, l]) => { b += l.length * 2400; }); if (s.docs) b += 3.5e6; $("v3XhEst").innerHTML = `Ungefärlig filstorlek: <b>${f(b / 1048576, 0)} MB</b>${b > L3XH_LIM ? ' <span style="color:#dc2626">– för stor, välj färre</span>' : ""}`; };
-  d.addEventListener("change", est); est();
+  d.addEventListener("change", est); est(); l3Status("Exportpanelen ligger i högermenyn – välj vad som ska med och tryck Exportera HTML.");
   $("v3XhGo").onclick = async () => { const b = $("v3XhGo"); b.disabled = true; try { await l3xhExport(pick()); } catch (e) { l3Status("Kunde inte exportera: " + e.message, true); } b.disabled = false; };
 }

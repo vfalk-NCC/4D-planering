@@ -95,6 +95,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(Math.abs(Z.t[0] - 169000) < 0.5 && Math.abs(Z.t[1] - 7456000) < 0.5 && Math.abs(Z.t[2] - 426.3) < 0.5 && Z.hl === 1 && Z.vis, 'Klick på BV001 flyger till stången och lyser: ' + JSON.stringify(Z));
   await page.fill('#v3BdQ', 'BH102'); await page.press('#v3BdQ', 'Enter'); await page.waitForTimeout(900);
   const Z2 = await page.evaluate(() => l3.orbit.target.toArray().map((v, i) => v + l3.O[i])); ok(Math.abs(Z2[0] - 169122) < 0.5 && Math.abs(Z2[2] - 441) < 0.5, 'Sök BH102 zoomar dit: ' + JSON.stringify(Z2));
+  // Ritningen i en egen flik med kopplingen kvar (BroadcastChannel)
+  const [pop] = await Promise.all([page.context().waitForEvent('page'), page.click('#v3BdTab')]);
+  await pop.waitForSelector('.hot.on', { timeout: 10000 }); await pop.waitForFunction(() => /Ansluten/.test(document.getElementById('st').textContent), null, { timeout: 8000 });
+  const tab = await pop.evaluate(() => ({ hot: document.querySelectorAll('.hot').length, on: document.querySelectorAll('.hot.on').length, st: document.getElementById('st').textContent, pdf: document.getElementById('pdf').href.slice(0, 5) }));
+  ok(tab.hot >= 8 && tab.on >= 6 && /6 stag/.test(tab.st) && tab.pdf === 'blob:', 'Flik med klickbara stag och koppling: ' + JSON.stringify(tab));
+  await page.evaluate(() => { l3FlyTo(new THREE.Vector3(0, 0, 0), 50, null, 0); });
+  await pop.click('.hot.on[data-id="BV003"]'); await page.waitForTimeout(1000);
+  const tg = await page.evaluate(() => l3.orbit.target.toArray().map((v, i) => v + l3.O[i])); ok(Math.abs(tg[0] - 169020) < 0.5 && Math.abs(tg[2] - 399.9) < 0.6, 'Klick i fliken zoomar 3D-vyn till BV003: ' + JSON.stringify(tg));
+  await page.evaluate(() => l3bfGoto('BH100')); await pop.waitForFunction(() => document.querySelector('.hot.sel') && document.querySelector('.hot.sel').dataset.id === 'BH100', null, { timeout: 5000 });
+  await pop.close();
   // PDF i ny flik: Blob-adress av rätt PDF
   await page.evaluate(() => { window.__opened = []; window.open = u => { window.__opened.push(u); return {}; }; });
   await page.click('#v3BdPdf'); const op = await page.evaluate(async () => ({ n: window.__opened.length, type: window.__opened[0] ? (await (await fetch(window.__opened[0])).blob()).type : '' }));

@@ -184,6 +184,7 @@ function l3bfPanel(id, title, html, onClose, left) {
   el.classList.remove("hidden"); el._onClose = onClose || null;
   el.innerHTML = `<div class="v3-vp-h"><b>${typeof escHtml === "function" ? escHtml(title) : title}</b><span></span><button type="button" data-bf-x title="Stäng">✕</button></div><div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">${html}</div>`;
   el.querySelector("[data-bf-x]").onclick = () => l3bfPanelClose(id);
+  try { el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) { /* */ }   // i den dockade kolumnen hamnar nya paneler längst ner – rulla dit
   return el;
 }
 function l3bfPanelClose(id) { const el = document.getElementById(id); if (!el) return; const f = el._onClose; el.remove(); if (typeof f === "function") f(); }
@@ -289,7 +290,7 @@ function l3bfHighlight(e) {
 }
 function l3bfGoto(id) {
   const e = (l3bf.idx = l3bfIndex()).get(id); if (!e) { l3Status(`${id} finns inte i 3D – skapa bergförankringarna först (⚓-knappen).`, true); return false; }
-  l3bfHighlight(e);
+  l3bfHighlight(e); l3bfNotify(id);
   try { if (e.pl.m.bfp && typeof l3SelectIds === "function") l3SelectIds([e.pl.id]); } catch (x) { /* */ }
   const O = l3.O; l3FlyTo(new THREE.Vector3(e.center[0] - O[0], e.center[1] - O[1], e.center[2] - O[2]), Math.max(5, e.diag * 3));
   l3Render(); return true;
@@ -323,7 +324,7 @@ async function l3bfOpenDocs(files, quiet) {
   l3bf.docs = docs; l3bf.idx = l3bfIndex();
   const d = l3bfPanel("v3BoltDoc", "Bergförankring – ritningar", `
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><div id="v3BdTabs" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-      <input type="search" id="v3BdQ" placeholder="Sök stag nr (BV001…)" style="width:150px" /><button type="button" id="v3BdPdf" title="Öppnar den här PDF:en i en ny flik i webbläsaren (Skift: alla)">↗ PDF i ny flik</button><button type="button" id="v3BdXh" title="Exportera scenen (modeller, punktmoln, stängerna och ritningarna) till en HTML-fil">🌐 HTML…</button><label title="Zoom på ritningen">🔍 <input type="range" id="v3BdZ" min="40" max="300" value="100" style="width:90px;vertical-align:middle" /></label></div>
+      <input type="search" id="v3BdQ" placeholder="Sök stag nr (BV001…)" style="width:150px" /><button type="button" id="v3BdTab" title="Öppnar ritningarna i en ny flik med klickbara stag – kopplingen till 3D-vyn finns kvar (Skift: eget fönster att lägga bredvid)">↗ Ny flik (klickbar)</button><button type="button" id="v3BdPdf" title="Originalets PDF i webbläsarens egen läsare (Skift: alla) – utan koppling till 3D">PDF</button><button type="button" id="v3BdXh" title="Exportera scenen (modeller, punktmoln, stängerna och ritningarna) till en HTML-fil">🌐 HTML…</button><label title="Zoom på ritningen">🔍 <input type="range" id="v3BdZ" min="40" max="300" value="100" style="width:90px;vertical-align:middle" /></label></div>
     <div class="v3-sub" id="v3BdInfo">Klicka på ett stag nr (orange fält) – 3D-vyn flyger dit och stången lyser röd.</div>
     <div id="v3BdBody" style="overflow:auto;height:460px;background:#e2e8f0;border:1px solid #cbd5e1;border-radius:6px;padding:6px"></div>`, l3bfClearHl, "380px"); const $ = id => d.querySelector("#" + id), body = $("v3BdBody");
   let cur = 0, cache = new Map(), pagesOf = async i => { if (!cache.has(i)) cache.set(i, await l3bfReadDoc(docs[i].buf)); return cache.get(i); };
@@ -335,6 +336,7 @@ async function l3bfOpenDocs(files, quiet) {
   const setZ = () => { const z = Number($("v3BdZ").value) || 100; body.querySelectorAll(".bfpg").forEach(w => { w.style.width = z + "%"; }); };
   $("v3BdTabs").innerHTML = docs.map((x, i) => `<button type="button" class="v3-chipbtn" data-i="${i}" style="padding:2px 8px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;cursor:pointer">${l3bfEsc(String(x.name).replace(/\.pdf$/i, ""))}</button>`).join("");
   $("v3BdTabs").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) show(Number(b.dataset.i)); };
+  $("v3BdTab").onclick = e => l3bfOpenTab(e);
   $("v3BdPdf").onclick = e => { const list = e.shiftKey ? docs : [docs[cur]]; list.forEach(x => { const u = URL.createObjectURL(new Blob([x.buf], { type: "application/pdf" })); if (!window.open(u, "_blank")) l3Status("Webbläsaren blockerade den nya fliken – tillåt popup-fönster för sidan.", true); setTimeout(() => URL.revokeObjectURL(u), 600000); }); };
   $("v3BdZ").oninput = setZ; $("v3BdXh").onclick = () => { if (typeof l3xhOpen === "function") l3xhOpen(); };
   body.onclick = e => { const h = e.target.closest(".bfhot"); if (!h || !l3bf.idx.has(h.dataset.id)) return; body.querySelectorAll(".bfhot.sel").forEach(x => { x.classList.remove("sel"); x.style.background = "rgba(245,158,11,.22)"; }); body.querySelectorAll(`.bfhot[data-id="${h.dataset.id}"]`).forEach(x => { x.classList.add("sel"); x.style.background = "rgba(239,68,68,.45)"; }); l3bfGoto(h.dataset.id); };
@@ -364,7 +366,7 @@ async function l3bfFromModel(e) {
   const hit = l3Ray(e, [...l3.placeMeshes.values()])[0]; if (!hit) return;
   let o = hit.object; while (o && !o.userData.placeId) o = o.parent; const pl = o && placements.find(p => p.id === o.userData.placeId); if (!pl || !pl.bf) return;
   l3bf.idx = l3bfIndex(); const O = l3.O, id = l3bfNear(pl, [hit.point.x + O[0], hit.point.y + O[1], hit.point.z + O[2]]); if (!id) return;
-  l3bfHighlight(l3bf.idx.get(id)); l3Render();
+  l3bfHighlight(l3bf.idx.get(id)); l3bfNotify(id); l3Render();
   const info = ((l3bf.idx.get(id).pl.m.bfp ? [l3bf.idx.get(id).pl.m.bfp] : (l3bf.idx.get(id).pl.m.parts || []).map(q => q.m && q.m.bfp).filter(Boolean)).find(b => b[0][1] === id) || []), g = k => (info.find(x => x[0] === k) || [])[1];
   l3Status(`${id} · ${g("Typ") || ""} ${g("Dimension stång mm") || ""} · ${g("Längd m") != null ? g("Längd m") + " m" : ""} – visas i ritningen`);
   if (!document.getElementById("v3BoltDoc")) await l3bfOpenDocs(null, true);
@@ -377,3 +379,73 @@ function l3bfWatch() {
   cv.addEventListener("pointerup", e => { if (dn && dn.b === 0 && Math.hypot(e.clientX - dn.x, e.clientY - dn.y) < 5 && !e.ctrlKey && !e.shiftKey) { try { l3bfFromModel(e); } catch (x) { console.warn(x); } } dn = null; }, true);
 }
 setInterval(l3bfWatch, 1500);
+
+/* ---- 7. Ritningen i en egen flik med kopplingen kvar (Victor 2026-11-19: "när jag öppnar pdfen i ny flik tappar jag kopplingen") ----
+   En ny flik med ritningsbilderna och klickbara stag nr. Fliken och 3D-editorn pratar via BroadcastChannel: klick på ett stag i fliken → 3D-vyn zoomar och stången lyser röd,
+   klick på en stång i 3D → stagen markeras i fliken. Originalets PDF öppnas från en länk i fliken. Skift-klick öppnar ett eget litet fönster som kan ligga bredvid editorn. */
+const l3bfChanName = () => "4d-bolt-" + (typeof projectId !== "undefined" ? projectId : "");
+function l3bfChan() {
+  if (l3bf.chan || typeof BroadcastChannel === "undefined") return l3bf.chan || null;
+  const ch = l3bf.chan = new BroadcastChannel(l3bfChanName());
+  ch.onmessage = e => {
+    const m = e.data || {};
+    if (m.t === "hi") { l3bf.idx = l3bfIndex(); ch.postMessage({ t: "ok", ids: [...l3bf.idx.keys()] }); }
+    else if (m.t === "goto" && m.id) { if (l3bfGoto(m.id) && l3bf.showId) l3bf.showId(m.id).catch(() => {}); }
+  };
+  return ch;
+}
+function l3bfNotify(id) { try { const ch = l3bfChan(); if (ch) ch.postMessage({ t: "sel", id }); } catch (e) { /* */ } }
+function l3bfTabHtml(data) {
+  const safe = t => t.replace(/<\/(script)/gi, "<\\/$1");
+  return `<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bergförankring – ritningar</title>
+<style>:root{--bg:#e2e8f0;--pn:#fff;--fg:#0f172a;--mut:#64748b;--line:#cbd5e1;--acc:#2563eb}@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--pn:#1e293b;--fg:#e2e8f0;--mut:#94a3b8;--line:#334155}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{font:13px system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--fg);display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:var(--pn);border-bottom:1px solid var(--line)}header b{font-size:14px}
+button,input{font:inherit;color:var(--fg);background:var(--pn);border:1px solid var(--line);border-radius:8px;padding:4px 10px}button{cursor:pointer}button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+#st{margin-left:auto;color:var(--mut)}#st.ok{color:#16a34a}#body{flex:1;overflow:auto;padding:10px}#wrap{position:relative;display:inline-block}#wrap img{display:block;width:100%;height:auto;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.3)}
+.hot{position:absolute;border-radius:2px;background:transparent;outline:none}.hot.on{cursor:pointer;background:rgba(245,158,11,.22);outline:1px solid rgba(245,158,11,.85)}.hot.on:hover{background:rgba(245,158,11,.45)}.hot.sel{background:rgba(239,68,68,.45)!important;outline:2px solid #ef4444!important}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#0f172ae6;color:#fff;border-radius:9px;padding:6px 14px;display:none}</style></head><body>
+<header><b>Bergförankring – ritningar</b><span id="tabs" style="display:flex;gap:4px;flex-wrap:wrap"></span><input type="search" id="q" placeholder="Sök stag nr (BV001…)" style="width:160px"><label>Zoom <input type="range" id="z" min="30" max="300" value="100" style="width:110px;padding:0"></label><a id="pdf" target="_blank" style="color:var(--acc)">↗ Originalets PDF</a><span id="st">Söker 3D-editorn…</span></header>
+<div id="body"><div id="wrap"></div></div><div id="toast"></div>
+<script>
+const D = ${safe(JSON.stringify(data))}; const $ = id => document.getElementById(id), esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let cur = 0, ids = null, sel = null; const ch = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(D.chan) : null;
+function toast(t) { const e = $("toast"); e.textContent = t; e.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => { e.style.display = "none"; }, 2200); }
+function show(i) { cur = i; const d = D.docs[i]; document.querySelectorAll("#tabs button").forEach((b, k) => b.classList.toggle("on", k === i)); $("pdf").href = d.pdf || "#"; $("pdf").style.display = d.pdf ? "" : "none";
+  $("wrap").innerHTML = '<img src="' + d.img + '">' + d.hot.map(h => '<div class="hot' + (!ids || ids.has(h.id) ? " on" : "") + (sel === h.id ? " sel" : "") + '" data-id="' + esc(h.id) + '" title="' + esc(h.id) + '" style="left:' + h.x * 100 + '%;top:' + h.y * 100 + '%;width:' + h.w * 100 + '%;height:' + h.h * 100 + '%"></div>').join(""); zoom(); }
+function zoom() { $("wrap").style.width = $("z").value + "%"; }
+function mark(id, scroll) { sel = id; if (id) { const i = D.docs.findIndex(d => d.hot.some(h => h.id === id)); if (i >= 0 && i !== cur) show(i); } document.querySelectorAll(".hot").forEach(h => h.classList.toggle("sel", !!id && h.dataset.id === id)); const s = document.querySelector(".hot.sel"); if (s && scroll) s.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" }); }
+$("tabs").innerHTML = D.docs.map((d, i) => '<button data-i="' + i + '">' + esc(d.name) + '</button>').join(""); $("tabs").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) { show(+b.dataset.i); mark(sel, false); } };
+$("z").oninput = zoom;
+$("wrap").onclick = e => { const h = e.target.closest(".hot.on"); if (!h) return; mark(h.dataset.id, false); if (ch) ch.postMessage({ t: "goto", id: h.dataset.id }); toast(h.dataset.id + " – visas i 3D-editorn (byt flik eller lägg fönstren bredvid varandra)"); };
+$("q").onkeydown = e => { if (e.key !== "Enter") return; const q = $("q").value.trim().toUpperCase(), h = D.docs.flatMap(d => d.hot).find(x => x.id === q) || D.docs.flatMap(d => d.hot).find(x => x.id.includes(q)); if (h) { mark(h.id, true); if (ch && (!ids || ids.has(h.id))) ch.postMessage({ t: "goto", id: h.id }); } else toast(q + " finns inte på ritningarna"); };
+if (ch) { ch.onmessage = e => { const m = e.data || {}; if (m.t === "ok") { ids = new Set(m.ids); $("st").textContent = "● Ansluten till 3D-editorn (" + ids.size + " stag)"; $("st").className = "ok"; show(cur); mark(sel, false); } else if (m.t === "sel" && m.id) mark(m.id, true); };
+  const ping = () => ch.postMessage({ t: "hi" }); ping(); setTimeout(() => { if (!ids) { $("st").textContent = "Ingen 3D-editor hittad – öppna fliken från editorn"; } }, 1800); setInterval(() => { if (!ids) ping(); }, 2500); }
+else $("st").textContent = "Webbläsaren saknar BroadcastChannel – kopplingen till 3D fungerar inte";
+show(0);
+<\/script></body></html>`;
+}
+async function l3bfOpenTab(e) {
+  if (typeof pdfjsLib === "undefined") { l3Status("PDF-läsaren (pdf.js) är inte laddad.", true); return; }
+  const docs = (l3bf.docs && l3bf.docs.length) ? l3bf.docs : await l3bfLoadDocs(); if (!docs.length) { l3Status("Inga ritningar sparade än – läs in tabell-PDF:erna med ⚓-knappen först.", true); return; }
+  const win = window.open("about:blank", e && e.shiftKey ? "bolt-ritning" : "_blank", e && e.shiftKey ? "popup=yes,width=980,height=900" : ""); if (!win) { l3Status("Webbläsaren blockerade den nya fliken – tillåt popup-fönster för sidan.", true); return; }
+  try { win.document.write("<title>Bergförankring</title><body style='font:14px system-ui;padding:20px'>Ritar ritningarna…"); } catch (x) { /* */ }
+  l3Status("Ritar ritningarna för den nya fliken…");
+  const out = []; l3bf.idx = l3bfIndex();
+  for (const d of docs) {
+    try {
+      const pages = await l3bfReadDoc(d.buf), pdfUrl = URL.createObjectURL(new Blob([d.buf], { type: "application/pdf" }));
+      for (let n = 0; n < pages.length; n++) {
+        const pg = pages[n], vp = pg.page.getViewport({ scale: 1.3 }), cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+        await pg.page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+        const W = pg.view[2] - pg.view[0], H = pg.view[3] - pg.view[1], pad = 2, r4 = v => Math.round(v * 10000) / 10000;
+        out.push({ name: String(d.name).replace(/\.pdf$/i, "") + (pages.length > 1 ? " s." + (n + 1) : ""), img: cv.toDataURL("image/jpeg", 0.85), pdf: pdfUrl,
+          hot: pg.hot.map(h => ({ id: h.id, x: r4((h.x - pad - pg.view[0]) / W), y: r4((pg.view[3] - h.y - h.h * 0.95 - pad) / H), w: r4((h.w + pad * 2) / W), h: r4((h.h * 1.2 + pad * 2) / H) })) });
+      }
+    } catch (x) { console.warn("Ritningen kunde inte tas med", d.name, x); }
+  }
+  l3bfChan(); const html = l3bfTabHtml({ chan: l3bfChanName(), docs: out });
+  try { win.document.open(); win.document.write(html); win.document.close(); } catch (x) { win.location.href = URL.createObjectURL(new Blob([html], { type: "text/html" })); }
+  l3Status("Ritningarna öppnade i en ny flik – klick på ett stag där zoomar 3D-vyn hit, och tvärtom. Tips: Skift-klick på knappen öppnar ett eget fönster som kan ligga bredvid editorn.");
+}
+l3bfChan();
