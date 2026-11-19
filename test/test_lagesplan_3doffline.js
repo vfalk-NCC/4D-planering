@@ -37,6 +37,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await pg.evaluate(async () => { plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: { model: [[169000, 7456000, 400], [169100, 7456000, 400]], pdf: [[0, 0], [1000, 0]] }, zones: [] }]; pdfCache.set('A', new Uint8Array([1]).buffer); items = []; positions = []; renderPlanSelect(); await openPlan('A'); });
   await pg.click('#btn3d'); await pg.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer && typeof l3ofPrepare === 'function', null, { timeout: 15000 });
   const ok = (c, m) => { if (!c) fail(m); };
+  // Knappen i 4D-planering-fliken öppnar panelen
+  await pg.evaluate(() => { l3PalTab('plan'); }); await pg.waitForTimeout(500); const hasBtn = await pg.evaluate(() => { const b = document.getElementById('v3PlOffline'); if (b) b.click(); return !!b; }); await pg.waitForTimeout(500);
+  ok(hasBtn && await pg.evaluate(() => !!document.getElementById('v3OffPanel')), 'Knappen "Förbered för offline" i 4D-planering-fliken öppnar panelen');
   // 1) Förbered (online): program, data och binärfiler sparas
   const R = await pg.evaluate(async () => { const r = await l3ofPrepare(() => {}); return { app: r.app, data: r.data, bin: r.bin, failed: r.failed, appFail: r.appFail, cachedFiles: (await offlineSync.cachedFiles()).sort(), bins: (await offlineSync.cachedBins()).map(x => x.path) }; });
   ok(R.app > 200 && R.data === 4 && R.bin === 1 && !R.failed.length && R.cachedFiles.includes('projects/p1/pp/activities.json') && R.cachedFiles.includes('projects.json') && R.bins.join() === 'projects/p1/plan.pdf', 'Förberedelsen: ' + JSON.stringify(R));
