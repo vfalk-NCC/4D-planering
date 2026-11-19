@@ -43,6 +43,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer && typeof l3bfParse === 'function', null, { timeout: 15000 });
   const ok = (c, m) => { if (!c) fail(m); };
+  await page.evaluate(() => l3dkToggle(true));   // högermenyn dockad: panelerna staplas där
   // Syntetiska textobjekt som i ritningarnas tabeller: en rad = y, kolumner = x. Vattenstämpelns lösa siffror/bokstäver och en UTGÅTT-rad ska inte störa.
   const mk = () => {
     const it = []; let y = 800;
@@ -94,6 +95,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(Math.abs(Z.t[0] - 169000) < 0.5 && Math.abs(Z.t[1] - 7456000) < 0.5 && Math.abs(Z.t[2] - 426.3) < 0.5 && Z.hl === 1 && Z.vis, 'Klick på BV001 flyger till stången och lyser: ' + JSON.stringify(Z));
   await page.fill('#v3BdQ', 'BH102'); await page.press('#v3BdQ', 'Enter'); await page.waitForTimeout(900);
   const Z2 = await page.evaluate(() => l3.orbit.target.toArray().map((v, i) => v + l3.O[i])); ok(Math.abs(Z2[0] - 169122) < 0.5 && Math.abs(Z2[2] - 441) < 0.5, 'Sök BH102 zoomar dit: ' + JSON.stringify(Z2));
+  // Omvänt: klick på en stång i 3D → rätt stag lyser i ritningen (och ritningen bläddrar dit)
+  const pos = await page.evaluate(() => { const e = l3bfIndex().get('BV003'), O = l3.O, v = new THREE.Vector3(e.center[0] - O[0], e.center[1] - O[1], e.center[2] - O[2]); l3FlyTo(v, 6, new THREE.Vector3(0, -1, 0.3), 0); l3.camera.updateMatrixWorld(true); const s = v.clone().project(l3.camera), r = l3.renderer.domElement.getBoundingClientRect(); return { x: r.left + (s.x + 1) / 2 * r.width, y: r.top + (1 - s.y) / 2 * r.height }; });
+  await page.evaluate(() => { l3bfPanelClose('v3BoltDoc'); });
+  await page.mouse.click(pos.x, pos.y); await page.waitForTimeout(900);
+  const back = await page.evaluate(() => ({ doc: !!document.getElementById('v3BoltDoc'), sel: [...document.querySelectorAll('#v3BoltDoc .bfhot.sel')].map(h => h.dataset.id), hl: l3bf.hl.children.length }));
+  ok(back.doc && back.sel.join() === 'BV003' && back.hl === 1, 'Klick på stången i 3D visar BV003 i ritningen: ' + JSON.stringify(back));
   const saved = await page.evaluate(async () => (await l3bfLoadDocs()).length); ok(saved === 1, 'Ritningen sparad i webbläsaren: ' + saved);
   // Egenskaper: per del i gruppen, i högerpanelen (grupp) och i IFC-egenskaperna
   const P = await page.evaluate(() => { try { const p = placements.find(q => q.bf && /vertikala ⌀25/.test(q.name)), b = p.m.parts[0].m.bfp, g = k => (b.find(x => x[0] === k) || [])[1]; return { id: g('Stag nr'), typ: g('Typ'), dim: g('Dimension stång mm'), hole: g('Borrhål mm'), len: g('Längd m'), sd: g('Sättdjup i berg m'), kg: g('Vikt stål kg (7850 kg/m³)'), z: g('Startpunkt Z (RH 2000)'), src: g('Källa (ritning)'), sideH: modSideHtml(p).replace(/<[^>]+>/g, ' '), ifc: modProps(p).map(x => x[0]).join('|') }; } catch (e) { return { err: e.stack }; } });
