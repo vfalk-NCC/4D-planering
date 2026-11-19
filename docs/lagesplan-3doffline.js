@@ -17,6 +17,15 @@ async function l3ofList(path, depth, out) {
 async function l3ofPool(list, n, fn) { let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < list.length) { const k = i++; try { await fn(list[k], k); } catch (e) { /* räknas som miss i fn */ } } })); }
 const L3OF_GROUPS = [["data", "Tidplaner, kopplingar och övrig data (JSON)"], ["draw", "Ritningar och underlag (PDF, DXF, Excel, Powerproject …)"], ["img", "Bilder och foton"], ["other", "Övrigt"]];
 const l3ofGroup = path => (/\.json$/i.test(path) ? "data" : /\.(pdf|dxf|dwg|xlsx?|csv|pp|ppb|ppx|ifc|ifczip|zip|txt|xml)$/i.test(path) ? "draw" : /\.(png|jpe?g|webp|gif|heic|svg|bmp|tiff?)$/i.test(path) ? "img" : "other");
+/* Dashboardens Gantt ligger på en annan adress (egen tjänst-cache). Den öppnas dolt en stund så att den installerar sig och sparar sina filer. true = sparad. */
+async function l3ofWarmDash() {
+  try {
+    if (typeof caches === "undefined") return false; if (await caches.has("4ddash-app-v1")) return true;
+    const url = (typeof l3tgUrl === "function" ? l3tgUrl() : "https://vfalk-ncc.github.io/4D-dashboard/index.html") + "?embed=gantt&warm=1", f = document.createElement("iframe"); f.style.cssText = "position:fixed;left:-9999px;width:800px;height:600px;border:0"; f.src = url; document.body.appendChild(f);
+    for (let i = 0; i < (window.__ofWarmTries || 30); i++) { await new Promise(r => setTimeout(r, 1000)); if (await caches.has("4ddash-app-v1")) break; }
+    const ok = await caches.has("4ddash-app-v1"); setTimeout(() => f.remove(), 3000); return ok;
+  } catch (e) { return false; }
+}
 /* Steg 1 – lista vad som finns och vad som redan är sparat (snabbt, inga stora hämtningar). */
 async function l3ofScan() {
   if (typeof navigator !== "undefined" && navigator.onLine === false) throw new Error("Du är offline – förberedelsen måste göras med internet.");
@@ -24,7 +33,7 @@ async function l3ofScan() {
   const sync = window.offlineSync, fm = new Map(((sync && await sync.cachedFileMeta()) || []).map(x => [x.path, x.sha])), bm = new Map(((sync && await sync.binMeta()) || []).map(x => [x.path, x.sha]));
   let mani = null; try { mani = await (await fetch("offline-manifest.json", { cache: "no-store" })).json(); } catch (e) { /* utan lista */ }
   let prev = null; try { prev = JSON.parse(localStorage.getItem(L3OF_KEY) || "null"); } catch (e) { /* */ }
-  const appDone = !!(mani && prev && prev.mv && prev.mv === mani.v);
+  const dashOk = typeof caches !== "undefined" ? await caches.has("4ddash-app-v1").catch(() => false) : true, appDone = !!(mani && prev && prev.mv && prev.mv === mani.v && dashOk);
   const pf = await l3ofList(`projects/${encodeURIComponent(projectId)}`, 4, []), root = await l3ofList("", 0, []).catch(() => []), all = [...pf, ...root.filter(x => /\.json$/i.test(x.path))];
   const G = { data: [], draw: [], img: [], other: [] };
   all.forEach(f => { const g = l3ofGroup(f.path), cached = g === "data" ? fm.get(f.path) === f.sha : bm.get(f.path) === f.sha; G[g].push({ ...f, cached, g }); });
@@ -39,6 +48,7 @@ async function l3ofRun(scan, sel, onP, ctl) {
   const tick = txt => { const el = (Date.now() - t0) / 1000, rate = el > 2 ? doneBytes / el : 0, left = rate ? (totalBytes - doneBytes) / rate : 0; onP && onP(txt, totalBytes ? doneBytes / totalBytes : 1, { doneBytes, totalBytes, rate, left }); };
   let n = 0;
   await l3ofPool(appFiles, 6, async ([p, size]) => { if (ctl.cancel) return; try { const r = await fetch(p, { cache: "reload" }); if (r.ok) { await r.arrayBuffer(); R.app++; R.appBytes += size; } else R.appFail++; } catch (e) { R.appFail++; } doneBytes += size; tick(`Programfiler ${R.app + R.appFail} av ${appFiles.length}`); });
+  if (sel.app && !ctl.cancel) { tick("Gantten (4D-dashboarden)…"); R.dash = await l3ofWarmDash(); }
   const sync = window.offlineSync;
   await l3ofPool(todo, 4, async f => {
     if (ctl.cancel) return;
@@ -59,13 +69,14 @@ async function l3ofOpen() {
   let last = null; try { last = JSON.parse(localStorage.getItem(L3OF_KEY) || "null"); } catch (e) { /* */ }
   const sync = window.offlineSync, pend = sync ? await sync.pending() : [], bins = sync ? await sync.cachedBins() : [], files = sync ? await sync.cachedFiles() : [];
   const models = typeof l3b !== "undefined" ? l3b.models.map(m => m.name) : [], rem = typeof l3bRememberedAll === "function" ? l3bRememberedAll().map(w => w.name).filter(Boolean) : [];
-  const when = t => new Date(t).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" });
+  const dashSaved = typeof caches !== "undefined" ? await caches.has("4ddash-app-v1").catch(() => false) : false, when = t => new Date(t).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" });
   const el = l3bfPanel("v3OffPanel", "Offline", `
     <div class="v3-sub">${navigator.onLine === false ? "🔴 Du är offline – sparade filer används och ändringar köas." : "🟢 Online."}</div>
     <div class="v3-sec">Förbered för offline</div>
     <div class="v3-sub">Hämtar programmets filer och projektets alla datafiler och ritningar så att du kan arbeta utan internet (till exempel på flyget). Gör det hemma, med nät.</div>
     <div class="an-actions"><button type="button" id="v3OffGo">📴 Förbered för offline…</button></div>
     <div id="v3OffSel"></div><progress id="v3OffBar" max="1" value="0" style="width:100%;display:none"></progress><div class="v3-sub" id="v3OffTxt">${last ? `Senast klart ${esc(when(last.at))}: ${last.app} programfiler, ${last.data} datafiler, ${last.bin} ritningar/bilder (${l3ofMb(last.bytes)} MB).` : "Inte förberett än."}</div>
+    <div class="v3-sub">Gantten (dashboarden) sparad för offline: <b>${dashSaved ? "ja ✓" : "nej – kör förberedelsen online"}</b>.</div>
     <div class="v3-sub">Sparat i webbläsaren nu: ${files.length} datafiler, ${bins.length} binärfiler (${l3ofMb(bins.reduce((a, b) => a + b.size, 0))} MB).</div>
     <div class="v3-sec">Modeller och punktmoln</div>
     <div class="v3-sub">Sparas i webbläsaren första gången du tänder dem online – tänd de du behöver innan du åker. ${models.length ? "Tända nu: " + esc(models.join(", ")) + "." : ""} ${rem.length ? "Kom ihåg från förut: " + esc(rem.join(", ")) + "." : ""}</div>
@@ -79,7 +90,7 @@ async function l3ofOpen() {
     let sc; try { sc = await l3ofScan(); } catch (e) { txt.textContent = "Kunde inte förbereda: " + e.message; b.disabled = false; return; }
     const sums = g => { const L = sc.groups[g], need = L.filter(f => !f.cached); return { n: L.length, need: need.length, bytes: need.reduce((a, f) => a + (f.size || 0), 0), big: need.filter(f => f.size > 60e6 && g !== "data").length }; };
     const row = (id, label, n, need, bytes, on, note) => `<label class="v3-row" style="display:flex;gap:6px;align-items:baseline"><input type="checkbox" data-of-g="${id}" ${on ? "checked" : ""} ${need === 0 ? "disabled" : ""}><span style="flex:1">${esc(label)}${note ? ` <small style="color:#64748b">${esc(note)}</small>` : ""}</span><small style="color:#64748b;white-space:nowrap">${need === 0 ? "redan sparat" : need + " st · " + l3ofMb(bytes) + " MB"}</small></label>`;
-    const ap = sc.app ? row("app", "Programmets filer", sc.app.files, sc.appDone ? 0 : sc.app.files, sc.app.bytes, !sc.appDone, sc.appDone ? "" : "") : "";
+    const ap = sc.app ? row("app", "Programmets filer och Gantten (4D-dashboarden)", sc.app.files, sc.appDone ? 0 : sc.app.files, sc.app.bytes, !sc.appDone, sc.appDone ? "" : "") : "";
     box.innerHTML = `<div class="v3-sec">Vad ska hämtas?</div>${ap}${L3OF_GROUPS.map(([g, label]) => { const m = sums(g); return m.n ? row(g, label, m.n, m.need, m.bytes, g === "data" || g === "draw", g === "img" ? "stort – ta bara om du behöver dem" : m.big ? `${m.big} över 60 MB hoppas över` : "") : ""; }).join("")}
       <div class="v3-sub" id="v3OffEst"></div><div class="an-actions"><button type="button" id="v3OffStart">▶ Starta hämtningen</button></div>`;
     const est = () => { let bytes = 0; if ((box.querySelector('[data-of-g="app"]') || {}).checked) bytes += sc.app ? sc.app.bytes : 0; box.querySelectorAll("[data-of-g]").forEach(i => { if (i.checked && i.dataset.ofG !== "app") bytes += sums(i.dataset.ofG).bytes; }); $("v3OffEst").textContent = `Att hämta: ca ${l3ofMb(bytes)} MB.${sc.groups.data.concat(sc.groups.draw, sc.groups.img, sc.groups.other).some(f => f.cached) ? " Redan sparade filer hoppas över." : ""}`; };

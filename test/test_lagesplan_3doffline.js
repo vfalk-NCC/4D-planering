@@ -24,6 +24,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const pg = await ctx.newPage(); await require('./_dialogs').bridge(pg, d => d.accept()); const errors = []; pg.on('pageerror', e => errors.push(e.message));
   await pg.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' })); });
   await pg.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
+  await pg.route('https://vfalk-ncc.github.io/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>dashboard</body></html>' }));
   await pg.route('https://api.github.com/**', r => {
     const req = r.request(), u = new URL(req.url()), f = decodeURIComponent(u.pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\/?/, ''));
     if (/rate_limit/.test(u.pathname)) return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
@@ -41,7 +42,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await pg.evaluate(() => { l3PalTab('plan'); }); await pg.waitForTimeout(500); const hasBtn = await pg.evaluate(() => { const b = document.getElementById('v3PlOffline'); if (b) b.click(); return !!b; }); await pg.waitForTimeout(500);
   ok(hasBtn && await pg.evaluate(() => !!document.getElementById('v3OffPanel')), 'Knappen "Förbered för offline" i 4D-planering-fliken öppnar panelen');
   // 1) Förbered (online): program, data och binärfiler sparas
-  const R = await pg.evaluate(async () => { const r = await l3ofPrepare(() => {}); return { app: r.app, data: r.data + r.already, bin: r.bin, failed: r.failed, appFail: r.appFail, cachedFiles: (await offlineSync.cachedFiles()).sort(), bins: (await offlineSync.cachedBins()).map(x => x.path) }; });
+  const R = await pg.evaluate(async () => { window.__ofWarmTries = 1; const r = await l3ofPrepare(() => {}); return { app: r.app, data: r.data + r.already, bin: r.bin, failed: r.failed, appFail: r.appFail, cachedFiles: (await offlineSync.cachedFiles()).sort(), bins: (await offlineSync.cachedBins()).map(x => x.path) }; });
   ok(R.app > 200 && R.data === 4 && R.bin === 1 && !R.failed.length && R.cachedFiles.includes('projects/p1/pp/activities.json') && R.cachedFiles.includes('projects.json') && R.bins.join() === 'projects/p1/plan.pdf', 'Förberedelsen: ' + JSON.stringify(R));
   // 1b) Andra körningen hoppar över allt som redan är sparat (ingen ny hämtning av filer)
   const g0 = window__gets.n; const R2 = await pg.evaluate(async () => { const r = await l3ofPrepare(() => {}, { app: false, data: true, draw: true, img: true, other: true }); return { already: r.already, data: r.data, bin: r.bin }; });
@@ -63,6 +64,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   ok(off.n === 1 && /testplan/.test(off.txt) && off.pend.join() === 'projects/p1/pp/activities.json' && off.again === 'a1,a2', 'Offline: läsa, ritningen och köad skrivning: ' + JSON.stringify(off));
   ok(/Offline/.test(off.panel) && /pp\/activities\.json/.test(off.panel) && /Väntande ändringar/.test(off.panel) && /Du är offline/.test(off.panel), 'Offline-panelen visar kön: ' + off.panel.slice(0, 300));
+  // Gantten: utan nät och utan sparad dashboard används den inbyggda direkt (ingen tom ruta); med sparad dashboard används dess Gantt
+  const tg = await pg.evaluate(async () => { l3SetPref('tcGanttUrl', 'https://vfalk-ncc.github.io/4D-dashboard/index.html'); const a = l3tgOn(); l3tg.dashCached = true; const b = l3tgOn(); l3tg.dashCached = false; l3SetPref('tcGanttUrl', null); return { offlineNoDash: a, offlineDash: b }; });
+  ok(tg.offlineNoDash === false && tg.offlineDash === true, 'Gantt-val utan nät: ' + JSON.stringify(tg));
   // 3) Tillbaka online: kön skickas
   await ctx.setOffline(false); await pg.evaluate(() => window.dispatchEvent(new Event('online'))); await pg.waitForFunction(() => offlineSync.state.pending === 0, null, { timeout: 15000 });
   const sent = JSON.parse(Buffer.from(files.get('projects/p1/pp/activities.json'), 'base64').toString()); ok(sent.length === 2 && sent[1].id === 'a2', 'Köade ändringen skickades när nätet kom tillbaka: ' + JSON.stringify(sent));

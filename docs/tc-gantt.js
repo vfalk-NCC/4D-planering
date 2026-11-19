@@ -12,7 +12,10 @@
 const l3tg = { frame: null, ready: false, loaded: false, mute: 0, sig: {}, timer: null, wd: 0, failed: false };
 const l3tgUrl = () => l3Prefs().tcGanttUrl || "https://vfalk-ncc.github.io/4D-dashboard/index.html";
 /* På localhost (utveckling och test) gäller den inbyggda Gantten om ingen dashboard-adress angetts (tcGanttUrl). */
-const l3tgOn = () => l3Prefs().tcGantt !== false && (!!l3Prefs().tcGanttUrl || !/^(localhost|127\.0\.0\.1)$/.test(location.hostname));
+/* Utan nät visas dashboardens Gantt bara om dashboarden är sparad för offline (dess egen tjänst-cache finns); annars den inbyggda Gantten direkt i stället för en tom ruta. */
+(function () { try { if (typeof caches !== "undefined") { const chk = () => caches.has("4ddash-app-v1").then(v => { l3tg.dashCached = !!v; }).catch(() => {}); chk(); setInterval(chk, 20000); } } catch (e) { /* */ } })();
+const l3tgNetOk = () => (typeof navigator === "undefined" || navigator.onLine !== false) || !!l3tg.dashCached;
+const l3tgOn = () => l3Prefs().tcGantt !== false && l3tgNetOk() && (!!l3Prefs().tcGanttUrl || !/^(localhost|127\.0\.0\.1)$/.test(location.hostname));
 const l3tgSrc = () => (l3Prefs().tcGanttSrc === "excel" ? "excel" : "pp");
 const l3tgOrigin = () => { try { return new URL(l3tgUrl(), location.href).origin; } catch (e) { return "*"; } };
 const l3tgPaths = () => { const b = `projects/${encodeURIComponent(projectId)}/${l3tgSrc() === "pp" ? "pp/" : ""}`; return [b + "plan_items.json", b + "plan_item_activities.json"]; };
