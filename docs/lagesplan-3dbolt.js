@@ -323,7 +323,7 @@ async function l3bfOpenDocs(files, quiet) {
   l3bf.docs = docs; l3bf.idx = l3bfIndex();
   const d = l3bfPanel("v3BoltDoc", "Bergförankring – ritningar", `
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><div id="v3BdTabs" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-      <input type="search" id="v3BdQ" placeholder="Sök stag nr (BV001…)" style="width:150px" /><label title="Zoom på ritningen">🔍 <input type="range" id="v3BdZ" min="40" max="300" value="100" style="width:90px;vertical-align:middle" /></label></div>
+      <input type="search" id="v3BdQ" placeholder="Sök stag nr (BV001…)" style="width:150px" /><button type="button" id="v3BdXh" title="Exportera scenen (modeller, punktmoln, stängerna och ritningarna) till en HTML-fil">🌐 HTML…</button><label title="Zoom på ritningen">🔍 <input type="range" id="v3BdZ" min="40" max="300" value="100" style="width:90px;vertical-align:middle" /></label></div>
     <div class="v3-sub" id="v3BdInfo">Klicka på ett stag nr (orange fält) – 3D-vyn flyger dit och stången lyser röd.</div>
     <div id="v3BdBody" style="overflow:auto;height:460px;background:#e2e8f0;border:1px solid #cbd5e1;border-radius:6px;padding:6px"></div>`, l3bfClearHl, "380px"); const $ = id => d.querySelector("#" + id), body = $("v3BdBody");
   let cur = 0, cache = new Map(), pagesOf = async i => { if (!cache.has(i)) cache.set(i, await l3bfReadDoc(docs[i].buf)); return cache.get(i); };
@@ -335,7 +335,7 @@ async function l3bfOpenDocs(files, quiet) {
   const setZ = () => { const z = Number($("v3BdZ").value) || 100; body.querySelectorAll(".bfpg").forEach(w => { w.style.width = z + "%"; }); };
   $("v3BdTabs").innerHTML = docs.map((x, i) => `<button type="button" class="v3-chipbtn" data-i="${i}" style="padding:2px 8px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;cursor:pointer">${l3bfEsc(String(x.name).replace(/\.pdf$/i, ""))}</button>`).join("");
   $("v3BdTabs").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) show(Number(b.dataset.i)); };
-  $("v3BdZ").oninput = setZ;
+  $("v3BdZ").oninput = setZ; $("v3BdXh").onclick = () => { if (typeof l3xhOpen === "function") l3xhOpen(); };
   body.onclick = e => { const h = e.target.closest(".bfhot"); if (!h || !l3bf.idx.has(h.dataset.id)) return; body.querySelectorAll(".bfhot.sel").forEach(x => { x.classList.remove("sel"); x.style.background = "rgba(245,158,11,.22)"; }); body.querySelectorAll(`.bfhot[data-id="${h.dataset.id}"]`).forEach(x => { x.classList.add("sel"); x.style.background = "rgba(239,68,68,.45)"; }); l3bfGoto(h.dataset.id); };
   $("v3BdQ").onkeydown = e => {
     if (e.key !== "Enter") return; const q = $("v3BdQ").value.trim().toUpperCase(), h = [...body.querySelectorAll(".bfhot")].find(x => x.dataset.id === q) || [...body.querySelectorAll(".bfhot")].find(x => x.dataset.id.includes(q));
