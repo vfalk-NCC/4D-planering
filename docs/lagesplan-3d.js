@@ -340,6 +340,7 @@ function l3Dom() {
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
           <button type="button" id="v3GetModel" class="v3-wide" title="Importera en 3D-modell: fil (IFC, OBJ, GLB/glTF, FBX, STL, STEP och fler), Sketchfab eller projektets mappar i Trimble Connect – den hamnar under Egna modeller">＋ Importera modell…</button>
+          <button type="button" id="v3BoltBtn" class="v3-wide" title="Läs bergförankringarna (vertikala BV… och horisontella BH…) ur ritningarnas tabell-PDF:er och modellera in dem med riktiga koordinater">⚓ Bergförankring från PDF…</button>
           <button type="button" class="v3-link v3-lay-csv" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen (Excel)</button>
           <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket, vägar och fria former: tryck punkt för punkt och avsluta med Enter.</div>
         </div>
@@ -463,6 +464,7 @@ function l3Dom() {
   $3("v3PalOpen").onclick = () => pal(true);
   $3("v3PalSearch").oninput = l3RenderLib;
   $3("v3GetModel").onclick = l3OpenModels;
+  $3("v3BoltBtn").onclick = () => { if (typeof l3bfOpen === "function") l3bfOpen(); };
   $3("v3ObjSearch").oninput = () => l3RenderObjList();
   box.querySelectorAll("[data-paltab]").forEach(b => { b.onclick = () => l3PalTab(b.dataset.paltab); });
   $3("v3BldgBtn").onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog(); };
