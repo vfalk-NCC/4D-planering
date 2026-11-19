@@ -76,6 +76,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await page.evaluate(() => l3pcsStripsOpen('pc:slice'));
     const P1 = await page.evaluate(() => ({ n: String(l3pcsS.cuts.length + 1), cuts: JSON.stringify(l3pcsS.cuts), planes: l3pcsS.grp.children.length }));
     if (P1.n !== '4' || P1.planes !== 3 || P1.cuts !== '[24.75,49.5,74.25]') fail('Panelen börjar med fyra jämna bitar (X, 99 m): ' + JSON.stringify(P1));
+    // Dra i skivan i 3D-vyn: snittet följer musen, hålls mellan grannsnitten, panelen uppdateras
+    await page.evaluate(() => { const S = l3pcsS, b = S.bb, c = new THREE.Vector3((b.min[0] + b.max[0]) / 2 - l3.O[0], (b.min[1] + b.max[1]) / 2 - l3.O[1], (b.min[2] + b.max[2]) / 2 - l3.O[2]); l3.camera.position.set(c.x, c.y - 0.01, c.z + 220); l3.orbit.target.copy(c); l3.camera.up.set(0, 1, 0); l3.orbit.update(); l3.camera.updateMatrixWorld(true); l3Render(); });
+    const sp = await page.evaluate(() => { const m = l3pcsS.grp.children.find(o => o.userData.l3pcsCut === 1), v = m.position.clone().project(l3.camera), r = l3.renderer.domElement.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height, before: l3pcsS.cuts.join() }; });
+    await page.mouse.move(sp.x, sp.y); await page.mouse.down(); await page.mouse.move(sp.x + 25, sp.y, { steps: 5 }); await page.waitForTimeout(120);
+    const dr = await page.evaluate(() => ({ orbit: l3.orbit.enabled, cuts: l3pcsS.cuts.slice(), inp: document.querySelector('[data-cut="0|1"]').value }));
+    await page.mouse.up(); const dr2 = await page.evaluate(() => ({ orbit: l3.orbit.enabled, cuts: l3pcsS.cuts.slice() }));
+    if (dr.orbit !== false || !(dr.cuts[1] > 49.5 && dr.cuts[1] < 74.25 - 0.04) || String(dr.cuts[1]) !== dr.inp || dr2.orbit !== true || dr2.cuts[0] !== 24.75 || dr2.cuts[2] !== 74.25) fail('Dra i skivan: ' + JSON.stringify({ sp, dr, dr2 }));
+    await page.click('[data-even="0"]');
+    console.log('OK: dra i snittskivorna i 3D flyttar snittet', JSON.stringify(dr.cuts));
     await page.click('[data-plus="0"]'); const P2 = await page.evaluate(() => ({ n: String(l3pcsS.cuts.length + 1), planes: l3pcsS.grp.children.length, cuts: l3pcsS.cuts.join() }));
     if (P2.n !== '5' || P2.planes !== 4 || P2.cuts !== '19.8,39.6,59.4,79.2') fail('＋ ger fem jämna bitar: ' + JSON.stringify(P2));
     await page.click('[data-split="0|0"]'); const P3 = await page.evaluate(() => l3pcsS.cuts.join()); if (P3 !== '9.9,19.8,39.6,59.4,79.2') fail('＋ vid en bit delar den på mitten: ' + P3);
@@ -92,7 +101,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (R2.ang !== 30 || R2.sum !== 4000 || R2.planes < 2 || R2.L < 90) fail('Valfri vinkel (30°): ' + JSON.stringify(R2));
     console.log('OK: snitten kan roteras (valfri vinkel, förinställningar) och alla punkter hamnar i en bit', JSON.stringify(R2));
     // rutor: klipp åt båda hållen
-    await page.fill('#pcsAng', '0'); await page.dispatchEvent('#pcsAng', 'change'); await page.check('#pcsTwo');
+    await page.fill('#pcsAng', '0'); await page.dispatchEvent('#pcsAng', 'change'); await page.click('[data-two="1"]');
     const G1 = await page.evaluate(async () => { const S = l3pcsS; S.cuts = [50]; S.cuts2 = [20]; const c = l3pc.clouds.find(x => x.id === 'pc:slice'), a0 = l3pcsSPr(0), a1 = l3pcsSPr(1);
       const r = await l3pcsRun(c, { format: 'las', strips: { ang: 0, t0: a0.t0, cuts: [50], cuts2: [20], t02: a1.t0 } }, null); return { ang1: Math.round(l3pcsSAng(1)), n: r.files.map(f => [f.group, f.n]), planes: [S.grp, 0].length, kids: S.grp.children.length }; });
     const gm = Object.fromEntries(G1.n); if (G1.n.length !== 4 || gm['Ruta 1.1'] !== 1000 || gm['Ruta 1.2'] !== 1000 || gm['Ruta 2.1'] !== 1000 || gm['Ruta 2.2'] !== 1000) fail('Rutor 2×2 med 1000 punkter vardera: ' + JSON.stringify(G1));

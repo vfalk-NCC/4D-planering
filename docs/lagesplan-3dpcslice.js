@@ -236,29 +236,57 @@ function l3pcsSDraw() {
   });
   g.name = "pcStrips"; S.grp = g; l3.scene.add(g); l3Render();
 }
+/* Panelen ligger som verktygspanel (v3-vp) och hamnar därför i högermenyn när den är dockad. */
+function l3pcsCss() {
+  if (document.getElementById("l3pcsCss")) return; const st = document.createElement("style"); st.id = "l3pcsCss";
+  st.textContent = `#l3pcsStrips{display:flex;flex-direction:column;gap:10px;font-size:12.5px}
+  #l3pcsStrips .pcs-t{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#64748b;margin:0 0 4px}
+  #l3pcsStrips .pcs-seg{display:flex;border:1px solid #cbd5e1;border-radius:9px;overflow:hidden}#l3pcsStrips .pcs-seg button{flex:1;border:0;border-right:1px solid #e2e8f0;background:#fff;padding:6px 6px;cursor:pointer;font:inherit}#l3pcsStrips .pcs-seg button:last-child{border-right:0}#l3pcsStrips .pcs-seg button:hover{background:#f1f5f9}#l3pcsStrips .pcs-seg button.on{background:#2563eb;color:#fff}
+  #l3pcsStrips .pcs-ang{display:flex;align-items:center;gap:4px;margin-top:6px}#l3pcsStrips .pcs-ang input{width:64px;border:1px solid #cbd5e1;border-radius:7px;padding:3px 6px;font:inherit}#l3pcsStrips .pcs-ang button,#l3pcsStrips .pcs-mini{border:1px solid #cbd5e1;background:#f8fafc;border-radius:7px;padding:2px 8px;cursor:pointer;font:inherit}#l3pcsStrips .pcs-mini:hover,#l3pcsStrips .pcs-ang button:hover{background:#e2e8f0}
+  #l3pcsStrips .pcs-card{border:1px solid #e2e8f0;border-left:5px solid var(--c);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:7px;background:#fff}
+  #l3pcsStrips .pcs-ch{display:flex;align-items:baseline;gap:8px}#l3pcsStrips .pcs-ch b{color:var(--c);font-size:13px}#l3pcsStrips .pcs-ch span{color:#64748b;margin-left:auto}
+  #l3pcsStrips .pcs-step{display:flex;align-items:center;gap:6px}#l3pcsStrips .pcs-step b{min-width:22px;text-align:center;font-size:14px}
+  #l3pcsStrips .pcs-bar{display:flex;height:18px;border-radius:6px;overflow:hidden;background:#e2e8f0}#l3pcsStrips .pcs-bar i{display:flex;align-items:center;justify-content:center;font-style:normal;font-size:10px;color:#fff;background:var(--c);border-right:2px solid #fff;min-width:0;overflow:hidden}#l3pcsStrips .pcs-bar i:nth-child(odd){opacity:.9}#l3pcsStrips .pcs-bar i:nth-child(even){opacity:.6}#l3pcsStrips .pcs-bar i:last-child{border-right:0}
+  #l3pcsStrips .pcs-list{display:flex;flex-direction:column;gap:3px}#l3pcsStrips .pcs-r{display:flex;align-items:center;gap:6px}#l3pcsStrips .pcs-r .l{flex:1;color:#334155}#l3pcsStrips .pcs-r input{width:84px;border:1px solid #cbd5e1;border-radius:7px;padding:3px 6px;font:inherit}
+  #l3pcsStrips .pcs-r.cut{padding:2px 0 2px 8px;border-left:2px dashed var(--c)}#l3pcsStrips .pcs-r.cut .l{color:var(--c);font-weight:600}
+  #l3pcsStrips .pcs-hint{background:#f1f5f9;border-radius:9px;padding:6px 9px;color:#475569}#l3pcsStrips .pcs-out{color:#334155}
+  #l3pcsStrips .pcs-act{display:flex;gap:8px;justify-content:flex-end}#l3pcsStrips .pcs-go{background:#2563eb;color:#fff;border:0;border-radius:9px;padding:7px 16px;cursor:pointer;font:inherit;font-weight:600}#l3pcsStrips .pcs-go:disabled{opacity:.6}#l3pcsStrips .pcs-x{border:1px solid #cbd5e1;background:#fff;border-radius:9px;padding:7px 12px;cursor:pointer;font:inherit}`;
+  document.head.appendChild(st);
+}
 function l3pcsSPanel() {
-  const S = l3pcsS; if (!S.panel) { S.panel = document.createElement("div"); S.panel.id = "l3pcsStrips"; S.panel.style.cssText = "position:fixed;right:16px;top:90px;z-index:9400;width:300px;max-height:78vh;overflow:auto;background:#fff;color:#0f172a;border-radius:12px;padding:12px 14px;box-shadow:0 10px 40px rgba(0,0,0,.35);font:13px system-ui,sans-serif;display:flex;flex-direction:column;gap:8px"; document.body.appendChild(S.panel); }
-  const btn = "border:1px solid #cbd5e1;background:#f8fafc;border-radius:7px;padding:3px 9px;cursor:pointer", nT = (S.cuts.length + 1) * (S.two ? S.cuts2.length + 1 : 1);
-  const dirHtml = d => { const set = l3pcsSCuts(d), L = l3pcsSLen(d), N = set.length + 1, edges = [0, ...set, L], col = d ? "#2563eb" : "#b45309", rows = [];
+  const S = l3pcsS; l3pcsCss();
+  if (!S.panel) {
+    const host = document.getElementById("v3Canvas") || document.body; S.panel = document.createElement("div"); S.panel.id = "l3pcsStrips"; S.panel.className = "v3-vp"; S.panel.style.right = "12px"; host.appendChild(S.panel);
+    ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown", "keyup"].forEach(t => S.panel.addEventListener(t, e => e.stopPropagation()));
+  }
+  const nT = (S.cuts.length + 1) * (S.two ? S.cuts2.length + 1 : 1);
+  const dirHtml = d => {
+    const set = l3pcsSCuts(d), L = l3pcsSLen(d), N = set.length + 1, edges = [0, ...set, L], col = d ? "#2563eb" : "#d97706", rows = [];
     for (let i = 0; i < N; i++) {
-      rows.push(`<div style="display:flex;align-items:center;gap:6px;color:#475569"><span style="flex:1">Bit ${i + 1}: ${(edges[i + 1] - edges[i]).toFixed(1)} m</span><button type="button" data-split="${d}|${i}" title="Dela den här biten på mitten" style="${btn}">＋</button></div>`);
-      if (i < set.length) rows.push(`<div style="display:flex;align-items:center;gap:6px"><span style="color:${col}">▎Streck ${i + 1}</span><input type="number" data-cut="${d}|${i}" step="0.1" value="${set[i]}" style="width:80px"> m <button type="button" data-del="${d}|${i}" title="Ta bort strecket" style="${btn}">✕</button></div>`);
+      rows.push(`<div class="pcs-r"><span class="l">Bit ${i + 1} · ${(edges[i + 1] - edges[i]).toFixed(1).replace(".", ",")} m</span><button type="button" class="pcs-mini" data-split="${d}|${i}" title="Dela den här biten på mitten">＋ Dela</button></div>`);
+      if (i < set.length) rows.push(`<div class="pcs-r cut"><span class="l">Snitt ${i + 1}</span><input type="number" data-cut="${d}|${i}" step="0.1" value="${set[i]}"> m <button type="button" class="pcs-mini" data-del="${d}|${i}" title="Ta bort snittet">✕</button></div>`);
     }
-    return `<div style="border-top:1px solid #e2e8f0;padding-top:6px;display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:6px;align-items:center"><b style="color:${col}">${d ? "Åt andra hållet (" + Math.round(l3pcsSAng(1) % 180) + "°)" : "Första hållet"}</b><span style="color:#64748b">${L.toFixed(0)} m</span></div>
-      <div style="display:flex;gap:6px;align-items:center">Antal bitar <button type="button" data-minus="${d}" style="${btn}">−</button><b style="min-width:22px;text-align:center">${N}</b><button type="button" data-plus="${d}" style="${btn}">＋</button><button type="button" data-even="${d}" style="${btn}" title="Fördela strecken lika">Jämnt</button></div>${rows.join("")}</div>`; };
-  S.panel.innerHTML = `<b style="font-size:15px">Dela punktmolnet jämnt</b>
-    <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">Vinkel <button type="button" data-rot="-15" style="${btn}">−15</button><button type="button" data-rot="-1" style="${btn}">−1</button><input type="number" id="pcsAng" step="0.5" value="${Math.round(S.ang * 100) / 100}" style="width:62px">°<button type="button" data-rot="1" style="${btn}">+1</button><button type="button" data-rot="15" style="${btn}">+15</button></div>
-    <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap"><button type="button" data-ang="0" style="${btn}">Väst → Öst</button><button type="button" data-ang="90" style="${btn}">Syd → Nord</button>${typeof plan !== "undefined" && plan && plan.calib ? `<button type="button" id="pcsGrid" style="${btn}" title="Lägg snitten längs ritningens rutnät (lägesplanens kalibrering)">Längs ritningens rutnät</button>` : ""}</div>
-    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pcsTwo" ${S.two ? "checked" : ""}> Klipp även åt andra hållet (rutor)</label>
+    const bar = edges.slice(1).map((e, i) => `<i style="flex:${Math.max(0.0001, e - edges[i])}" title="Bit ${i + 1}">${i + 1}</i>`).join("");
+    return `<div class="pcs-card" style="--c:${col}"><div class="pcs-ch"><b>${d ? "Åt andra hållet · " + Math.round(l3pcsSAng(1) % 180) + "°" : "Första hållet · " + Math.round(S.ang * 10) / 10 + "°"}</b><span>${L.toFixed(0)} m långt</span></div>
+      <div class="pcs-bar">${bar}</div>
+      <div class="pcs-step">Antal bitar <button type="button" class="pcs-mini" data-minus="${d}">−</button><b>${N}</b><button type="button" class="pcs-mini" data-plus="${d}">＋</button><button type="button" class="pcs-mini" data-even="${d}" title="Fördela snitten lika">Jämnt</button></div>
+      <div class="pcs-list">${rows.join("")}</div></div>`;
+  };
+  S.panel.innerHTML = `<div class="v3-vp-h"><b>Dela punktmolnet</b><span></span><button type="button" data-pcs-x title="Stäng">✕</button></div>
+    <div class="pcs-hint">💡 <b>Dra i skivorna direkt i 3D-vyn</b> för att flytta snitten, eller skriv in avstånden nedan.</div>
+    <div><div class="pcs-t">Riktning</div><div class="pcs-seg"><button type="button" data-ang="0" class="${S.ang === 0 ? "on" : ""}">Väst → Öst</button><button type="button" data-ang="90" class="${S.ang === 90 ? "on" : ""}">Syd → Nord</button>${typeof plan !== "undefined" && plan && plan.calib ? `<button type="button" id="pcsGrid" title="Lägg snitten längs ritningens rutnät (lägesplanens kalibrering)">Ritningens rutnät</button>` : ""}</div>
+      <div class="pcs-ang">Vinkel <button type="button" data-rot="-15">−15</button><button type="button" data-rot="-1">−1</button><input type="number" id="pcsAng" step="0.5" value="${Math.round(S.ang * 100) / 100}">°<button type="button" data-rot="1">+1</button><button type="button" data-rot="15">+15</button></div></div>
+    <div><div class="pcs-t">Delning</div><div class="pcs-seg"><button type="button" data-two="0" class="${S.two ? "" : "on"}">Bitar (ett håll)</button><button type="button" data-two="1" class="${S.two ? "on" : ""}">Rutor (två håll)</button></div></div>
     ${dirHtml(0)}${S.two ? dirHtml(1) : ""}
-    <div id="pcsSOut" style="color:#334155;font-size:12px">${nT} ${S.two ? "rutor" : "bitar"}. Strecken syns som skivor i 3D (orange = första hållet, blå = andra). Filerna blir LAZ med färg, samlade i en ZIP.</div>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="pcsSX" style="${btn}">Stäng</button><button type="button" id="pcsSGo" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:6px 14px;cursor:pointer">Dela och hämta ZIP</button></div>`;
+    <div class="pcs-out" id="pcsSOut"><b>${nT} ${S.two ? "rutor" : "bitar"}</b> blir det. Filerna blir LAZ med färg, samlade i en ZIP.</div>
+    <div class="pcs-act"><button type="button" class="pcs-x" id="pcsSX">Stäng</button><button type="button" class="pcs-go" id="pcsSGo">Dela och hämta ZIP</button></div>`;
   const q = s => S.panel.querySelector(s), all = s => S.panel.querySelectorAll(s), re = () => { S.cuts.sort((a, b) => a - b); S.cuts2.sort((a, b) => a - b); l3pcsSPanel(); l3pcsSDraw(); }, par = el => String(el).split("|").map(Number);
   const evenAll = () => { l3pcsSEven(S.cuts.length + 1, 0); if (S.two) l3pcsSEven(S.cuts2.length + 1, 1); };
   const setAng = a => { S.ang = ((Number(a) % 180) + 180) % 180; if (!Number.isFinite(S.ang)) S.ang = 0; evenAll(); re(); };
+  q("[data-pcs-x]").onclick = () => { if (!S.busy) l3pcsStripsClose(); };
   q("#pcsAng").onchange = e => setAng(e.target.value); all("[data-rot]").forEach(el => el.onclick = () => setAng(S.ang + Number(el.dataset.rot))); all("[data-ang]").forEach(el => el.onclick = () => setAng(Number(el.dataset.ang)));
   const gb = q("#pcsGrid"); if (gb) gb.onclick = () => { try { const a = pdfToModel([0, 0]), b = pdfToModel([1000, 0]); setAng(Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI); } catch (e) { l3Status("Kunde inte läsa ritningens kalibrering.", true); } };
-  q("#pcsTwo").onchange = e => { S.two = e.target.checked; if (S.two && !S.cuts2.length) l3pcsSEven(2, 1); re(); };
+  all("[data-two]").forEach(el => el.onclick = () => { S.two = el.dataset.two === "1"; if (S.two && !S.cuts2.length) l3pcsSEven(2, 1); re(); });
   all("[data-minus]").forEach(el => el.onclick = () => { const d = +el.dataset.minus; l3pcsSEven(l3pcsSCuts(d).length, d); re(); }); all("[data-plus]").forEach(el => el.onclick = () => { const d = +el.dataset.plus; l3pcsSEven(l3pcsSCuts(d).length + 2, d); re(); }); all("[data-even]").forEach(el => el.onclick = () => { const d = +el.dataset.even; l3pcsSEven(l3pcsSCuts(d).length + 1, d); re(); });
   all("[data-split]").forEach(el => el.onclick = () => { const [d, i] = par(el.dataset.split), set = l3pcsSCuts(d), ed = [0, ...set, l3pcsSLen(d)]; set.push(Math.round((ed[i] + ed[i + 1]) / 2 * 100) / 100); re(); });
   all("[data-del]").forEach(el => el.onclick = () => { const [d, i] = par(el.dataset.del); l3pcsSCuts(d).splice(i, 1); re(); });
@@ -277,6 +305,36 @@ function l3pcsSPanel() {
     S.busy = false; const b = S.panel && S.panel.querySelector("#pcsSGo"); if (b) b.disabled = false;
   };
 }
+
+/* Dra i skivorna direkt i 3D-vyn (Victor 2026-11-19): tryck på en skiva och dra längs snittriktningen. Snittet följer musen (hålls mellan grannsnitten) och panelen uppdateras. */
+let l3pcsDragInit = false;
+function l3pcsDragSetup() {
+  if (l3pcsDragInit || typeof l3 === "undefined" || !l3 || !l3.renderer) return; const host = document.getElementById("v3Canvas"), cv = l3.renderer.domElement; if (!host) return; l3pcsDragInit = true;
+  const rc = new THREE.Raycaster(); let drag = null, hover = null;
+  const ndc = e => { const r = cv.getBoundingClientRect(); return new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); };
+  const hit = e => {
+    const S = l3pcsS; if (!S.on || !S.grp) return null; const ms = S.grp.children.filter(o => o.isMesh); rc.setFromCamera(ndc(e), l3.camera); const h = rc.intersectObjects(ms, false)[0]; if (h) return h.object;
+    // Uppifrån står skivorna på kant (en tunn linje): träffa även nära skivans mittlinje på skärmen (12 px).
+    const r = cv.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top; let best = null, bd = 12;
+    ms.forEach(m => { const w = m.geometry.parameters.width / 2, P = [-w, w].map(x => { const v = m.localToWorld(new THREE.Vector3(x, 0, 0)).project(l3.camera); return [(v.x + 1) / 2 * r.width, (1 - v.y) / 2 * r.height]; }), dx = P[1][0] - P[0][0], dy = P[1][1] - P[0][1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - P[0][0]) * dx + (py - P[0][1]) * dy) / L2)), d = Math.hypot(px - (P[0][0] + dx * t), py - (P[0][1] + dy * t)); if (d < bd) { bd = d; best = m; } });
+    return best;
+  };
+  const tAt = (e, d) => { const S = l3pcsS, b = S.bb, cz = (b.min[2] + b.max[2]) / 2 - l3.O[2], pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -cz), pt = new THREE.Vector3(); rc.setFromCamera(ndc(e), l3.camera); if (!rc.ray.intersectPlane(pl, pt)) return null; const pr = l3pcsSPr(d); return (pt.x + l3.O[0]) * pr.ux + (pt.y + l3.O[1]) * pr.uy - pr.t0; };
+  const mark = m => { if (hover === m) return; if (hover && hover.material) hover.material.opacity = 0.22; hover = m; if (m && m.material) m.material.opacity = 0.42; cv.style.cursor = m ? "ew-resize" : ""; l3Render(); };
+  host.addEventListener("pointerdown", e => {
+    if (e.target !== cv || e.button !== 0) return; const m = hit(e); if (!m) return; const S = l3pcsS; drag = { d: m.userData.dir, i: m.userData.l3pcsCut, m }; e.stopImmediatePropagation(); e.preventDefault(); if (l3.orbit) l3.orbit.enabled = false; try { cv.setPointerCapture(e.pointerId); } catch (x) { /* */ }
+    S.dragging = true;
+  }, true);
+  host.addEventListener("pointermove", e => {
+    const S = l3pcsS; if (!S.on) return;
+    if (!drag) { if (e.target === cv && !(e.buttons & 1)) mark(hit(e)); return; }
+    e.stopImmediatePropagation(); const t = tAt(e, drag.d); if (t == null) return; const set = l3pcsSCuts(drag.d), L = l3pcsSLen(drag.d), lo = drag.i > 0 ? set[drag.i - 1] + 0.05 : 0.01, hi = drag.i < set.length - 1 ? set[drag.i + 1] - 0.05 : L - 0.01;
+    set[drag.i] = Math.round(Math.max(lo, Math.min(hi, t)) * 100) / 100; if (!drag.raf) drag.raf = requestAnimationFrame(() => { const dg = drag; if (!dg) return; dg.raf = 0; l3pcsSPanel(); l3pcsSDraw(); const nm = l3pcsS.grp && l3pcsS.grp.children.find(o => o.userData.dir === dg.d && o.userData.l3pcsCut === dg.i); if (nm) { nm.material.opacity = 0.42; hover = nm; dg.m = nm; } });
+  }, true);
+  const end = e => { if (!drag) return; const d = drag; drag = null; l3pcsS.dragging = false; if (l3.orbit) l3.orbit.enabled = true; try { cv.releasePointerCapture(e.pointerId); } catch (x) { /* */ } l3pcsSPanel(); l3pcsSDraw(); };
+  host.addEventListener("pointerup", end, true); host.addEventListener("pointercancel", end, true);
+}
+setInterval(l3pcsDragSetup, 1500);
 function l3pcsStripsOpen(id) {
   const c = l3pcGet(id); if (!c) return; l3pcsStripsClose(true);
   const S = l3pcsS; S.on = true; S.cid = id; S.cloud = c; S.two = false; S.cuts2 = []; S.bb = l3pcsBounds(c); S.ang = (S.bb.max[0] - S.bb.min[0]) >= (S.bb.max[1] - S.bb.min[1]) ? 0 : 90; l3pcsSEven(4, 0);
