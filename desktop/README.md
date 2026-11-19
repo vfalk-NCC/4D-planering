@@ -21,4 +21,6 @@ npm start         # startar programmet direkt för test
 ## Skillnader mot versionen i Trimble Connect
 - Ingen hämtning från/sparning till Trimble Connect – filerna väljs på datorn och sparas i Hämtningar.
 - En tom arbetsyta (1 000 × 1 000 m) används; origo flyttas automatiskt till första inlästa modellen/molnet så att SWEREF-koordinater blir stabila.
-- Data finns i programmets egen databas (IndexedDB i användarprofilen). Säkerhetskopiera genom att exportera de IFC/DXF du behöver.
+- Data finns i programmets egen databas (IndexedDB i användarprofilen).
+- **Säkerhetskopia av allt:** ⋯-menyn → "Spara säkerhetskopia av allt (fil på datorn)…" sparar arbetsyta, placeringar, ritningar (RITNINGAR), bergförankringens PDF:er, inlästa modellfiler och inställningar i en `.4dlokal`-fil. "Läs in säkerhetskopia…" ställer tillbaka allt (till exempel på en ny dator).
+- Utan installation: öppna editorn med `?fristaende=1` i adressen (till exempel `lagesplan.html?fristaende=1`) – samma fristående läge i webbläsaren.

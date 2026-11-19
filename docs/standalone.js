@@ -111,3 +111,36 @@ if (STANDALONE) {
   };
   document.addEventListener("DOMContentLoaded", () => { document.body.classList.add("fristaende"); setInterval(() => { try { if (typeof l3b !== "undefined" && !l3b.busy && (l3b.models.length || (typeof l3pc !== "undefined" && l3pc.clouds.length))) standaloneOrigo(); } catch (e) { /* */ } }, 1500); });
 }
+
+/* ---- Säkerhetskopia av allt (Victor 2026-11-19: "man ska kunna spara allt lokalt"): arbetsyta, placeringar, ritningar, inlästa modellfiler och inställningar i EN fil på datorn,
+   och tillbaka igen (till exempel på en ny dator eller om webbläsarens data rensats). Format: "4DLOKAL1" + rubrik (JSON) + binärdata. ---- */
+if (STANDALONE) {
+  const SB_BOLT = ["lagesplan-bergforankring", "pdf"];   // ritningarnas PDF:er för bergförankring (egen databas)
+  const sbAllKv = async () => { const db = await sbOpen(); return new Promise((res, rej) => { const out = [], rq = db.transaction("kv").objectStore("kv").openCursor(); rq.onsuccess = () => { const c = rq.result; if (c) { out.push([c.key, c.value]); c.continue(); } else res(out); }; rq.onerror = () => rej(rq.error); }); };
+  const sbBoltAll = () => new Promise(res => { try { const q = indexedDB.open(SB_BOLT[0], 1); q.onupgradeneeded = () => { try { q.result.createObjectStore(SB_BOLT[1]); } catch (e) { /* */ } }; q.onsuccess = () => { try { const rq = q.result.transaction(SB_BOLT[1]).objectStore(SB_BOLT[1]).openCursor(), out = []; rq.onsuccess = () => { const c = rq.result; if (c) { out.push([c.key, c.value]); c.continue(); } else res(out); }; rq.onerror = () => res([]); } catch (e) { res([]); } }; q.onerror = () => res([]); } catch (e) { res([]); } });
+  const sbBoltPut = list => new Promise(res => { const q = indexedDB.open(SB_BOLT[0], 1); q.onupgradeneeded = () => { try { q.result.createObjectStore(SB_BOLT[1]); } catch (e) { /* */ } }; q.onsuccess = () => { const tx = q.result.transaction(SB_BOLT[1], "readwrite"), st = tx.objectStore(SB_BOLT[1]); list.forEach(([k, v]) => st.put(v, k)); tx.oncomplete = () => res(); tx.onerror = () => res(); }; q.onerror = () => res(); });
+  async function sbBackup() {
+    try {
+      if (typeof l3Status === "function") l3Status("Samlar säkerhetskopian…");
+      const bin = [], entries = []; let off = 0;
+      const enc = (store, k, v) => { const bufs = [], json = JSON.stringify(v, function (key, val) { if (val instanceof ArrayBuffer) { bufs.push(new Uint8Array(val)); return { $buf: bufs.length - 1 }; } if (ArrayBuffer.isView(val)) { bufs.push(new Uint8Array(val.buffer, val.byteOffset, val.byteLength)); return { $buf: bufs.length - 1 }; } return val; });
+        entries.push({ s: store, k, json, bufs: bufs.map(b => { const r = { off, len: b.length }; bin.push(b); off += b.length; return r; }) }); };
+      (await sbAllKv()).forEach(([k, v]) => enc("kv", k, v)); (await sbBoltAll()).forEach(([k, v]) => enc("bolt", k, v));
+      const ls = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(4dplan|lagesplan|l3)/i.test(k)) ls[k] = localStorage.getItem(k); }
+      const head = new TextEncoder().encode(JSON.stringify({ v: 1, at: new Date().toISOString(), ls, entries })), pre = new Uint8Array(12); pre.set(new TextEncoder().encode("4DLOKAL1")); new DataView(pre.buffer).setUint32(8, head.length, true);
+      const blob = new Blob([pre, head, ...bin], { type: "application/octet-stream" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Lagesplan-sakerhetskopia-${new Date().toISOString().slice(0, 10)}.4dlokal`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+      if (typeof l3Status === "function") l3Status(`Säkerhetskopia sparad (${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB, ${entries.length} poster). Spara filen på ett säkert ställe.`); return blob;
+    } catch (e) { if (typeof l3Status === "function") l3Status("Kunde inte spara säkerhetskopian: " + e.message, true); else alert("Kunde inte spara säkerhetskopian: " + e.message); }
+  }
+  async function sbRestore(file, noReload) {
+    const pre = new Uint8Array(await file.slice(0, 12).arrayBuffer()); if (new TextDecoder().decode(pre.subarray(0, 8)) !== "4DLOKAL1") throw new Error("Det här är ingen säkerhetskopia från programmet (.4dlokal).");
+    const hl = new DataView(pre.buffer).getUint32(8, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(await file.slice(12, 12 + hl).arrayBuffer()))), base = 12 + hl, kv = [], bolt = [];
+    for (const e of head.entries) { const bufs = []; for (const b of e.bufs) bufs.push(await file.slice(base + b.off, base + b.off + b.len).arrayBuffer()); const v = JSON.parse(e.json, (k, val) => (val && typeof val === "object" && "$buf" in val ? bufs[val.$buf] : val)); (e.s === "bolt" ? bolt : kv).push([e.k, v]); }
+    const db = await sbOpen(); await new Promise((res, rej) => { const tx = db.transaction("kv", "readwrite"), st = tx.objectStore("kv"); st.clear(); kv.forEach(([k, v]) => st.put(v, k)); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
+    if (bolt.length) await sbBoltPut(bolt); Object.entries(head.ls || {}).forEach(([k, v]) => { try { localStorage.setItem(k, v); } catch (e) { /* */ } });
+    if (!noReload) setTimeout(() => location.reload(), 300); return { kv: kv.length, bolt: bolt.length, at: head.at };
+  }
+  function sbRestorePick() { const i = document.createElement("input"); i.type = "file"; i.accept = ".4dlokal"; i.style.cssText = "position:fixed;left:-9999px"; document.body.appendChild(i); i.onchange = async () => { const f = i.files[0]; i.remove(); if (!f) return; const ok = typeof uiConfirm === "function" ? await uiConfirm("Läsa in säkerhetskopian? Det som finns i programmet nu ersätts av innehållet i filen."): confirm("Läsa in säkerhetskopian? Det som finns nu ersätts."); if (!ok) return; try { const r = await sbRestore(f); if (typeof l3Status === "function") l3Status(`Säkerhetskopian inläst (${r.kv} poster) – programmet startar om…`); } catch (e) { if (typeof l3Status === "function") l3Status("Kunde inte läsa in: " + e.message, true); else alert(e.message); } }; i.click(); }
+  window.sbBackup = sbBackup; window.sbRestore = sbRestore; window.sbRestorePick = sbRestorePick; window.sbAllKv = sbAllKv;
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ber webbläsaren spara datat permanent */ }
+}
