@@ -28,7 +28,7 @@ label.c{display:flex;gap:5px;align-items:center}
 <main><div id="cv"></div>
 <aside>
 <section><h2>Lager</h2><div id="lys"></div><div class="row"><button id="all">Alla</button><button id="none">Inga</button><button id="home" title="Hela modellen i bild">⌂ Hela</button></div></section>
-<section><h2>Visa</h2><div class="row"><label class="c">Bakgrund <select id="bg"><option value="l">Ljus</option><option value="d">Mörk</option><option value="s">Himmel</option></select></label><label class="c" id="ptl">Punktstorlek <input id="pts" type="range" min="1" max="8" step="0.5" value="2" style="width:90px"></label></div>
+<section><h2>Visa</h2><div class="row"><label class="c">Bakgrund <select id="bg"><option value="l">Ljus</option><option value="d">Mörk</option><option value="s">Himmel</option></select></label><label class="c" id="ptl">Punktstorlek <input id="pts" type="range" min="1" max="8" step="0.5" value="2" style="width:80px"></label><label class="c" id="ptb">Ljus <input id="ptbr" type="range" min="0.2" max="1.3" step="0.05" value="0.75" style="width:80px"></label></div>
 <div class="row" style="margin-top:6px"><button id="png" title="Sparar vyn du står i som PNG">📷 Spara bild</button><label class="c">Storlek <select id="pngs"><option value="1">Som skärmen</option><option value="2">2×</option></select></label></div></section>
 <section id="osec"><h2>Objekt <span id="cnt"></span></h2><input type="search" id="q" placeholder="Sök namn, stag nr, klass…" style="width:100%;margin-bottom:5px"><div id="list"></div></section>
 <section id="info">Tryck på ett objekt i vyn, i listan eller på ritningen.</section>
@@ -79,7 +79,7 @@ function select(o, ob, zoom) {
   $("info").innerHTML = `<b>${esc(ob.n)}</b><table>${rows.filter(r => r[1] !== "" && r[1] != null).map(r => `<tr><td>${esc(r[0])}</td><td><b>${esc(r[1])}</b></td></tr>`).join("")}</table><div class="row" style="margin-top:6px"><button id="zm">⌖ Zooma hit</button><button id="nosel">Avmarkera</button></div>`;
   $("zm").onclick = () => fly(objBox(o, ob)); $("nosel").onclick = () => { clearHl(); curSel = null; $("info").textContent = "Tryck på ett objekt i vyn, i listan eller på ritningen."; listMark(); docMark(null); draw(); };
   if (zoom) fly(objBox(o, ob)); else draw();
-  listMark(); docMark(ob.id);
+  listMark(); docMark(ob.id); if (tabWin && !tabWin.closed && ob.id) { try { tabWin.postMessage({ t: "sel", id: ob.id }, "*"); } catch (x) { /* */ } }
 }
 function listMark() { document.querySelectorAll("#list .it").forEach(e => e.classList.toggle("on", !!curSel && e.dataset.k === curSel.o.i + ":" + curSel.ob.s)); const on = document.querySelector("#list .it.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
 /* Träff i vyn: triangeln → objektet (objekten ligger i ordning efter indexstart). */
@@ -96,7 +96,7 @@ R.domElement.addEventListener("pointerup", e => { if (dn && Math.hypot(e.clientX
 function lyUi() {
   $("lys").innerHTML = L.map(o => { const l = o.d, n = l.k === "cloud" ? Math.round(l.pos.length / 16) : (l.objs || []).length; return `<label class="ly"><input type="checkbox" data-i="${o.i}" ${o.vis ? "checked" : ""}><i class="dot" style="background:${l.col || (l.k === "cloud" ? "#64748b" : "#94a3b8")}"></i><span title="${esc(l.name)}">${esc(l.name)}</span><small>${l.k === "cloud" ? "punktmoln" : n + " st"}</small></label>`; }).join("");
   $("lys").querySelectorAll("input").forEach(c => { c.onchange = () => { const o = L[+c.dataset.i]; o.vis = c.checked; o.mesh.visible = c.checked; if (curSel && curSel.o === o && !c.checked) { clearHl(); curSel = null; } list(); draw(); }; });
-  $("ptl").style.display = L.some(o => o.d.k === "cloud") ? "" : "none";
+  $("ptl").style.display = $("ptb").style.display = L.some(o => o.d.k === "cloud") ? "" : "none";
 }
 function list() {
   const q = $("q").value.trim().toLowerCase(), rows = []; L.forEach(o => { if (!o.vis || o.d.k === "cloud") return; (o.d.objs || []).forEach(ob => { if (rows.length >= 400) return; if (q ? (ob.n + " " + (ob.c || "") + " " + (ob.id || "") + " " + (ob.g || "")).toLowerCase().includes(q) : o.d.k === "objs") rows.push([o, ob]); }); });
@@ -106,7 +106,7 @@ function list() {
   listMark();
 }
 /* Ritningar: stag nr → stången, och tvärtom */
-let dcur = 0;
+let dcur = 0, tabWin = null;
 function docShow(i) {
   dcur = i; const d = D.docs[i]; $("dtabs").querySelectorAll("button").forEach((b, k) => b.classList.toggle("on", k === i));
   $("dwrap").innerHTML = `<img src="${d.img}" alt="${esc(d.name)}">` + d.hot.map(h => `<div class="hot" data-id="${esc(h.id)}" title="${esc(h.id)}" style="left:${h.x * 100}%;top:${h.y * 100}%;width:${h.w * 100}%;height:${h.h * 100}%"></div>`).join("");
@@ -117,12 +117,29 @@ function docMark(id) {
 }
 if (D.docs && D.docs.length) {
   $("dsec").style.display = ""; $("dtabs").innerHTML = D.docs.map((d, i) => `<button data-i="${i}">${esc(d.name)}</button>`).join(""); $("dtabs").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) { docShow(+b.dataset.i); docMark(curSel && curSel.ob.id); } };
-  $("dopen").onclick = () => { const d = D.docs[dcur], w = window.open("", "_blank"); if (w) { w.document.write(`<title>${esc(d.name)}</title><body style="margin:0"><img src="${d.img}" style="max-width:none">`); w.document.close(); } };
+  $("dopen").onclick = () => {
+    if (tabWin && !tabWin.closed) { tabWin.focus(); return; }
+    const w = window.open("", "_blank"); if (!w) { alert("Webbläsaren blockerade den nya fliken – tillåt popup-fönster."); return; } tabWin = w;
+    const safe = t => t.replace(/<\/(script)/gi, "<\\/$1");
+    w.document.write(`<!doctype html><html lang="sv"><head><meta charset="utf-8"><title>Ritningar</title><style>body{margin:0;font:13px system-ui,sans-serif;background:#e2e8f0;color:#0f172a}header{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:#fff;border-bottom:1px solid #cbd5e1}button,input{font:inherit;border:1px solid #cbd5e1;border-radius:8px;padding:4px 10px;background:#fff}button{cursor:pointer}button.on{background:#2563eb;border-color:#2563eb;color:#fff}#w{position:relative;margin:10px}#w img{display:block;width:100%;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.3)}.hot{position:absolute;cursor:pointer;background:rgba(245,158,11,.22);outline:1px solid rgba(245,158,11,.85);border-radius:2px}.hot:hover{background:rgba(245,158,11,.45)}.hot.sel{background:rgba(239,68,68,.45);outline:2px solid #ef4444}</style></head><body>
+<header><b>Ritningar</b><span id="t" style="display:flex;gap:4px;flex-wrap:wrap"></span><input type="search" id="q" placeholder="Sök stag nr" style="width:150px"><label>Zoom <input type="range" id="z" min="30" max="300" value="100" style="width:110px;padding:0"></label><span style="color:#64748b">Klick på ett stag nr → vyn i fliken du kom från zoomar dit.</span></header><div id="w"></div>
+<script>const D=${safe(JSON.stringify(D.docs))};const $=i=>document.getElementById(i);let cur=0,sel=null;
+function show(i){cur=i;document.querySelectorAll("#t button").forEach((b,k)=>b.classList.toggle("on",k===i));const d=D[i];$("w").innerHTML='<img src="'+d.img+'">'+d.hot.map(h=>'<div class="hot'+(sel===h.id?" sel":"")+'" data-id="'+h.id+'" title="'+h.id+'" style="left:'+h.x*100+'%;top:'+h.y*100+'%;width:'+h.w*100+'%;height:'+h.h*100+'%"></div>').join("");zoom();}
+function zoom(){$("w").style.width=(+$("z").value)+"%";}
+function mark(id,sc){sel=id;if(id){const i=D.findIndex(d=>d.hot.some(h=>h.id===id));if(i>=0&&i!==cur)show(i);}document.querySelectorAll(".hot").forEach(h=>h.classList.toggle("sel",!!id&&h.dataset.id===id));const e=document.querySelector(".hot.sel");if(e&&sc)e.scrollIntoView({block:"center",inline:"center",behavior:"smooth"});}
+$("t").innerHTML=D.map((d,i)=>'<button data-i="'+i+'">'+d.name+'</button>').join("");$("t").onclick=e=>{const b=e.target.closest("button[data-i]");if(b){show(+b.dataset.i);mark(sel,false);}};$("z").oninput=zoom;
+$("w").onclick=e=>{const h=e.target.closest(".hot");if(!h)return;mark(h.dataset.id,false);if(window.opener)window.opener.postMessage({t:"goto",id:h.dataset.id},"*");};
+$("q").onkeydown=e=>{if(e.key!=="Enter")return;const q=$("q").value.trim().toUpperCase(),all=D.flatMap(d=>d.hot),h=all.find(x=>x.id===q)||all.find(x=>x.id.includes(q));if(h){mark(h.id,true);if(window.opener)window.opener.postMessage({t:"goto",id:h.id},"*");}};
+window.addEventListener("message",e=>{const m=e.data||{};if(m.t==="sel"&&m.id)mark(m.id,true);});show(0);<\/script></body></html>`);
+    w.document.close(); if (curSel && curSel.ob.id) setTimeout(() => { try { w.postMessage({ t: "sel", id: curSel.ob.id }, "*"); } catch (x) { /* */ } }, 300);
+  };
+  window.addEventListener("message", e => { const m = e.data || {}; if (m.t === "goto" && m.id) { const t = byId.get(m.id); if (t) select(t.o, t.ob, true); } });
   $("dwrap").onclick = e => { const h = e.target.closest(".hot"); if (!h) return; const t = byId.get(h.dataset.id); if (t) select(t.o, t.ob, true); }; docShow(0);
 }
 $("all").onclick = () => { L.forEach(o => { o.vis = true; o.mesh.visible = true; }); lyUi(); list(); draw(); };
 $("none").onclick = () => { L.forEach(o => { o.vis = false; o.mesh.visible = false; }); clearHl(); curSel = null; lyUi(); list(); draw(); };
 $("home").onclick = home; $("bg").onchange = bg; $("q").oninput = list; $("pts").oninput = () => { pmat.size = +$("pts").value; draw(); };
+$("ptbr").oninput = () => { pmat.color.setScalar(+$("ptbr").value); draw(); }; pmat.color.setScalar(+$("ptbr").value);
 $("png").onclick = () => {
   const k = +$("pngs").value; let url; if (k === 1) url = R.domElement.toDataURL("image/png");
   else { const w = R.domElement.width, h = R.domElement.height, pr = R.getPixelRatio(); R.setPixelRatio(pr * 2); R.setSize(cv.clientWidth, cv.clientHeight, false); R.render(S, C); url = R.domElement.toDataURL("image/png"); R.setPixelRatio(pr); R.setSize(cv.clientWidth, cv.clientHeight, false); draw(); }

@@ -109,6 +109,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
  await pg.mouse.click(xy.x, xy.y); await pg.waitForTimeout(300);
   const s2 = await pg.evaluate(() => ({ id: __scene.sel && __scene.sel.ob.id, hot: [...document.querySelectorAll('#dwrap .hot.sel')].map(h => h.dataset.id).join() }));
   ok(s2.id === 'BV001' && s2.hot === 'BV001', 'Klick på stången i vyn väljer BV001 och markerar stagen i ritningen: ' + JSON.stringify(s2));
+  // Ritningarna i egen flik ur HTML-filen: klickbara stag, kopplade åt båda håll (postMessage)
+  const [pop] = await Promise.all([pg.context().waitForEvent('page'), pg.click('#dopen')]); await pop.waitForSelector('.hot', { timeout: 8000 });
+  await pop.click('.hot[data-id="BV002"]'); await pg.waitForTimeout(500);
+  ok(await pg.evaluate(() => __scene.sel && __scene.sel.ob.id) === 'BV002', 'Klick i ritningsfliken väljer BV002 i visaren');
+  await pg.evaluate(() => { const t = __scene.byId.get('BH100'); __scene.select(t.o, t.ob, false); }); await pop.waitForFunction(() => document.querySelector('.hot.sel') && document.querySelector('.hot.sel').dataset.id === 'BH100', null, { timeout: 5000 });
+  await pop.close();
+  ok(await pg.evaluate(() => document.getElementById('ptbr').value === '0.75'), 'Punktljus finns (förvalt 0,75)');
   // IFC-objekt: klick ger klass, namn, GUID; sök; lager av/på
   const s3 = await pg.evaluate(() => { const o = __scene.L[0], ob = o.d.objs[1]; __scene.select(o, ob, false); return document.getElementById('info').textContent; }); ok(/Balk/.test(s3) && /IFCBEAM|BEAM/i.test(s3) && /g1/.test(s3), 'IFC-objektets info: ' + s3);
   await pg.fill('#q', 'stål'); const found = await pg.evaluate(() => document.querySelectorAll('#list .it[data-k]').length); ok(found === 1, 'Sök hittar Stålstolpe: ' + found);
