@@ -9,7 +9,7 @@
 
 const L3BF_COL = { "V25": "#f59e0b", "V32": "#dc2626", "H25": "#0ea5e9", "H32": "#7c3aed" };
 const L3BF_HOLE = { 25: 45, 32: 55 };   // borrhålens diameter enligt ritningarnas arbetsgång (mm)
-const l3bf = { rows: null, files: [], opt: { dir: "down", extra: 0, scale: 4, as: "bar", per: "group", replace: true }, busy: false };
+const l3bf = { rows: null, files: [], opt: { dir: "down", extra: 0, scale: 4, as: "bar", per: "bar", replace: true }, busy: false };
 
 /* ---- 1. Text ur PDF ---- */
 async function l3bfPdfItems(file) {
@@ -147,7 +147,7 @@ function l3bfCreate(res, opt) {
   if (opt.replace) { const old = placements.filter(p => p.bf).map(p => p.id); if (old.length) l3dxRemove(old); }
   const ids = [], info = []; let n = 0;
   l3bfGroups(res, opt).forEach(g => {
-    const mk = (bars, name) => { const sub = { ...g, bars }, r = l3bfBuild(sub, opt); if (!r.n) return null; if (bars.length === 1) { r.m.bfp = bars[0].props; delete r.m.parts; } const p = modCreate(r.m, r.A0, { name, color: g.col, snapshot: false }); p.area = "Bergförankring"; p.bf = { kind: g.kind, dim: g.dim, n: r.n, as: opt.as };
+    const mk = (bars, name) => { const sub = { ...g, bars }, r = l3bfBuild(sub, opt); if (!r.n) return null; if (bars.length === 1) { r.m.bfp = bars[0].props; delete r.m.parts; } const p = modCreate(r.m, r.A0, { name, color: g.col, snapshot: false }); p.area = "Bergförankring/" + (g.kind === "V" ? "Vertikala" : "Horisontella") + " ⌀" + g.dim; p.bf = { kind: g.kind, dim: g.dim, n: r.n, as: opt.as };
       p.note = `${r.n} st ${g.kind === "V" ? "vertikala" : "horisontella"} bergförankringar ⌀${g.dim} ur ritningstabell (SWEREF 99 20 15, RH 2000). Visningsdiameter ${l3bfF(l3bfDia(g.dim, opt) * 1000, 0)} mm.`; return p; };
     if (opt.per === "bar") g.bars.forEach(b => { const p = mk([b], `${b.id} ⌀${g.dim}`); if (p) { ids.push(p.id); n++; } });
     else { const p = mk(g.bars, g.name); if (p) { ids.push(p.id); n += g.bars.length; } }
@@ -198,7 +198,7 @@ function l3bfOpen() {
       <label class="v3-row">Extra längd ovanför startpunkten (m) <input type="number" id="v3BfExtra" step="0.1" min="0" value="${o.extra}" style="width:70px" /></label>
       <label class="v3-row">Visa som <select id="v3BfAs"><option value="bar">Stång (⌀25 / ⌀32)</option><option value="hole">Borrhål (⌀45 / ⌀55)</option></select></label>
       <label class="v3-row">Förstora diametern <input type="number" id="v3BfScale" step="1" min="1" max="50" value="${o.scale}" style="width:60px" /> ×  <em>(så att de syns i 3D)</em></label>
-      <label class="v3-row">Skapa <select id="v3BfPer"><option value="group">en grupp per typ och dimension (Dela upp ger enskilda)</option><option value="bar">ett objekt per stång</option></select></label>
+      <label class="v3-row">Skapa <select id="v3BfPer"><option value="bar">ett objekt per stång (mappar per typ och dimension)</option><option value="group">en grupp per typ och dimension (snabbare, Dela upp ger enskilda)</option></select></label>
       <label class="v3-row"><input type="checkbox" id="v3BfRep" ${o.replace ? "checked" : ""} /> Ersätt tidigare bergförankring</label>
       <div class="an-actions"><button type="button" id="v3BfGo">⚓ Skapa i 3D</button><button type="button" id="v3BfCsv">Tabell (CSV)</button></div>
     </div>`, null, "12px");

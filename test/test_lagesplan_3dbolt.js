@@ -76,10 +76,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.setInputFiles('#v3BfFile', { name: 'tabell.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
   await page.waitForFunction(() => /bergförankringar/.test(document.getElementById('v3BfRes').textContent), null, { timeout: 5000 });
   const sum = await page.textContent('#v3BfRes'); ok(/6 bergförankringar/.test(sum) && /vertikala 3 st ⌀25 \+ 1 st ⌀32/.test(sum) && /horisontella 1 st ⌀25 \+ 1 st ⌀32/.test(sum), 'Sammanfattning: ' + sum);
-  await page.selectOption('#v3BfDir', 'down'); await page.fill('#v3BfExtra', '0'); await page.fill('#v3BfScale', '4'); await page.dispatchEvent('#v3BfScale', 'change');
+  await page.selectOption('#v3BfPer', 'group'); await page.selectOption('#v3BfDir', 'down'); await page.fill('#v3BfExtra', '0'); await page.fill('#v3BfScale', '4'); await page.dispatchEvent('#v3BfScale', 'change');
   await page.click('#v3BfGo');
   const G = await page.evaluate(() => placements.filter(p => p.bf).map(p => ({ name: p.name, n: p.bf.n, area: p.area, x: p.x, y: p.y, z: p.z, parts: (p.m.parts || []).length, p0z: p.m.parts ? Math.min(...p.m.parts[0].m.pts.map(q => q[2])) : 0, closed: p.m.closed, vol: modMeshStats(p.m.pts, p.m.faces).volume, zs: p.m.pts.map(q => q[2]) })));
-  ok(G.length === 4 && G.every(g => g.area === 'Bergförankring' && g.closed), 'Fyra grupper: ' + JSON.stringify(G.map(g => [g.name, g.n])));
+  ok(G.length === 4 && G.every(g => /^Bergförankring\/(Vertikala|Horisontella) ⌀(25|32)$/.test(g.area) && g.closed), 'Fyra grupper: ' + JSON.stringify(G.map(g => [g.name, g.n])));
   const v25 = G.find(g => /vertikala ⌀25/.test(g.name)), h32 = G.find(g => /horisontella ⌀32/.test(g.name)), h25 = G.find(g => /horisontella ⌀25/.test(g.name));
   ok(v25 && v25.n === 3 && v25.x === 169000 && v25.y === 7456000 && v25.z === 427.3, 'Vertikal grupp ligger i SWEREF-koordinater: ' + JSON.stringify(v25));
   // BV001 ⌀25: sättdjup 2 m nedåt, förstorat ×4 → diameter 100 mm. BV005: 2 m antaget. Sammanlagd längd 2+3+2 m
@@ -116,6 +116,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#v3BfGo');
   const G2 = await page.evaluate(() => placements.filter(p => p.bf).map(p => ({ name: p.name, zs: p.m.pts.map(q => q[2]), z: p.z })));
   ok(G2.length === 6, 'Ersätter tidigare: ett objekt per stång (6): ' + G2.length);
+  const ar = await page.evaluate(() => [...new Set(placements.filter(p => p.bf).map(p => p.area))].sort().join('|')); ok(ar === 'Bergförankring/Horisontella ⌀25|Bergförankring/Horisontella ⌀32|Bergförankring/Vertikala ⌀25|Bergförankring/Vertikala ⌀32', 'Mappar per typ och dimension: ' + ar);
   const b1 = G2.find(g => /^BV001/.test(g.name)); ok(b1 && Math.abs(Math.max(...b1.zs) - 2.5) < 0.06 && Math.abs(b1.z - (427.3 - 0.5)) < 1e-6, 'Uppåt 2 m + 0,5 m extra, startpunkten 0,5 m under (extra längd): ' + JSON.stringify(b1 && [b1.z, Math.max(...b1.zs)]));
   const csv = await page.evaluate(() => l3bfCsv(l3bf.rows, l3bf.opt)); ok(csv.split('\r\n').length === 7 && /Vertikal;BV001;25;169000;7456000;427.3/.test(csv) && /Horisontell;BH100/.test(csv), 'CSV: ' + csv.slice(0, 200));
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
