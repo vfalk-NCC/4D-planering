@@ -32,7 +32,7 @@ label.c{display:flex;gap:5px;align-items:center}
 <div class="row" style="margin-top:6px"><button id="png" title="Sparar vyn du står i som PNG">📷 Spara bild</button><label class="c">Storlek <select id="pngs"><option value="1">Som skärmen</option><option value="2">2×</option></select></label></div></section>
 <section id="osec"><h2>Objekt <span id="cnt"></span></h2><input type="search" id="q" placeholder="Sök namn, stag nr, klass…" style="width:100%;margin-bottom:5px"><div id="list"></div></section>
 <section id="info">Tryck på ett objekt i vyn, i listan eller på ritningen.</section>
-<section id="dsec" style="display:none"><h2>Ritningar</h2><div class="tabs" id="dtabs"></div><div id="dbody"><div id="dwrap"></div></div><div class="row" style="color:var(--mut);margin-top:4px">Tryck på ett stag nr (orange fält) – vyn zoomar till stången.</div></section>
+<section id="dsec" style="display:none"><h2>Ritningar</h2><div class="tabs" id="dtabs"></div><div id="dbody"><div id="dwrap"></div></div><div class="row" style="margin-top:4px"><button id="dopen" title="Öppnar ritningsbilden i en ny flik">↗ Bild i ny flik</button></div><div class="row" style="color:var(--mut);margin-top:4px">Tryck på ett stag nr (orange fält) – vyn zoomar till stången.</div></section>
 <section class="row" style="color:var(--mut)" id="foot"></section>
 </aside></main>
 <script>/*__THREE__*/</script>
@@ -117,6 +117,7 @@ function docMark(id) {
 }
 if (D.docs && D.docs.length) {
   $("dsec").style.display = ""; $("dtabs").innerHTML = D.docs.map((d, i) => `<button data-i="${i}">${esc(d.name)}</button>`).join(""); $("dtabs").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) { docShow(+b.dataset.i); docMark(curSel && curSel.ob.id); } };
+  $("dopen").onclick = () => { const d = D.docs[dcur], w = window.open("", "_blank"); if (w) { w.document.write(`<title>${esc(d.name)}</title><body style="margin:0"><img src="${d.img}" style="max-width:none">`); w.document.close(); } };
   $("dwrap").onclick = e => { const h = e.target.closest(".hot"); if (!h) return; const t = byId.get(h.dataset.id); if (t) select(t.o, t.ob, true); }; docShow(0);
 }
 $("all").onclick = () => { L.forEach(o => { o.vis = true; o.mesh.visible = true; }); lyUi(); list(); draw(); };
