@@ -92,7 +92,7 @@
   }
   addEventListener("online", () => { state.offline = false; setTimeout(flush, 800); }); addEventListener("offline", () => { state.offline = true; badge(); });
   setInterval(() => { if (state.pending) flush(); }, 30000);
-  window.offlineSync = { state, flush, refresh, pending: async () => (await all(ST_PEND)), cachedFiles: async () => (await all(ST_FILES)).map(x => x.path), cachedBins: async () => (await all(ST_BIN)).map(x => ({ path: x.path, size: x.blob ? x.blob.size : 0 })), conflicts: async () => (await all(ST_PEND)).filter(x => x.conflict), clearConflict: p => del(ST_PEND, p).then(refresh) };
+  window.offlineSync = { state, flush, refresh, pending: async () => (await all(ST_PEND)), cachedFiles: async () => (await all(ST_FILES)).map(x => x.path), cachedFileMeta: async () => (await all(ST_FILES)).map(x => ({ path: x.path, sha: x.sha })), binMeta: async () => (await all(ST_BIN)).map(x => ({ path: x.path, sha: x.sha || null, size: x.blob ? x.blob.size : 0 })), tagBin: async (path, sha) => { const c = await get(ST_BIN, path); if (c) await put(ST_BIN, { ...c, sha }); }, cachedBins: async () => (await all(ST_BIN)).map(x => ({ path: x.path, size: x.blob ? x.blob.size : 0 })), conflicts: async () => (await all(ST_PEND)).filter(x => x.conflict), clearConflict: p => del(ST_PEND, p).then(refresh) };
   if (document.readyState !== "loading") refresh(); else document.addEventListener("DOMContentLoaded", refresh);
   setTimeout(flush, 3000);
 })();

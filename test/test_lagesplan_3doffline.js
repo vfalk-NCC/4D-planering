@@ -17,7 +17,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const fail = m => { throw new Error(m); };
 
 
-  const b64 = o => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64'), files = new Map();
+  const window__gets = { n: 0 }; const b64 = o => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).toString('base64'), files = new Map();
   files.set('projects.json', b64([{ id: 'p1' }])); files.set('projects/p1/status_plans.json', b64([{ id: 'A', name: 'Plan 1', file_path: 'projects/p1/plan.pdf', zones: [], calib: { model: [[169000, 7456000, 400], [169100, 7456000, 400]], pdf: [[0, 0], [1000, 0]] } }]));
   files.set('projects/p1/pp/activities.json', b64([{ id: 'a1', name: 'Gjutning' }])); files.set('projects/p1/sub/x.json', b64({ k: 1 })); files.set('projects/p1/plan.pdf', Buffer.from('%PDF-1.4 testplan').toString('base64'));
   const ctx = await browser.newContext({ viewport: { width: 1300, height: 850 } });
@@ -28,8 +28,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const req = r.request(), u = new URL(req.url()), f = decodeURIComponent(u.pathname.replace(/^\/repos\/[^/]+\/[^/]+\/contents\/?/, ''));
     if (/rate_limit/.test(u.pathname)) return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     if (req.method() === 'GET') {
-      if (f === '' || [...files.keys()].some(k => k.startsWith(f + '/')) && !files.has(f)) { const pre = f ? f + '/' : '', seen = new Map(); [...files.keys()].filter(k => k.startsWith(pre)).forEach(k => { const rest = k.slice(pre.length), n = rest.split('/')[0], isDir = rest.includes('/'); seen.set(n, { name: n, path: pre + n, type: isDir ? 'dir' : 'file', size: isDir ? 0 : Buffer.from(files.get(k), 'base64').length }); }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([...seen.values()]) }); }
-      const b = files.get(f); if (b == null) return r.fulfill({ status: 404, body: '{}' }); if (/raw/.test(req.headers()['accept'] || '')) return r.fulfill({ status: 200, contentType: 'application/octet-stream', body: Buffer.from(b, 'base64') }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: b, sha: 's' + b.length, size: b.length }) });
+      if (f === '' || [...files.keys()].some(k => k.startsWith(f + '/')) && !files.has(f)) { const pre = f ? f + '/' : '', seen = new Map(); [...files.keys()].filter(k => k.startsWith(pre)).forEach(k => { const rest = k.slice(pre.length), n = rest.split('/')[0], isDir = rest.includes('/'); seen.set(n, { name: n, path: pre + n, type: isDir ? 'dir' : 'file', size: isDir ? 0 : Buffer.from(files.get(k), 'base64').length, sha: isDir ? undefined : 's' + files.get(k).length }); }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([...seen.values()]) }); }
+      const b = files.get(f); if (b == null) return r.fulfill({ status: 404, body: '{}' }); window__gets.n++; if (/raw/.test(req.headers()['accept'] || '')) return r.fulfill({ status: 200, contentType: 'application/octet-stream', body: Buffer.from(b, 'base64') }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: b, sha: 's' + b.length, size: b.length }) });
     }
     const body = JSON.parse(req.postData()); files.set(f, body.content); r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 's' + body.content.length } }) });
   });
@@ -41,8 +41,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await pg.evaluate(() => { l3PalTab('plan'); }); await pg.waitForTimeout(500); const hasBtn = await pg.evaluate(() => { const b = document.getElementById('v3PlOffline'); if (b) b.click(); return !!b; }); await pg.waitForTimeout(500);
   ok(hasBtn && await pg.evaluate(() => !!document.getElementById('v3OffPanel')), 'Knappen "Förbered för offline" i 4D-planering-fliken öppnar panelen');
   // 1) Förbered (online): program, data och binärfiler sparas
-  const R = await pg.evaluate(async () => { const r = await l3ofPrepare(() => {}); return { app: r.app, data: r.data, bin: r.bin, failed: r.failed, appFail: r.appFail, cachedFiles: (await offlineSync.cachedFiles()).sort(), bins: (await offlineSync.cachedBins()).map(x => x.path) }; });
+  const R = await pg.evaluate(async () => { const r = await l3ofPrepare(() => {}); return { app: r.app, data: r.data + r.already, bin: r.bin, failed: r.failed, appFail: r.appFail, cachedFiles: (await offlineSync.cachedFiles()).sort(), bins: (await offlineSync.cachedBins()).map(x => x.path) }; });
   ok(R.app > 200 && R.data === 4 && R.bin === 1 && !R.failed.length && R.cachedFiles.includes('projects/p1/pp/activities.json') && R.cachedFiles.includes('projects.json') && R.bins.join() === 'projects/p1/plan.pdf', 'Förberedelsen: ' + JSON.stringify(R));
+  // 1b) Andra körningen hoppar över allt som redan är sparat (ingen ny hämtning av filer)
+  const g0 = window__gets.n; const R2 = await pg.evaluate(async () => { const r = await l3ofPrepare(() => {}, { app: false, data: true, draw: true, img: true, other: true }); return { already: r.already, data: r.data, bin: r.bin }; });
+  ok(R2.already === 5 && R2.data === 0 && R2.bin === 0 && window__gets.n === g0, 'Redan sparade filer hoppas över: ' + JSON.stringify({ R2, gets: window__gets.n - g0 }));
+  // 1c) Panelen: val före hämtning (bilder av som standard), storlek, start
+  files.set('projects/p1/sub/ny.json', b64({ k: 2 })); files.set('projects/p1/foto.png', Buffer.from('PNGDATA'.repeat(50)).toString('base64'));
+  const ui = await pg.evaluate(async () => { await l3ofOpen(); document.getElementById('v3OffGo').click(); await new Promise(r => setTimeout(r, 1200)); const box = document.getElementById('v3OffSel'); return { txt: box.textContent.replace(/\s+/g, ' '), img: !!(box.querySelector('[data-of-g="img"]') || {}).checked, data: !!(box.querySelector('[data-of-g="data"]') || {}).checked }; });
+  ok(/Vad ska hämtas/.test(ui.txt) && /Bilder och foton/.test(ui.txt) && ui.data && !ui.img && /redan sparat/.test(ui.txt) && /Att hämta: ca/.test(ui.txt), 'Valpanelen: ' + JSON.stringify(ui));
+  await pg.evaluate(() => document.getElementById('v3OffStart').click()); await pg.waitForFunction(() => /Klart för offline/.test(document.getElementById('v3OffTxt').textContent), null, { timeout: 20000 });
+  const ui2 = await pg.evaluate(async () => ({ files: await offlineSync.cachedFiles(), bins: (await offlineSync.cachedBins()).map(x => x.path), txt: document.getElementById('v3OffTxt').textContent }));
+  ok(ui2.files.includes('projects/p1/sub/ny.json') && !ui2.bins.includes('projects/p1/foto.png'), 'Bara valda grupper hämtades (bilder ej): ' + JSON.stringify(ui2));
   // 2) Offline: läsa, binär, skriva (kö)
   await ctx.setOffline(true); await pg.waitForTimeout(300);
   const off = await pg.evaluate(async () => {
