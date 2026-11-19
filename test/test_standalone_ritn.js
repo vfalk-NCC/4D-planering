@@ -42,6 +42,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(bk.head === '4DLOKAL1' && bk.before === 2 && bk.emptied === 0 && bk.after === 2 && bk.reg === 1 && bk.bin, 'Säkerhetskopia och återställning: ' + JSON.stringify(bk));
   ok(gh.length === 0 || gh.every(u => !/contents/.test(u)), 'Inga anrop mot GitHubs data: ' + gh.join(','));
   ok(!errors.length, 'Sidfel: ' + errors.join(' | '));
+  // Skrivbordsprogrammet: kopia på disken (Dokument) och automatisk återställning i en tom databas
+  const disk = new Map(); const mkDisk = async c => { await c.exposeFunction('__dsave', (n, arr) => { disk.set(n, Buffer.from(arr)); return 'disk/' + n; }); await c.exposeFunction('__dload', n => (disk.has(n) ? Array.from(disk.get(n)) : null)); await c.addInitScript(() => { window.desktopDisk = { save: async (n, b) => window.__dsave(n, Array.from(new Uint8Array(b))), load: async n => { const a = await window.__dload(n); return a ? new Uint8Array(a).buffer : null; }, folder: async () => '' }; }); };
+  const ctxA = await browser.newContext({ viewport: { width: 1300, height: 850 } }); await mkDisk(ctxA);
+  const openIn = async c => { const pg = await c.newPage(); await pg.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); }); pg.on('pageerror', e => errors.push(e.message)); await pg.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS })); await pg.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' })); await pg.goto(`http://localhost:${PORT}/lagesplan.html?fristaende=1`); await pg.waitForFunction(() => typeof l3rdImportFiles === 'function' && typeof l3 !== 'undefined' && l3 && l3.renderer, null, { timeout: 25000 }); await pg.evaluate(PDFMOCK); return pg; };
+  const pa = await openIn(ctxA);
+  await pa.evaluate(async () => { const f = new File([new Uint8Array([37, 80, 68, 70])], 'Disk.pdf', { type: 'application/pdf' }); await l3rdImportFiles([f], { plane: 'plan', scale: 200, page: 1, allPages: false }); await l3rdFlush(); await sbDiskSave(); });
+  await pa.waitForTimeout(500); ok(disk.has('Sakerhetskopia.4dlokal') && disk.get('Sakerhetskopia.4dlokal').slice(0, 8).toString() === '4DLOKAL1' && disk.get('Sakerhetskopia.4dlokal').length > 500, 'Kopia sparad på disken: ' + (disk.get('Sakerhetskopia.4dlokal') || []).length);
+  await pa.close();
+  const ctxB = await browser.newContext({ viewport: { width: 1300, height: 850 } }); await mkDisk(ctxB);   // ny profil = tom databas, men samma disk
+  const pb = await ctxB.newPage(); await pb.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); }); pb.on('pageerror', e => errors.push(e.message)); await pb.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS })); await pb.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' })); await pb.goto(`http://localhost:${PORT}/lagesplan.html?fristaende=1`);
+  await pb.waitForFunction(() => typeof l3rd !== 'undefined' && l3rd.list && l3rd.list.length === 1, null, { timeout: 30000 });
+  ok(await pb.evaluate(() => l3rd.list[0].name === 'Disk'), 'Tom databas återställs automatiskt ur kopian på disken');
   console.log('OK: fristående läge – RITNINGAR sparas och finns kvar utan GitHub');
   await browser.close(); server.close();
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

@@ -4,6 +4,14 @@ const { app, BrowserWindow, Menu, shell, session, dialog } = require("electron")
 const path = require("path"), fs = require("fs");
 const { startServer } = require("./server");
 const ROOT = path.join(__dirname, "app");
+/* Allt sparas på diskens vanliga plats: Dokument\3D-editor Lägesplan. Programmets databas (IndexedDB, inställningar) ligger i undermappen Data – synlig, och den finns kvar även om programmet avinstalleras eller uppdateras.
+   Adressen (porten) MÅSTE vara densamma varje gång: webbläsarmotorn knyter sparad data till adressen, så en slumpad port gav tom data vid varje start. */
+const DOCS = path.join(app.getPath("documents"), "3D-editor Lägesplan"), PORT = 47831;
+try { fs.mkdirSync(path.join(DOCS, "Data"), { recursive: true }); app.setPath("userData", path.join(DOCS, "Data")); } catch (e) { /* standardplats */ }
+const { ipcMain } = require("electron");
+ipcMain.handle("disk-save", (e, name, buf) => { const f = path.join(DOCS, String(name).replace(/[\\/:*?"<>|]/g, "-")), tmp = f + ".tmp"; fs.writeFileSync(tmp, Buffer.from(buf)); fs.renameSync(tmp, f); return f; });
+ipcMain.handle("disk-load", (e, name) => { const f = path.join(DOCS, String(name).replace(/[\\/:*?"<>|]/g, "-")); try { const b = fs.readFileSync(f); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } catch (x) { return null; } });
+ipcMain.handle("disk-folder", () => { shell.openPath(DOCS); return DOCS; });
 const CDN = {
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js": "pdf.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js": "pdf.worker.min.js",
@@ -18,13 +26,14 @@ const CDN = {
 };
 let win = null;
 async function createWindow() {
-  const { port } = await startServer(ROOT);
+  let srv; try { srv = await startServer(ROOT, PORT); } catch (e) { srv = await startServer(ROOT, 0); dialog.showErrorBox("3D-editor Lägesplan", "Port " + PORT + " är upptagen – programmet startar på en annan adress, och då ligger inte dina sparade projekt i samma databas. Stäng andra kopior av programmet och starta om."); }
+  const { port } = srv;
   const base = `http://127.0.0.1:${port}`;
   session.defaultSession.webRequest.onBeforeRequest({ urls: Object.keys(CDN) }, (details, cb) => {
     const f = CDN[details.url]; if (f && fs.existsSync(path.join(ROOT, "vendor-cdn", f))) return cb({ redirectURL: `${base}/vendor-cdn/${f}` });
     cb({});
   });
-  win = new BrowserWindow({ width: 1500, height: 950, backgroundColor: "#f7f8fa", title: "3D-editor Lägesplan", autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false } });
+  win = new BrowserWindow({ width: 1500, height: 950, backgroundColor: "#f7f8fa", title: "3D-editor Lägesplan", autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, backgroundThrottling: false } });
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/.test(url) && !url.startsWith(base)) { shell.openExternal(url); return { action: "deny" }; } return { action: "allow" }; });
   win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith(base)) { e.preventDefault(); shell.openExternal(url); } });
   win.webContents.session.on("will-download", () => { /* standard: Spara som-dialog */ });
@@ -33,7 +42,7 @@ async function createWindow() {
     { label: "Arkiv", submenu: [{ label: "Ladda om", accelerator: "CmdOrCtrl+R", click: () => win.reload() }, { label: "Visa i helskärm", accelerator: "F11", click: () => win.setFullScreen(!win.isFullScreen()) }, { type: "separator" }, { role: "quit", label: "Avsluta" }] },
     { label: "Redigera", submenu: [{ role: "undo", label: "Ångra" }, { role: "redo", label: "Gör om" }, { type: "separator" }, { role: "cut", label: "Klipp ut" }, { role: "copy", label: "Kopiera" }, { role: "paste", label: "Klistra in" }] },
     { label: "Visa", submenu: [{ role: "zoomIn", label: "Zooma in" }, { role: "zoomOut", label: "Zooma ut" }, { role: "resetZoom", label: "Normal storlek" }, { role: "toggleDevTools", label: "Utvecklarverktyg" }] },
-    { label: "Hjälp", submenu: [{ label: "Om programmet", click: () => dialog.showMessageBox(win, { type: "info", title: "3D-editor Lägesplan", message: "3D-editor Lägesplan", detail: "Fristående läge: allt sparas på den här datorn. Öppna IFC, DXF/DWG och punktmoln via Lager." }) }] }
+    { label: "Hjälp", submenu: [{ label: "Öppna sparmappen (Dokument)", click: () => shell.openPath(DOCS) }, { label: "Om programmet", click: () => dialog.showMessageBox(win, { type: "info", title: "3D-editor Lägesplan", message: "3D-editor Lägesplan", detail: "Fristående läge: allt sparas på den här datorn. Öppna IFC, DXF/DWG och punktmoln via Lager." }) }] }
   ]));
 }
 app.whenReady().then(createWindow);

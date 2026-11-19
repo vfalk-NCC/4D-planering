@@ -119,16 +119,16 @@ if (STANDALONE) {
   const sbAllKv = async () => { const db = await sbOpen(); return new Promise((res, rej) => { const out = [], rq = db.transaction("kv").objectStore("kv").openCursor(); rq.onsuccess = () => { const c = rq.result; if (c) { out.push([c.key, c.value]); c.continue(); } else res(out); }; rq.onerror = () => rej(rq.error); }); };
   const sbBoltAll = () => new Promise(res => { try { const q = indexedDB.open(SB_BOLT[0], 1); q.onupgradeneeded = () => { try { q.result.createObjectStore(SB_BOLT[1]); } catch (e) { /* */ } }; q.onsuccess = () => { try { const rq = q.result.transaction(SB_BOLT[1]).objectStore(SB_BOLT[1]).openCursor(), out = []; rq.onsuccess = () => { const c = rq.result; if (c) { out.push([c.key, c.value]); c.continue(); } else res(out); }; rq.onerror = () => res([]); } catch (e) { res([]); } }; q.onerror = () => res([]); } catch (e) { res([]); } });
   const sbBoltPut = list => new Promise(res => { const q = indexedDB.open(SB_BOLT[0], 1); q.onupgradeneeded = () => { try { q.result.createObjectStore(SB_BOLT[1]); } catch (e) { /* */ } }; q.onsuccess = () => { const tx = q.result.transaction(SB_BOLT[1], "readwrite"), st = tx.objectStore(SB_BOLT[1]); list.forEach(([k, v]) => st.put(v, k)); tx.oncomplete = () => res(); tx.onerror = () => res(); }; q.onerror = () => res(); });
-  async function sbBackup() {
+  async function sbBackup(opts = {}) {
     try {
-      if (typeof l3Status === "function") l3Status("Samlar säkerhetskopian…");
+      if (!opts.silent && typeof l3Status === "function") l3Status("Samlar säkerhetskopian…");
       const bin = [], entries = []; let off = 0;
       const enc = (store, k, v) => { const bufs = [], json = JSON.stringify(v, function (key, val) { if (val instanceof ArrayBuffer) { bufs.push(new Uint8Array(val)); return { $buf: bufs.length - 1 }; } if (ArrayBuffer.isView(val)) { bufs.push(new Uint8Array(val.buffer, val.byteOffset, val.byteLength)); return { $buf: bufs.length - 1 }; } return val; });
         entries.push({ s: store, k, json, bufs: bufs.map(b => { const r = { off, len: b.length }; bin.push(b); off += b.length; return r; }) }); };
-      (await sbAllKv()).forEach(([k, v]) => enc("kv", k, v)); (await sbBoltAll()).forEach(([k, v]) => enc("bolt", k, v));
+      let skipped = 0; (await sbAllKv()).forEach(([k, v]) => { if (opts.skipBig && /^bin:/.test(k) && v && v.bytes && v.bytes.byteLength > 30e6) { skipped++; return; } enc("kv", k, v); }); (await sbBoltAll()).forEach(([k, v]) => enc("bolt", k, v));
       const ls = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(4dplan|lagesplan|l3)/i.test(k)) ls[k] = localStorage.getItem(k); }
       const head = new TextEncoder().encode(JSON.stringify({ v: 1, at: new Date().toISOString(), ls, entries })), pre = new Uint8Array(12); pre.set(new TextEncoder().encode("4DLOKAL1")); new DataView(pre.buffer).setUint32(8, head.length, true);
-      const blob = new Blob([pre, head, ...bin], { type: "application/octet-stream" }), a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Lagesplan-sakerhetskopia-${new Date().toISOString().slice(0, 10)}.4dlokal`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+      const blob = new Blob([pre, head, ...bin], { type: "application/octet-stream" }); if (opts.silent) return blob; const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `Lagesplan-sakerhetskopia-${new Date().toISOString().slice(0, 10)}.4dlokal`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000);
       if (typeof l3Status === "function") l3Status(`Säkerhetskopia sparad (${(blob.size / 1048576).toFixed(1).replace(".", ",")} MB, ${entries.length} poster). Spara filen på ett säkert ställe.`); return blob;
     } catch (e) { if (typeof l3Status === "function") l3Status("Kunde inte spara säkerhetskopian: " + e.message, true); else alert("Kunde inte spara säkerhetskopian: " + e.message); }
   }
@@ -143,4 +143,13 @@ if (STANDALONE) {
   function sbRestorePick() { const i = document.createElement("input"); i.type = "file"; i.accept = ".4dlokal"; i.style.cssText = "position:fixed;left:-9999px"; document.body.appendChild(i); i.onchange = async () => { const f = i.files[0]; i.remove(); if (!f) return; const ok = typeof uiConfirm === "function" ? await uiConfirm("Läsa in säkerhetskopian? Det som finns i programmet nu ersätts av innehållet i filen."): confirm("Läsa in säkerhetskopian? Det som finns nu ersätts."); if (!ok) return; try { const r = await sbRestore(f); if (typeof l3Status === "function") l3Status(`Säkerhetskopian inläst (${r.kv} poster) – programmet startar om…`); } catch (e) { if (typeof l3Status === "function") l3Status("Kunde inte läsa in: " + e.message, true); else alert(e.message); } }; i.click(); }
   window.sbBackup = sbBackup; window.sbRestore = sbRestore; window.sbRestorePick = sbRestorePick; window.sbAllKv = sbAllKv;
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ber webbläsaren spara datat permanent */ }
+  /* Skrivbordsprogrammet: en kopia av allt (utan stora modellfiler – dem har du kvar som filer) sparas automatiskt i Dokument\3D-editor Lägesplan\Sakerhetskopia.4dlokal medan du arbetar,
+     och läses in av sig självt om databasen skulle vara tom (till exempel efter en ominstallation på ny dator). */
+  if (window.desktopDisk) {
+    let dirty = false; const put0 = sbPut, del0 = sbDel; sbPut = async (k, v) => { const r = await put0(k, v); dirty = true; return r; }; sbDel = async k => { const r = await del0(k); dirty = true; return r; };
+    const NAME = "Sakerhetskopia.4dlokal";
+    const save = async () => { if (!dirty) return; dirty = false; try { const b = await sbBackup({ silent: true, skipBig: true }); if (b) await window.desktopDisk.save(NAME, await b.arrayBuffer()); } catch (e) { dirty = true; console.warn("Autosparning till disk misslyckades", e); } };
+    setInterval(save, 60000); window.addEventListener("pagehide", save); window.sbDiskSave = () => { dirty = true; return save(); };
+    (async () => { try { const have = (await sbAllKv()).some(([k]) => /^f:/.test(k)); if (!have) { const buf = await window.desktopDisk.load(NAME); if (buf && buf.byteLength > 20) { const r = await sbRestore(new Blob([buf]), true); if (r.kv) location.reload(); } } } catch (e) { console.warn("Kunde inte läsa kopian från disk", e); } })();
+  }
 }

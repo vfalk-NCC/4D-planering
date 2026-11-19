@@ -21,6 +21,7 @@
     "productName": "3D-editor Lägesplan",
     "files": [
       "main.js",
+      "preload.js",
       "server.js",
       "package.json",
       "app/**/*"
