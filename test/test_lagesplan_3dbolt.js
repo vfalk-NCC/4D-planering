@@ -70,7 +70,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const C = await page.evaluate(() => { const c = l3bfCyl([0, 0, 0], [3, 4, 12], 0.0125), s = modMeshStats(c.pts, c.faces.map(f => f.slice())); return { v: s.volume, closed: l3bqClosed(c.faces.map(f => [f[0] - 1, f[1] - 1, f[2] - 1])) }; });
   ok(Math.abs(C.v - 2 * Math.SQRT2 * 0.0125 ** 2 * 13) < 1e-6 && C.closed, 'Cylinder: ' + JSON.stringify(C));
   // Dialogen: filval via pdf.js-attrapp, sammanfattning, skapa
-  await page.evaluate(mk => { const items = eval('(' + mk + ')')(); window.pdfjsLib.getDocument = () => ({ promise: Promise.resolve({ numPages: 1, getPage: async () => ({ getTextContent: async () => ({ items: items.map(i => ({ str: i.s, width: i.w, transform: [i.h, 0, 0, i.h, i.x, i.y] })).concat([{ str: 'UTGÅTT', width: 50, transform: [0, 40, -40, 0, 320, 500] }]) }) }) }) }); }, mk.toString());
+  await page.evaluate(mk => { const items = eval('(' + mk + ')')(); window.pdfjsLib.getDocument = () => ({ promise: Promise.resolve({ numPages: 1, getPage: async () => ({ view: [0, 0, 1000, 850], getViewport: ({ scale }) => ({ width: 1000 * scale, height: 850 * scale }), render: () => ({ promise: Promise.resolve() }), getTextContent: async () => ({ items: items.map(i => ({ str: i.s, width: i.w, transform: [i.h, 0, 0, i.h, i.x, i.y] })).concat([{ str: 'UTGÅTT', width: 50, transform: [0, 40, -40, 0, 320, 500] }]) }) }) }) }); }, mk.toString());
   await page.click('#v3BoltBtn'); await page.waitForSelector('#v3BfFile');
   await page.setInputFiles('#v3BfFile', { name: 'tabell.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') });
   await page.waitForFunction(() => /bergförankringar/.test(document.getElementById('v3BfRes').textContent), null, { timeout: 5000 });
@@ -85,6 +85,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(Math.abs(v25.vol - 2 * Math.SQRT2 * 0.05 ** 2 * 7) < 1.5e-3 && Math.abs(v25.p0z + 2) < 0.06, 'Volym och riktning nedåt: ' + v25.vol + ' ' + Math.min(...v25.zs));
   ok(h25 && h25.n === 1 && Math.abs(h25.vol - 2 * Math.SQRT2 * 0.05 ** 2 * Math.hypot(3, 4, 2)) < 1.5e-3, 'Horisontell stång mellan start och slut: ' + JSON.stringify(h25 && h25.vol));
   ok(h32 && Math.abs(h32.vol - 2 * Math.SQRT2 * (0.032 * 4 / 2) ** 2 * 4) < 1.5e-3, 'Horisontell ⌀32 4 m: ' + JSON.stringify(h32 && h32.vol));
+  // Ritningen som bild med klickbara stag: öppnas efter Skapa, stagen i 3D är orangea fält, klick flyger dit och lyser röd
+  await page.waitForSelector('#v3BoltDoc .bfhot', { timeout: 5000 });
+  const H = await page.evaluate(() => [...document.querySelectorAll('#v3BoltDoc .bfhot')].map(h => ({ id: h.dataset.id, on: /245,\s*158/.test(h.style.background) })));
+  ok(H.length >= 8 && H.find(h => h.id === 'BV001').on && !H.find(h => h.id === 'BV004').on, 'Stag-fält på bilden (de som finns i 3D är markerade): ' + JSON.stringify(H));
+  await page.click('#v3BoltDoc .bfhot[data-id="BV001"]'); await page.waitForTimeout(900);
+  const Z = await page.evaluate(() => ({ t: l3.orbit.target.toArray().map((v, i) => v + l3.O[i]), hl: l3bf.hl.children.length, vis: l3bf.hl.children[0].material.depthTest === false }));
+  ok(Math.abs(Z.t[0] - 169000) < 0.5 && Math.abs(Z.t[1] - 7456000) < 0.5 && Math.abs(Z.t[2] - 426.3) < 0.5 && Z.hl === 1 && Z.vis, 'Klick på BV001 flyger till stången och lyser: ' + JSON.stringify(Z));
+  await page.fill('#v3BdQ', 'BH102'); await page.press('#v3BdQ', 'Enter'); await page.waitForTimeout(900);
+  const Z2 = await page.evaluate(() => l3.orbit.target.toArray().map((v, i) => v + l3.O[i])); ok(Math.abs(Z2[0] - 169122) < 0.5 && Math.abs(Z2[2] - 441) < 0.5, 'Sök BH102 zoomar dit: ' + JSON.stringify(Z2));
+  const saved = await page.evaluate(async () => (await l3bfLoadDocs()).length); ok(saved === 1, 'Ritningen sparad i webbläsaren: ' + saved);
   // Egenskaper: per del i gruppen, i högerpanelen (grupp) och i IFC-egenskaperna
   const P = await page.evaluate(() => { try { const p = placements.find(q => q.bf && /vertikala ⌀25/.test(q.name)), b = p.m.parts[0].m.bfp, g = k => (b.find(x => x[0] === k) || [])[1]; return { id: g('Stag nr'), typ: g('Typ'), dim: g('Dimension stång mm'), hole: g('Borrhål mm'), len: g('Längd m'), sd: g('Sättdjup i berg m'), kg: g('Vikt stål kg (7850 kg/m³)'), z: g('Startpunkt Z (RH 2000)'), src: g('Källa (ritning)'), sideH: modSideHtml(p).replace(/<[^>]+>/g, ' '), ifc: modProps(p).map(x => x[0]).join('|') }; } catch (e) { return { err: e.stack }; } });
   ok(P.id === 'BV001' && /Vertikal/.test(P.typ) && P.dim === '⌀25' && P.hole === '⌀45' && P.len === 2 && P.sd === 2 && P.z === 427.3 && Math.abs(P.kg - Math.PI * 0.0125 ** 2 * 2 * 7850) < 0.1 && P.src === 'tabell', 'Egenskaper per stång: ' + JSON.stringify(P));

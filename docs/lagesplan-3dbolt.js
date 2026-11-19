@@ -196,8 +196,9 @@ function l3bfOpen() {
   const sync = () => { o.dir = $("v3BfDir").value; o.extra = Math.max(0, Number($("v3BfExtra").value) || 0); o.as = $("v3BfAs").value; o.scale = Math.max(1, Number($("v3BfScale").value) || 1); o.per = $("v3BfPer").value; o.replace = $("v3BfRep").checked; };
   ["v3BfDir", "v3BfExtra", "v3BfAs", "v3BfScale", "v3BfPer", "v3BfRep"].forEach(i => { $(i).onchange = sync; });
   $("v3BfFile").onchange = async e => {
-    const files = [...e.target.files]; if (!files.length) return; const box = $("v3BfRes"); box.textContent = "Läser tabellerna…";
+    const files = [...e.target.files]; if (!files.length) return; l3bf.pending = null; const box = $("v3BfRes"); box.textContent = "Läser tabellerna…";
     try {
+      const bufs = []; for (const f of files) bufs.push({ name: f.name, buf: await f.arrayBuffer() }); l3bf.pending = bufs;
       const parts = []; for (const f of files) { const items = await l3bfPdfItems(f); parts.push({ name: f.name, res: l3bfParse(items, f.name) }); }
       const res = l3bfMerge(parts); l3bf.rows = res; l3bf.files = res.files; const s = l3bfSummary(res);
       box.innerHTML = `<b>${s.total} bergförankringar</b> hittades: vertikala ${s.V25} st ⌀25 + ${s.V32} st ⌀32 (sättdjup ${l3bfF(s.lenV, 1)} m), horisontella ${s.H25} st ⌀25 + ${s.H32} st ⌀32 (${l3bfF(s.lenH, 1)} m).<br>`
@@ -209,7 +210,7 @@ function l3bfOpen() {
   };
   $("v3BfGo").onclick = () => {
     if (!l3bf.rows) return; sync();
-    try { const r = l3bfCreate(l3bf.rows, o); l3bfFly(l3bf.rows); l3Status(`${r.n} bergförankringar modellerade (${r.groups.map(g => `${g.n} st ${g.name.replace("Bergförankring ", "")}`).join(", ")}). Ctrl+Z ångrar. Mapp: Bergförankring.`); l3DlgClose("v3Bolt"); }
+    try { const r = l3bfCreate(l3bf.rows, o); l3bfFly(l3bf.rows); if (l3bf.pending) { l3bf.docs = l3bf.pending; l3bfSaveDocs(l3bf.docs); } l3Status(`${r.n} bergförankringar modellerade (${r.groups.map(g => `${g.n} st ${g.name.replace("Bergförankring ", "")}`).join(", ")}). Ctrl+Z ångrar. Mapp: Bergförankring.`); l3DlgClose("v3Bolt"); setTimeout(() => l3bfOpenDocs(), 900); }
     catch (err) { l3Status("Kunde inte skapa bergförankringarna: " + err.message, true); }
   };
   $("v3BfCsv").onclick = () => { if (!l3bf.rows) return; sync(); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([l3bfCsv(l3bf.rows, o)], { type: "text/csv" })); a.download = "bergforankring.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
@@ -239,4 +240,96 @@ if (typeof modProps === "function") {
     if (p.bf && m.parts) { const rows = m.parts.map(q => q.m && q.m.bfp).filter(Boolean); out.push(["Antal stänger", rows.length], ["Stag nr", rows.map(b => (b[0] || [])[1]).join(", ")]); }
     return out;
   };
+}
+
+/* ---- 6. Ritningarna som bilder: klicka på ett stag nr → zoomar till stången i 3D (Victor 2026-11-19) ----
+   PDF:erna sparas i webbläsaren (IndexedDB, per projekt) så att de finns kvar nästa gång. Varje tabellrad (stag nr) blir ett klickfält över bilden.
+   Stagen kopplas till stängerna i 3D via egenskapen "Stag nr" (grupp-delar och enskilda objekt). */
+const L3BF_DB = "lagesplan-bergforankring";
+function l3bfDb() { return new Promise((res, rej) => { if (typeof indexedDB === "undefined") return rej(new Error("ingen IndexedDB")); const q = indexedDB.open(L3BF_DB, 1); q.onupgradeneeded = () => q.result.createObjectStore("pdf"); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+const l3bfKey = () => "pdf|" + (typeof projectId !== "undefined" ? projectId : "");
+async function l3bfSaveDocs(docs) { try { const db = await l3bfDb(); await new Promise((res, rej) => { const t = db.transaction("pdf", "readwrite"); t.objectStore("pdf").put(docs.map(d => ({ name: d.name, buf: d.buf })), l3bfKey()); t.oncomplete = res; t.onerror = () => rej(t.error); }); } catch (e) { console.warn("Kunde inte spara ritningarna", e); } }
+async function l3bfLoadDocs() { try { const db = await l3bfDb(); return await new Promise(res => { const q = db.transaction("pdf").objectStore("pdf").get(l3bfKey()); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); }); } catch (e) { return []; } }
+/* Stagen i 3D: stag nr → { pl, center [X, Y, Z], diag, geom { pts, faces } i SWEREF-meter }. */
+function l3bfIndex() {
+  const M = new Map();
+  const add = (pl, id, m, ox, oy, oz) => {
+    if (!id || !m || !m.pts || !m.pts.length) return; let mn = [1e12, 1e12, 1e12], mx = [-1e12, -1e12, -1e12];
+    const pts = m.pts.map(q => { const w = [ox + q[0], oy + q[1], oz + q[2]]; for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], w[i]); mx[i] = Math.max(mx[i], w[i]); } return w; });
+    M.set(id, { pl, center: [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2], diag: Math.hypot(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]), geom: { pts, faces: m.faces } });
+  };
+  (typeof placements !== "undefined" ? placements : []).filter(p => p.bf && p.m).forEach(p => {
+    const z0 = (Number(p.z) || 0) + (Number(p.dz) || 0);
+    if (p.m.bfp) add(p, (p.m.bfp[0] || [])[1], p.m, Number(p.x) || 0, Number(p.y) || 0, z0);
+    else (p.m.parts || []).forEach(q => { const b = q.m && q.m.bfp; if (b) add(p, (b[0] || [])[1], q.m, Number(q.x) || 0, Number(q.y) || 0, (Number(q.z) || 0) + (Number(q.dz) || 0)); });
+  });
+  return M;
+}
+/* Markering i 3D: röd stång som syns genom allt + flyg dit. */
+function l3bfHighlight(e) {
+  if (!e || typeof THREE === "undefined" || !l3) return;
+  if (!l3bf.hl) { l3bf.hl = new THREE.Group(); l3.scene.add(l3bf.hl); }
+  while (l3bf.hl.children.length) { const c = l3bf.hl.children.pop(); if (c.geometry) c.geometry.dispose(); }
+  const g = new THREE.BufferGeometry(), O = l3.O, pos = new Float32Array(e.geom.pts.length * 3);
+  e.geom.pts.forEach((q, i) => { pos[i * 3] = q[0] - O[0]; pos[i * 3 + 1] = q[1] - O[1]; pos[i * 3 + 2] = q[2] - O[2]; });
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setIndex(e.geom.faces.flatMap(f => [f[0] - 1, f[1] - 1, f[2] - 1]));
+  const mat = new THREE.MeshBasicMaterial({ color: 0xff2d2d, depthTest: false, transparent: true, opacity: 0.95 }), m = new THREE.Mesh(g, mat); m.renderOrder = 999; m.raycast = () => {}; m.userData.noHit = true; m.userData.noVm = true;
+  l3bf.hl.add(m);
+}
+function l3bfGoto(id) {
+  const e = (l3bf.idx = l3bfIndex()).get(id); if (!e) { l3Status(`${id} finns inte i 3D – skapa bergförankringarna först (⚓-knappen).`, true); return false; }
+  l3bfHighlight(e);
+  try { if (e.pl.m.bfp && typeof l3SelectIds === "function") l3SelectIds([e.pl.id]); } catch (x) { /* */ }
+  const O = l3.O; l3FlyTo(new THREE.Vector3(e.center[0] - O[0], e.center[1] - O[1], e.center[2] - O[2]), Math.max(5, e.diag * 3));
+  l3Render(); return true;
+}
+function l3bfClearHl() { if (l3bf.hl) { while (l3bf.hl.children.length) { const c = l3bf.hl.children.pop(); if (c.geometry) c.geometry.dispose(); } l3Render(); } }
+/* Läser en PDF: sidor med bildstorlek och stag-fält (stag nr-cellerna). */
+async function l3bfReadDoc(buf) {
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf.slice(0)) }).promise, pages = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n), view = page.view || [0, 0, 1000, 500], tc = await page.getTextContent(), hot = [];
+    tc.items.forEach(it => { const t = String(it.str || "").trim(); if (/^B[VH]\d+$/.test(t) && Math.abs(it.transform[1]) < 0.01) hot.push({ id: t, x: it.transform[4], y: it.transform[5], w: it.width || 30, h: Math.abs(it.transform[3]) || 10 }); });
+    pages.push({ page, view, hot });
+  }
+  return pages;
+}
+async function l3bfRenderPage(pg, host, scale) {
+  const vp = pg.page.getViewport({ scale }), cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+  const wrap = document.createElement("div"); wrap.className = "bfpg"; wrap.style.cssText = "position:relative;margin-bottom:8px;box-shadow:0 1px 6px rgba(0,0,0,.25)"; cv.style.cssText = "display:block;width:100%;height:auto;background:#fff"; wrap.appendChild(cv); host.appendChild(wrap);
+  try { await pg.page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; } catch (e) { console.warn("Kunde inte rita sidan", e); }
+  const W = pg.view[2] - pg.view[0], H = pg.view[3] - pg.view[1], idx = l3bf.idx || new Map();
+  pg.hot.forEach(h => {
+    const d = document.createElement("div"); d.className = "bfhot"; d.dataset.id = h.id; d.title = idx.has(h.id) ? `${h.id} – klicka för att zooma till stången i 3D` : `${h.id} – finns inte i 3D`;
+    const pad = 2; d.style.cssText = `position:absolute;left:${(h.x - pad - pg.view[0]) / W * 100}%;top:${(pg.view[3] - h.y - h.h * 0.95 - pad) / H * 100}%;width:${(h.w + pad * 2) / W * 100}%;height:${(h.h * 1.2 + pad * 2) / H * 100}%;cursor:${idx.has(h.id) ? "pointer" : "default"};background:${idx.has(h.id) ? "rgba(245,158,11,.22)" : "transparent"};outline:${idx.has(h.id) ? "1px solid rgba(245,158,11,.8)" : "none"};border-radius:2px`;
+    wrap.appendChild(d);
+  });
+}
+async function l3bfOpenDocs(files) {
+  if (typeof pdfjsLib === "undefined") { l3Status("PDF-läsaren (pdf.js) är inte laddad.", true); return; }
+  let docs = files && files.length ? files : (l3bf.docs && l3bf.docs.length ? l3bf.docs : await l3bfLoadDocs());
+  if (!docs.length) { l3Status("Inga ritningar sparade än – läs in tabell-PDF:erna med ⚓-knappen först.", true); return; }
+  l3bf.docs = docs; l3bf.idx = l3bfIndex();
+  const d = l3Dlg("v3BoltDoc", "Bergförankring – ritningar", `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><div id="v3BdTabs" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+      <input type="search" id="v3BdQ" placeholder="Sök stag nr (BV001…)" style="width:150px" /><label title="Zoom på ritningen">🔍 <input type="range" id="v3BdZ" min="40" max="300" value="100" style="width:90px;vertical-align:middle" /></label></div>
+    <div class="v3-sub" id="v3BdInfo">Klicka på ett stag nr (orange fält) – 3D-vyn flyger dit och stången lyser röd.</div>
+    <div id="v3BdBody" style="overflow:auto;height:520px;background:#e2e8f0;border:1px solid #cbd5e1;border-radius:6px;padding:6px"></div>`, { onClose: l3bfClearHl });
+  d.style.width = "min(820px, 60%)"; if (!((l3Prefs().dlgPos || {}).v3BoltDoc)) { d.style.left = "420px"; d.style.top = "40px"; } const $ = id => d.querySelector("#" + id), body = $("v3BdBody");
+  let cur = 0, cache = new Map(), pagesOf = async i => { if (!cache.has(i)) cache.set(i, await l3bfReadDoc(docs[i].buf)); return cache.get(i); };
+  const show = async i => {
+    cur = i; body.innerHTML = "<div class=\"v3-sub\">Ritar sidan…</div>"; $("v3BdTabs").querySelectorAll("button").forEach((b, k) => b.classList.toggle("on", k === i));
+    try { const pages = await pagesOf(i); body.innerHTML = ""; for (const pg of pages) await l3bfRenderPage(pg, body, 1.0); setZ(); const n = body.querySelectorAll(".bfhot").length, on = [...body.querySelectorAll(".bfhot")].filter(h => l3bf.idx.has(h.dataset.id)).length; $("v3BdInfo").textContent = `${docs[i].name}: ${n} stag, ${on} finns i 3D. Klicka på ett stag nr – 3D-vyn flyger dit och stången lyser röd.`; }
+    catch (e) { body.innerHTML = `<div class="v3-sub">Kunde inte öppna ${l3bfEsc(docs[i].name)}: ${l3bfEsc(e.message)}</div>`; }
+  };
+  const setZ = () => { const z = Number($("v3BdZ").value) || 100; body.querySelectorAll(".bfpg").forEach(w => { w.style.width = z + "%"; }); };
+  $("v3BdTabs").innerHTML = docs.map((x, i) => `<button type="button" class="v3-chipbtn" data-i="${i}" style="padding:2px 8px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;cursor:pointer">${l3bfEsc(String(x.name).replace(/\.pdf$/i, ""))}</button>`).join("");
+  $("v3BdTabs").onclick = e => { const b = e.target.closest("button[data-i]"); if (b) show(Number(b.dataset.i)); };
+  $("v3BdZ").oninput = setZ;
+  body.onclick = e => { const h = e.target.closest(".bfhot"); if (!h || !l3bf.idx.has(h.dataset.id)) return; body.querySelectorAll(".bfhot.sel").forEach(x => { x.classList.remove("sel"); x.style.background = "rgba(245,158,11,.22)"; }); body.querySelectorAll(`.bfhot[data-id="${h.dataset.id}"]`).forEach(x => { x.classList.add("sel"); x.style.background = "rgba(239,68,68,.45)"; }); l3bfGoto(h.dataset.id); };
+  $("v3BdQ").onkeydown = e => {
+    if (e.key !== "Enter") return; const q = $("v3BdQ").value.trim().toUpperCase(), h = [...body.querySelectorAll(".bfhot")].find(x => x.dataset.id === q) || [...body.querySelectorAll(".bfhot")].find(x => x.dataset.id.includes(q));
+    if (h) { h.scrollIntoView({ block: "center", inline: "center" }); h.click(); } else if (q && l3bf.idx.has(q)) l3bfGoto(q); else l3Status(`${q} hittades inte på den här ritningen.`, true);
+  };
+  await show(0);
 }
