@@ -368,5 +368,37 @@ function l3rdPolyStart(d) {
   host.addEventListener("pointerdown", C.down, true); host.addEventListener("pointerup", C.up, true); host.addEventListener("dblclick", C.dbl, true); window.addEventListener("keydown", C.key, true);
 }
 
+
+/* ---- HTML-exporten: ritningen bakad (beskärning och färger ingår) som lager i världskoordinater (relativt scenens origo) ---- */
+function l3rdInPoly(poly, x, y) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; }
+/* Segment mot rektangel (Liang–Barsky) och polygon (delas där den korsar polygonens kanter): returnerar delsegment som ligger innanför. */
+function l3rdClipSeg(x1, y1, x2, y2, rect, poly) {
+  let t0 = 0, t1 = 1; const dx = x2 - x1, dy = y2 - y1;
+  for (const [p, q] of [[-dx, x1 - rect[0]], [dx, rect[2] - x1], [-dy, y1 - rect[1]], [dy, rect[3] - y1]]) { if (p === 0) { if (q < 0) return []; } else { const r = q / p; if (p < 0) { if (r > t1) return []; if (r > t0) t0 = r; } else { if (r < t0) return []; if (r < t1) t1 = r; } } }
+  const ax = x1 + dx * t0, ay = y1 + dy * t0, bx = x1 + dx * t1, by = y1 + dy * t1; if (!poly) return [[ax, ay, bx, by]];
+  const ts = [0, 1], ex = bx - ax, ey = by - ay;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const c = poly[j], d = poly[i], fx = d[0] - c[0], fy = d[1] - c[1], den = ex * fy - ey * fx; if (Math.abs(den) < 1e-12) continue; const t = ((c[0] - ax) * fy - (c[1] - ay) * fx) / den, u = ((c[0] - ax) * ey - (c[1] - ay) * ex) / den; if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t); }
+  ts.sort((a, b) => a - b); const out = []; for (let i = 1; i < ts.length; i++) { const m = (ts[i - 1] + ts[i]) / 2; if (l3rdInPoly(poly, ax + ex * m, ay + ey * m)) out.push([ax + ex * ts[i - 1], ay + ey * ts[i - 1], ax + ex * ts[i], ay + ey * ts[i]]); }
+  return out;
+}
+async function l3rdBake(d) {
+  const S = await l3rdSource(d), M = l3rdMatrix(d).elements, rect = l3rdCropRect(d, S), poly = d.poly && d.poly.length >= 3 ? d.poly : null, W = (x, y) => [M[0] * x + M[4] * y + M[12], M[1] * x + M[5] * y + M[13], M[2] * x + M[6] * y + M[14]];
+  const op = Math.max(0.02, Math.min(1, Number(d.opacity))), over = d.color ? l3rdRgb(d.color) : null, out = [], inside = (x, y) => x >= rect[0] && x <= rect[2] && y >= rect[1] && y <= rect[3] && (!poly || l3rdInPoly(poly, x, y));
+  if (S.k === "pdf") {
+    const P = [], C = []; for (let i = 0; i < S.seg.length / 4; i++) l3rdClipSeg(S.seg[i * 4], S.seg[i * 4 + 1], S.seg[i * 4 + 2], S.seg[i * 4 + 3], rect, poly).forEach(q => { const a = W(q[0], q[1]), b = W(q[2], q[3]); P.push(a[0], a[1], a[2], b[0], b[1], b[2]); const c = over || [S.sc[i * 3], S.sc[i * 3 + 1], S.sc[i * 3 + 2]]; C.push(c[0], c[1], c[2], c[0], c[1], c[2]); });
+    if (P.length) out.push({ k: "dlines", name: d.name, pos: new Float32Array(P), vc: new Uint8Array(C), op, ontop: !!d.ontop });
+    if (d.fills !== false && S.tri.length) { const T = [], TC = []; for (let i = 0; i + 5 < S.tri.length; i += 6) { const cx = (S.tri[i] + S.tri[i + 2] + S.tri[i + 4]) / 3, cy = (S.tri[i + 1] + S.tri[i + 3] + S.tri[i + 5]) / 3; if (!inside(cx, cy)) continue; const k = i / 2; for (let v = 0; v < 3; v++) { const w = W(S.tri[i + v * 2], S.tri[i + v * 2 + 1]); T.push(w[0], w[1], w[2]); const c = over || [S.tc[(k + v) * 3], S.tc[(k + v) * 3 + 1], S.tc[(k + v) * 3 + 2]]; TC.push(c[0], c[1], c[2]); } }
+      if (T.length) out.push({ k: "dtris", name: d.name + " (ytor)", pos: new Float32Array(T), vc: new Uint8Array(TC), op, ontop: !!d.ontop }); }
+  }
+  let src = null, sc = 1; if (S.k === "pdf") { if (d.text !== false && S.texts.length) { src = l3rdTextCanvas(S, d.color); sc = src.width / S.W; } } else { const k = Math.min(1, 4096 / Math.max(S.W, S.H)); sc = k; src = document.createElement("canvas"); src.width = Math.round(S.W * k); src.height = Math.round(S.H * k); src.getContext("2d").drawImage(S.im, 0, 0, src.width, src.height); }
+  if (src) {
+    const cv = document.createElement("canvas"); cv.width = src.width; cv.height = src.height; const g = cv.getContext("2d"), X = x => x * sc, Y = y => (S.H - y) * sc;
+    g.beginPath(); g.rect(X(rect[0]), Y(rect[3]), X(rect[2]) - X(rect[0]), Y(rect[1]) - Y(rect[3])); g.clip(); if (poly) { g.beginPath(); poly.forEach((q, i) => { if (i) g.lineTo(X(q[0]), Y(q[1])); else g.moveTo(X(q[0]), Y(q[1])); }); g.closePath(); g.clip(); }
+    g.drawImage(src, 0, 0); const q = [W(0, 0), W(S.W, 0), W(S.W, S.H), W(0, S.H)];
+    out.push({ k: "dplane", name: d.name + (S.k === "pdf" ? " (text)" : ""), pos: new Float32Array(q.flat()), img: cv.toDataURL("image/png"), op, ontop: !!d.ontop });
+  }
+  return out;
+}
+
 /* ---- Start: läs projektets ritningar när 3D är öppet ---- */
 setInterval(() => { try { l3rdWrap(); if (typeof l3 !== "undefined" && l3 && l3.scene && l3.renderer && typeof projectId !== "undefined" && projectId) l3rdLoad(); } catch (e) { /* */ } }, 1500);

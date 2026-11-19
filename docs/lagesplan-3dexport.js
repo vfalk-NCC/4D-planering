@@ -92,8 +92,9 @@ async function l3xhExport(sel) {
     for (const [area, list] of sel.areas) { const L = l3xhAreaLayer(area, list); if (L.objs.length) { layers.push(L); tris += L.idx.length / 3; } }
     const totN = sel.clouds.reduce((a, c) => a + l3xhCloudN(c), 0) || 1;
     for (const c of sel.clouds) { const L = l3xhCloudLayer(c, Math.round(sel.budget * l3xhCloudN(c) / totN)); if (L.n) { layers.push(L); pts += L.n; } await l3xhTick(); }
+    for (const d of (sel.drawings || [])) { try { const B = await l3rdBake(d); B.forEach(L => layers.push(L)); } catch (e) { console.warn("Ritningen kunde inte tas med", d.name, e); } await l3xhTick(); }
     if (!layers.length) { l3Status("Inget valt att exportera.", true); return null; }
-    const est = layers.reduce((a, L) => a + L.pos.byteLength * 1.34 + (L.idx ? L.idx.byteLength * 1.34 : 0) + (L.vc ? L.vc.byteLength * 1.34 : 0), 0);
+    const est = layers.reduce((a, L) => a + L.pos.byteLength * 1.34 + (L.idx ? L.idx.byteLength * 1.34 : 0) + (L.vc ? L.vc.byteLength * 1.34 : 0) + (L.img ? L.img.length : 0), 0);
     if (est > L3XH_LIM) { l3Status(`Filen blir för stor (${(est / 1048576).toFixed(0)} MB, gränsen är ${(L3XH_LIM / 1048576).toFixed(0)} MB). Välj färre modeller eller en lägre punktbudget.`, true); return null; }
     const ids = new Set(); layers.forEach(L => (L.objs || []).forEach(o => { if (o.id) ids.add(o.id); }));
     let docs = []; if (sel.docs && ids.size) { l3Status("Ritar ritningarna…"); await l3xhTick(); docs = await l3xhDocs(ids); }
@@ -102,11 +103,11 @@ async function l3xhExport(sel) {
     const [tpl, three, orbit] = await Promise.all([get("lagesplan-3dscene-viewer.html"), get("vendor/three/three.min.js"), get("vendor/three/OrbitControls.js")]);
     const safe = t => t.replace(/<\/(script)/gi, "<\\/$1"), M1 = "/*__THREE__*/", M2 = "/*__ORBIT__*/", M3 = "/*__DATA__*/null", i1 = tpl.indexOf(M1), i2 = tpl.indexOf(M2), i3 = tpl.indexOf(M3);
     if (i1 < 0 || i2 < 0 || i3 < 0) throw new Error("Visarmallen är skadad.");
-    const stats = `${layers.filter(L => L.k === "model").length} modeller, ${layers.filter(L => L.k === "objs").reduce((a, L) => a + L.objs.length, 0)} ritade objekt, ${Math.round(tris / 1000)} tusen trianglar${pts ? ", " + (pts / 1e6).toFixed(1).replace(".", ",") + " milj. punkter" : ""}`;
+    const nd = layers.filter(L => L.k === "dlines" || L.k === "dplane").length, stats = `${layers.filter(L => L.k === "model").length} modeller,${nd ? " " + nd + " ritningslager," : ""} ${layers.filter(L => L.k === "objs").reduce((a, L) => a + L.objs.length, 0)} ritade objekt, ${Math.round(tris / 1000)} tusen trianglar${pts ? ", " + (pts / 1e6).toFixed(1).replace(".", ",") + " milj. punkter" : ""}`;
     const meta = { title: sel.title, exported: new Date().toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }), stats, origin: l3.O };
     const parts = [tpl.slice(0, i1), safe(three), tpl.slice(i1 + M1.length, i2), safe(orbit), tpl.slice(i2 + M2.length, i3), safe(JSON.stringify({ meta }).slice(0, -1)), ',"layers":['];
     layers.forEach((L, k) => {
-      parts.push(k ? "," : "", safe(JSON.stringify({ k: L.k, name: L.name, col: L.col, objs: L.objs }).slice(0, -1)), ',"pos":"'); l3xhPushB64(parts, L.pos);
+      parts.push(k ? "," : "", safe(JSON.stringify({ k: L.k, name: L.name, col: L.col, objs: L.objs, op: L.op, ontop: L.ontop, img: L.img }).slice(0, -1)), ',"pos":"'); l3xhPushB64(parts, L.pos);
       if (L.idx) { parts.push('","idx":"'); l3xhPushB64(parts, L.idx); } if (L.vc) { parts.push('","vc":"'); l3xhPushB64(parts, L.vc); } parts.push('"}');
     });
     parts.push('],"docs":', safe(JSON.stringify(docs)), "}", tpl.slice(i3 + M3.length));
@@ -121,7 +122,7 @@ function l3xhOpen() { try { l3xhOpen0(); } catch (e) { console.error(e); l3Statu
 function l3xhOpen0() {
   if (typeof l3bfPanel !== "function") { l3Status("Panelen finns inte i den här versionen.", true); return; }
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), models = l3xhModels(), clouds = l3xhClouds(), areas = l3xhAreas(), f = (n, d = 0) => Number(n).toLocaleString("sv-SE", { maximumFractionDigits: d });
-  const hasDocs = !!(typeof l3bf !== "undefined" && l3bf.docs && l3bf.docs.length);
+  const drs = (typeof l3rd !== "undefined" ? l3rd.list : []).filter(x => x.vis), hasDocs = !!(typeof l3bf !== "undefined" && l3bf.docs && l3bf.docs.length);
   const cnts = models.map(l3xhModelCount), cb = (cls, i, label, sub, on = true) => `<label class="v3-row" style="display:flex;gap:6px;align-items:baseline"><input type="checkbox" data-${cls}="${i}" ${on ? "checked" : ""}><span style="flex:1">${esc(label)}</span><small style="color:#64748b">${sub}</small></label>`;
   const d = l3bfPanel("v3XhPanel", "Exportera till HTML", `
     <div class="v3-sub">Skapar en fristående HTML-fil med det du bockar i. Den öppnas i vilken webbläsare som helst, utan Trimble Connect eller inloggning.</div>
@@ -129,11 +130,12 @@ function l3xhOpen0() {
     <div class="v3-sec">3D-modeller (det som syns nu)</div>${models.length ? models.map((m, i) => cb("xm", i, m.name || "Modell", `${f(cnts[i].objs)} objekt · ${f(cnts[i].tris / 1000)} tkr tri`)).join("") : '<div class="v3-sub">Inga modeller tända.</div>'}
     <div class="v3-sec">Punktmoln</div>${clouds.length ? clouds.map((c, i) => cb("xc", i, c.name || "Punktmoln", `${f(l3xhCloudN(c) / 1e6, 1)} milj.`)).join("") + `<label class="v3-row">Punktbudget i filen <select id="v3XhBud"><option value="1000000">1 milj.</option><option value="2000000" selected>2 milj.</option><option value="4000000">4 milj.</option><option value="8000000">8 milj.</option></select></label>` : '<div class="v3-sub">Inga punktmoln tända.</div>'}
     <div class="v3-sec">Ritade objekt (mappar)</div>${areas.length ? areas.map(([a, l], i) => cb("xa", i, a, l.length + " st", /^Bergförankring/.test(a) || areas.length <= 4)).join("") : '<div class="v3-sub">Inga ritade objekt.</div>'}
+    <div class="v3-sec">Ritningar (RITNINGAR)</div>${drs.length ? drs.map((x, i) => cb("xd", i, x.name, x.kind === "pdf" ? "vektor" : "bild")).join("") : '<div class="v3-sub">Inga tända ritningar.</div>'}
     <label class="v3-row" ${hasDocs ? "" : 'style="opacity:.5"'}><input type="checkbox" id="v3XhDocs" ${hasDocs ? "checked" : "disabled"}> Ritningarna (bergförankring) som bilder med klickbara stag nr${hasDocs ? "" : " – läs in dem med ⚓-knappen först"}</label>
     <div id="v3XhEst" class="v3-sub"></div>
     <div class="an-actions"><button type="button" id="v3XhGo">🌐 Exportera HTML</button></div>`);
-  const $ = id => d.querySelector("#" + id), pick = () => ({ models: models.filter((_, i) => (d.querySelector(`[data-xm="${i}"]`) || {}).checked), clouds: clouds.filter((_, i) => (d.querySelector(`[data-xc="${i}"]`) || {}).checked), areas: areas.filter((_, i) => (d.querySelector(`[data-xa="${i}"]`) || {}).checked), budget: $("v3XhBud") ? +$("v3XhBud").value : 0, docs: !!($("v3XhDocs") || {}).checked, title: ($("v3XhName").value || "3D-vy").trim() });
-  const est = () => { const s = pick(); let b = 0; s.models.forEach(m => { const c = l3xhModelCount(m); b += c.verts * 15 * 1.34 + c.tris * 12 * 1.34; }); const totN = s.clouds.reduce((a, c) => a + l3xhCloudN(c), 0); b += Math.min(totN, s.budget) * 15 * 1.34; s.areas.forEach(([, l]) => { b += l.length * 2400; }); if (s.docs) b += 3.5e6; $("v3XhEst").innerHTML = `Ungefärlig filstorlek: <b>${f(b / 1048576, 0)} MB</b>${b > L3XH_LIM ? ' <span style="color:#dc2626">– för stor, välj färre</span>' : ""}`; };
+  const $ = id => d.querySelector("#" + id), pick = () => ({ models: models.filter((_, i) => (d.querySelector(`[data-xm="${i}"]`) || {}).checked), clouds: clouds.filter((_, i) => (d.querySelector(`[data-xc="${i}"]`) || {}).checked), areas: areas.filter((_, i) => (d.querySelector(`[data-xa="${i}"]`) || {}).checked), drawings: drs.filter((_, i) => (d.querySelector(`[data-xd="${i}"]`) || {}).checked), budget: $("v3XhBud") ? +$("v3XhBud").value : 0, docs: !!($("v3XhDocs") || {}).checked, title: ($("v3XhName").value || "3D-vy").trim() });
+  const est = () => { const s = pick(); let b = 0; s.models.forEach(m => { const c = l3xhModelCount(m); b += c.verts * 15 * 1.34 + c.tris * 12 * 1.34; }); const totN = s.clouds.reduce((a, c) => a + l3xhCloudN(c), 0); b += Math.min(totN, s.budget) * 15 * 1.34; s.areas.forEach(([, l]) => { b += l.length * 2400; }); if (s.docs) b += 3.5e6; s.drawings.forEach(x => { b += (x._e && x._e.S ? (x._e.S.seg ? x._e.S.seg.length * 5 + x._e.S.tri.length * 4 : 0) : 0) * 1.34 + 2e6; }); $("v3XhEst").innerHTML = `Ungefärlig filstorlek: <b>${f(b / 1048576, 0)} MB</b>${b > L3XH_LIM ? ' <span style="color:#dc2626">– för stor, välj färre</span>' : ""}`; };
   d.addEventListener("change", est); est(); l3Status("Exportpanelen ligger i högermenyn – välj vad som ska med och tryck Exportera HTML.");
   $("v3XhGo").onclick = async () => { const b = $("v3XhGo"); b.disabled = true; try { await l3xhExport(pick()); } catch (e) { l3Status("Kunde inte exportera: " + e.message, true); } b.disabled = false; };
 }

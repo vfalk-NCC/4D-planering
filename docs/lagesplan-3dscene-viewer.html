@@ -49,6 +49,12 @@ const ctl = new THREE.OrbitControls(C, R.domElement); ctl.enableDamping = false;
 const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9, metalness: 0, side: THREE.DoubleSide }), pmat = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true });
 const L = D.layers.map((l, i) => {
   const o = { d: l, i, vis: true, mesh: null }, g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(dec(l.pos, Float32Array), 3));
+  if (l.k === "dlines" || l.k === "dtris" || l.k === "dplane") {   // ritningar (RITNINGAR i editorn): linjer, ytor och en bild för text/bild, bakade med beskärning
+    const dm = { transparent: true, opacity: l.op == null ? 0.7 : l.op, depthWrite: false, depthTest: !l.ontop, side: THREE.DoubleSide };
+    if (l.k === "dplane") { const pp = g.getAttribute("position").array; g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2)); g.setIndex([0, 1, 2, 0, 2, 3]); const tex = new THREE.TextureLoader().load(l.img, () => draw()); if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding; o.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ ...dm, map: tex })); }
+    else { g.setAttribute("color", new THREE.BufferAttribute(dec(l.vc, Uint8Array), 3, true)); o.mesh = l.k === "dlines" ? new THREE.LineSegments(g, new THREE.LineBasicMaterial({ ...dm, vertexColors: true })) : new THREE.Mesh(g, new THREE.MeshBasicMaterial({ ...dm, vertexColors: true })); }
+    o.mesh.renderOrder = l.ontop ? 900 : 5; o.mesh.userData.draw = true; g.computeBoundingBox(); S.add(o.mesh); o.geo = g; return o;
+  }
   if (l.k === "cloud") { g.setAttribute("color", new THREE.BufferAttribute(dec(l.vc, Uint8Array), 3, true)); o.mesh = new THREE.Points(g, pmat); }
   else {
     g.setIndex(new THREE.BufferAttribute(dec(l.idx, Uint32Array), 1)); const n = g.getAttribute("position").count; let vc = l.vc ? dec(l.vc, Uint8Array) : null;
@@ -86,7 +92,7 @@ function listMark() { document.querySelectorAll("#list .it").forEach(e => e.clas
 const RC = new THREE.Raycaster();
 function pick(e) {
   const r = R.domElement.getBoundingClientRect(); RC.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1), C);
-  const meshes = L.filter(o => o.vis && o.d.k !== "cloud").map(o => o.mesh), h = RC.intersectObjects(meshes, false)[0]; if (!h) return null;
+  const meshes = L.filter(o => o.vis && o.d.k !== "cloud" && !o.mesh.userData.draw).map(o => o.mesh), h = RC.intersectObjects(meshes, false)[0]; if (!h) return null;
   const o = L.find(x => x.mesh === h.object), t = h.faceIndex * 3, A = o.d.objs; let lo = 0, hi = A.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (A[mid].s <= t) lo = mid; else hi = mid - 1; }
   return A[lo] && t < A[lo].s + A[lo].k ? { o, ob: A[lo] } : null;
 }
@@ -94,12 +100,13 @@ let dn = null; R.domElement.addEventListener("pointerdown", e => { dn = { x: e.c
 R.domElement.addEventListener("pointerup", e => { if (dn && Math.hypot(e.clientX - dn.x, e.clientY - dn.y) < 5) { const h = pick(e); if (h) select(h.o, h.ob, false); } dn = null; });
 /* Lager */
 function lyUi() {
-  $("lys").innerHTML = L.map(o => { const l = o.d, n = l.k === "cloud" ? Math.round(l.pos.length / 16) : (l.objs || []).length; return `<label class="ly"><input type="checkbox" data-i="${o.i}" ${o.vis ? "checked" : ""}><i class="dot" style="background:${l.col || (l.k === "cloud" ? "#64748b" : "#94a3b8")}"></i><span title="${esc(l.name)}">${esc(l.name)}</span><small>${l.k === "cloud" ? "punktmoln" : n + " st"}</small></label>`; }).join("");
-  $("lys").querySelectorAll("input").forEach(c => { c.onchange = () => { const o = L[+c.dataset.i]; o.vis = c.checked; o.mesh.visible = c.checked; if (curSel && curSel.o === o && !c.checked) { clearHl(); curSel = null; } list(); draw(); }; });
+  $("lys").innerHTML = L.map(o => { const l = o.d, n = l.k === "cloud" ? Math.round(l.pos.length / 16) : (l.objs || []).length, dr = o.mesh.userData.draw; return `<label class="ly"><input type="checkbox" data-i="${o.i}" ${o.vis ? "checked" : ""}><i class="dot" style="background:${l.col || (l.k === "cloud" ? "#64748b" : dr ? "#dc2626" : "#94a3b8")}"></i><span title="${esc(l.name)}">${esc(l.name)}</span>${dr ? `<input type="range" min="5" max="100" value="${Math.round((l.op == null ? 0.7 : l.op) * 100)}" data-op="${o.i}" title="Opacitet" style="width:70px">` : `<small>${l.k === "cloud" ? "punktmoln" : n + " st"}</small>`}</label>`; }).join("");
+  $("lys").querySelectorAll("input[data-op]").forEach(r => { r.oninput = () => { const o = L[+r.dataset.op]; o.mesh.material.opacity = +r.value / 100; draw(); }; });
+  $("lys").querySelectorAll("input[data-i]").forEach(c => { c.onchange = () => { const o = L[+c.dataset.i]; o.vis = c.checked; o.mesh.visible = c.checked; if (curSel && curSel.o === o && !c.checked) { clearHl(); curSel = null; } list(); draw(); }; });
   $("ptl").style.display = $("ptb").style.display = L.some(o => o.d.k === "cloud") ? "" : "none";
 }
 function list() {
-  const q = $("q").value.trim().toLowerCase(), rows = []; L.forEach(o => { if (!o.vis || o.d.k === "cloud") return; (o.d.objs || []).forEach(ob => { if (rows.length >= 400) return; if (q ? (ob.n + " " + (ob.c || "") + " " + (ob.id || "") + " " + (ob.g || "")).toLowerCase().includes(q) : o.d.k === "objs") rows.push([o, ob]); }); });
+  const q = $("q").value.trim().toLowerCase(), rows = []; L.forEach(o => { if (!o.vis || o.d.k === "cloud" || o.mesh.userData.draw) return; (o.d.objs || []).forEach(ob => { if (rows.length >= 400) return; if (q ? (ob.n + " " + (ob.c || "") + " " + (ob.id || "") + " " + (ob.g || "")).toLowerCase().includes(q) : o.d.k === "objs") rows.push([o, ob]); }); });
   $("cnt").textContent = rows.length >= 400 ? "(400+)" : "(" + rows.length + ")";
   $("list").innerHTML = rows.length ? rows.map(([o, ob]) => `<div class="it" data-k="${o.i}:${ob.s}"><b>${esc(ob.n)}</b><small>${esc(ob.c || o.d.name)}</small></div>`).join("") : `<div class="it"><small>${q ? "Inga träffar." : "Sök för att hitta objekt i modellerna."}</small></div>`;
   $("list").onclick = e => { const it = e.target.closest(".it[data-k]"); if (!it) return; const [i, s] = it.dataset.k.split(":").map(Number), o = L[i], ob = o.d.objs.find(x => x.s === s); if (ob) select(o, ob, true); };
