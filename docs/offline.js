@@ -7,9 +7,9 @@
 (() => {
   try { if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {}); } catch (e) { /* ok */ }
   if (typeof ghGetFile !== "function" || typeof ghWriteJSON !== "function" || typeof indexedDB === "undefined") return;
-  const DB = "4dplan-offline", ST_FILES = "files", ST_PEND = "pending";
+  const DB = "4dplan-offline", ST_FILES = "files", ST_PEND = "pending", ST_BIN = "bin";
   let dbp = null;
-  const db = () => dbp || (dbp = new Promise((res, rej) => { const q = indexedDB.open(DB, 1); q.onupgradeneeded = () => { q.result.createObjectStore(ST_FILES, { keyPath: "path" }); q.result.createObjectStore(ST_PEND, { keyPath: "path" }); }; q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
+  const db = () => dbp || (dbp = new Promise((res, rej) => { const q = indexedDB.open(DB, 2); q.onupgradeneeded = () => { const d = q.result; if (!d.objectStoreNames.contains(ST_FILES)) d.createObjectStore(ST_FILES, { keyPath: "path" }); if (!d.objectStoreNames.contains(ST_PEND)) d.createObjectStore(ST_PEND, { keyPath: "path" }); if (!d.objectStoreNames.contains(ST_BIN)) d.createObjectStore(ST_BIN, { keyPath: "path" }); }; q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
   const tx = async (st, mode, fn) => { const d = await db(); return new Promise((res, rej) => { const t = d.transaction(st, mode), s = t.objectStore(st), r = fn(s); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); };
   const put = (st, v) => tx(st, "readwrite", s => s.put(v)).catch(() => {});
   const get = (st, k) => tx(st, "readonly", s => s.get(k)).catch(() => null);
@@ -26,7 +26,7 @@
     if (typeof document === "undefined" || !document.body) return;
     if (!box) { box = document.createElement("div"); box.id = "offlineBadge"; box.style.cssText = "position:fixed;left:12px;bottom:12px;z-index:99999;padding:7px 12px;border-radius:999px;font:600 12px system-ui,sans-serif;color:#fff;background:#b45309;box-shadow:0 4px 16px rgba(0,0,0,.35);display:none;cursor:default"; document.body.appendChild(box); }
     const parts = []; if (state.offline) parts.push("Offline – visar senast hämtade data"); if (state.pending) parts.push(`${state.pending} ändring${state.pending === 1 ? "" : "ar"} väntar på nätet`); if (state.conflicts) parts.push(`${state.conflicts} konflikt${state.conflicts === 1 ? "" : "er"} (filen ändrad av någon annan)`);
-    box.style.display = parts.length ? "block" : "none"; box.textContent = parts.join(" · "); box.style.background = state.conflicts ? "#b91c1c" : "#b45309";
+    box.style.display = parts.length ? "block" : "none"; box.style.cursor = "pointer"; box.title = "Klicka för offline-panelen (väntande ändringar, förbered för offline)"; box.onclick = () => { if (typeof l3ofOpen === "function") l3ofOpen(); }; box.textContent = parts.join(" · "); box.style.background = state.conflicts ? "#b91c1c" : "#b45309";
   }
   async function refresh() { const p = await all(ST_PEND); pendSet.clear(); p.forEach(x => pendSet.add(x.path)); state.pending = p.filter(x => !x.conflict).length; state.conflicts = p.filter(x => x.conflict).length; badge(); }
   const origGet = ghGetFile, origWrite = ghWriteJSON;
@@ -60,6 +60,20 @@
     if (offlineNow() || desktop && state.offline && !(await probe(token))) return queue();
     try { const r = await origWrite(token, path, mutateFn, message, maxRetries, preFetched); state.offline = false; badge(); return r; } catch (e) { if (netFail(e) || (isNet(e) && offlineNow())) return queue(); throw e; }
   };
+  /* Binärfiler (ritningens PDF, bilder, DXF …): sparas när de hämtas och används när nätet saknas – annars saknas underlaget offline. Högst 150 MB per fil. */
+  if (typeof ghReadBinaryUrl === "function") {
+    const origBin = ghReadBinaryUrl;
+    ghReadBinaryUrl = window.ghReadBinaryUrl = async function (token, path, onProgress) {
+      try {
+        const url = await origBin(token, path, onProgress); state.offline = false;
+        try { const b = await (await fetch(url)).blob(); if (b.size < 150e6) put(ST_BIN, { path, blob: b, at: Date.now() }); } catch (e) { /* utan cache */ }
+        return url;
+      } catch (e) {
+        if (!(netFail(e) || offlineNow())) throw e;
+        const c = await get(ST_BIN, path); state.offline = true; badge(); if (c && c.blob) return URL.createObjectURL(c.blob); throw e;
+      }
+    };
+  }
   async function probe(token) { try { const r = await fetch("https://api.github.com/rate_limit", { cache: "no-store" }); if (r.ok) { state.offline = false; badge(); return true; } } catch (e) { /* inget nät */ } return false; }
 
   // Skicka väntande när nätet är tillbaka.
@@ -78,7 +92,7 @@
   }
   addEventListener("online", () => { state.offline = false; setTimeout(flush, 800); }); addEventListener("offline", () => { state.offline = true; badge(); });
   setInterval(() => { if (state.pending) flush(); }, 30000);
-  window.offlineSync = { state, flush, refresh, conflicts: async () => (await all(ST_PEND)).filter(x => x.conflict), clearConflict: p => del(ST_PEND, p).then(refresh) };
+  window.offlineSync = { state, flush, refresh, pending: async () => (await all(ST_PEND)), cachedFiles: async () => (await all(ST_FILES)).map(x => x.path), cachedBins: async () => (await all(ST_BIN)).map(x => ({ path: x.path, size: x.blob ? x.blob.size : 0 })), conflicts: async () => (await all(ST_PEND)).filter(x => x.conflict), clearConflict: p => del(ST_PEND, p).then(refresh) };
   if (document.readyState !== "loading") refresh(); else document.addEventListener("DOMContentLoaded", refresh);
   setTimeout(flush, 3000);
 })();

@@ -22,3 +22,15 @@ for html in pathlib.Path(__file__).resolve().parent.parent.joinpath("docs").glob
     if n != s:
         html.write_text(n, encoding="utf-8")
         print(f"{html.name}: v={stamp}")
+
+# Lista över programmets alla filer (för "Förbered för offline" i 3D-editorn: hämtar dem så att tjänstens cache har allt, även arbetartrådar och wasm som annars bara hämtas vid första användningen).
+import json, os
+files = []
+for root, dirs, fs in os.walk(docs):
+    dirs[:] = [d for d in dirs if d not in ("test", "tests", "node_modules", ".git")]
+    for f in fs:
+        if f.endswith(".md") or f == "offline-manifest.json": continue
+        full = pathlib.Path(root, f); files.append([str(full.relative_to(docs)).replace(os.sep, "/"), full.stat().st_size])
+files.sort()
+docs.joinpath("offline-manifest.json").write_text(json.dumps({"v": stamp, "files": files}, ensure_ascii=False), encoding="utf-8")
+print(f"offline-manifest.json: {len(files)} filer")
