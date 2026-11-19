@@ -96,6 +96,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const vp = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage(); const verr = []; vp.on('pageerror', e => verr.push(e.message)); await vp.setContent(ex.html, { waitUntil: 'load' }); await vp.waitForFunction(() => window.__scene && window.__scene.L.length > 0, null, { timeout: 15000 });
   const vv = await vp.evaluate(() => ({ kinds: __scene.L.map(o => o.d.k).join(), rows: document.querySelectorAll('#lys .ly').length, sliders: document.querySelectorAll('#lys input[data-op]').length, op: __scene.L[0].mesh.material.opacity }));
   ok(/dlines/.test(vv.kinds) && vv.sliders >= 2 && Math.abs(vv.op - 0.5) < 1e-6 && !verr.length, 'Visaren visar ritningslagren med opacitetsreglage: ' + JSON.stringify({ vv, verr }));
+  // Avmarkera: Esc och tryck i rymden döljer ramen och stänger panelen
+  await page.evaluate(() => { const d = l3rd.list[0]; l3rdSelect(d.id); l3FlyTo(new THREE.Vector3(0, 0, 0), 5000, new THREE.Vector3(0, -1, 0.05), 0); }); await page.waitForTimeout(400);
+  ok(await page.evaluate(() => l3rd.sel && !!document.getElementById('v3RdPanel') && l3rd.list[0]._e.frame.visible), 'Ritningen är markerad (ram och panel)');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+  ok(await page.evaluate(() => !l3rd.sel && !document.getElementById('v3RdPanel') && !l3rd.list[0]._e.frame.visible), 'Esc avmarkerar: ramen och panelen försvinner');
+  await page.evaluate(() => l3rdSelect(l3rd.list[0].id)); await page.waitForTimeout(200); const vp0 = await page.evaluate(() => { const r = l3.renderer.domElement.getBoundingClientRect(); return { x: r.left + 30, y: r.top + 20 }; });
+  await page.mouse.click(vp0.x, vp0.y); await page.waitForTimeout(250);
+  ok(await page.evaluate(() => !l3rd.sel && !l3rd.list[0]._e.frame.visible), 'Tryck i rymden avmarkerar ritningen');
   // 6) Från en annan dator: samma ritning, samma inpassning (läses ur projektet)
   await page.evaluate(() => l3rdFlush()); await page.waitForTimeout(500);
   const ref = await page.evaluate(() => { const d = l3rd.list[0]; return { s: d.s, rot: d.rot, o: d.o.slice(), crop: d.crop, name: d.name }; });

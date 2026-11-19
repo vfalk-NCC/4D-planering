@@ -411,5 +411,21 @@ async function l3rdBake(d) {
   return out;
 }
 
+
+/* Avmarkera: tryck i "rymden" (utanför alla ytor) eller Esc – då försvinner ramen och panelen stängs. */
+let l3rdDeselInit = false;
+function l3rdDeselSetup() {
+  if (l3rdDeselInit || typeof l3 === "undefined" || !l3 || !l3.renderer) return; l3rdDeselInit = true; const cv = l3.renderer.domElement; let dn = null;
+  cv.addEventListener("pointerdown", e => { dn = { x: e.clientX, y: e.clientY, b: e.button }; }, true);
+  cv.addEventListener("pointerup", e => {
+    const d0 = dn; dn = null; if (!d0 || d0.b !== 0 || !l3rd.sel || l3rd.fit || l3rd.crop || Math.hypot(e.clientX - d0.x, e.clientY - d0.y) > 5) return;
+    try { const hit = typeof l3Ray === "function" && typeof l3Surfaces === "function" ? l3Ray(e, l3Surfaces()) : [1]; if (!hit.length) l3rdSelect(null); } catch (x) { /* */ }
+  }, true);
+}
+
+/* Esc: l3Key anropar l3KeyCustom först ("egna kortkommandon") – ritningen avmarkeras där. Fästs när skripten är laddade. */
+let l3rdKeyWrapped = false;
+function l3rdWrapKey() { if (l3rdKeyWrapped || typeof l3KeyCustom !== "function") return; l3rdKeyWrapped = true; const k0 = l3KeyCustom; l3KeyCustom = function (e) { if (e && e.key === "Escape" && l3rd.sel && !l3rd.fit && !l3rd.crop) { l3rdSelect(null); e.preventDefault(); return true; } return k0.apply(this, arguments); }; }
+
 /* ---- Start: läs projektets ritningar när 3D är öppet ---- */
-setInterval(() => { try { l3rdWrap(); if (typeof l3 !== "undefined" && l3 && l3.scene && l3.renderer && typeof projectId !== "undefined" && projectId) l3rdLoad(); } catch (e) { /* */ } }, 1500);
+setInterval(() => { try { l3rdWrap(); l3rdWrapKey(); l3rdDeselSetup(); if (typeof l3 !== "undefined" && l3 && l3.scene && l3.renderer && typeof projectId !== "undefined" && projectId) l3rdLoad(); } catch (e) { /* */ } }, 1500);
