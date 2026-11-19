@@ -293,7 +293,17 @@ function l3rdPanel(d) {
 function l3rdInfo(d) { const el = document.querySelector("#v3RdPanel [data-rd-info]"); if (!el) return; const c = d.crop || {}, any = ["l", "r", "t", "b"].some(k => Number(c[k]) > 0); el.textContent = `${d.kind === "pdf" ? "Vektor" : "Bild"}${d._e && d._e.S && d._e.S.images ? " (bilder i PDF:en visas inte)" : ""} · ${d.poly ? "polygonbeskärning (" + d.poly.length + " punkter)" : any ? "rektangelbeskärning" : "ingen beskärning"}`; }
 
 /* ---- Passa in: två punkter på ritningen ↔ två punkter i modellen ---- */
-function l3rdMarker(P, col) { const g = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: col, depthTest: false })); g.renderOrder = 1000; const d = Math.max(0.05, l3.camera.position.distanceTo(new THREE.Vector3(P[0] - l3.O[0], P[1] - l3.O[1], P[2] - l3.O[2])) * 0.012); g.scale.setScalar(d); g.position.set(P[0] - l3.O[0], P[1] - l3.O[1], P[2] - l3.O[2]); g.raycast = () => {}; l3.scene.add(g); return g; }
+const l3rdTexs = new Map();
+function l3rdTex(kind, col) {   // liten handtagsbild (ruta eller ring) som ritas lika stor på skärmen oavsett avstånd
+  const key = kind + col; if (l3rdTexs.has(key)) return l3rdTexs.get(key); const c = document.createElement("canvas"); c.width = c.height = 48; const g = c.getContext("2d");
+  g.fillStyle = "#ffffff"; g.strokeStyle = col; g.lineWidth = 7; if (kind === "sq") { g.fillRect(6, 6, 36, 36); g.strokeRect(6, 6, 36, 36); } else { g.beginPath(); g.arc(24, 24, 17, 0, 6.2832); g.fill(); g.stroke(); g.fillStyle = col; g.beginPath(); g.arc(24, 24, 6, 0, 6.2832); g.fill(); }
+  const t = new THREE.CanvasTexture(c); l3rdTexs.set(key, t); return t;
+}
+function l3rdPoints(list, kind, col, size) {
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(list.flatMap(P => [P[0] - l3.O[0], P[1] - l3.O[1], P[2] - l3.O[2]]), 3));
+  const o = new THREE.Points(g, new THREE.PointsMaterial({ size, sizeAttenuation: false, map: l3rdTex(kind, col), transparent: true, alphaTest: 0.2, depthTest: false })); o.renderOrder = 1002; o.raycast = () => {}; o.userData.noHit = true; return o;
+}
+function l3rdMarker(P, col) { const o = l3rdPoints([P], "ring", "#" + col.toString(16).padStart(6, "0"), 20); l3.scene.add(o); return o; }
 function l3rdRay(e) { const r = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera); return rc.ray; }
 /* Punkten där strålen träffar ritningens plan, i ritningsenheter (snäpper till närmaste linjepunkt inom 14 px). */
 function l3rdPlaneHit(d, e, snap) {
@@ -338,7 +348,8 @@ function l3rdCropVis(C) {
   const d = C.d, S = d._e && d._e.S; if (!S) return; if (C.vis) { l3.scene.remove(C.vis); C.vis.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); C.vis = null; }
   const g = new THREE.Group(), pts = C.mode === "poly" ? C.pts.map(p => [p[0], p[1]]) : (() => { const r = l3rdCropRect(d, S); return [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]; })();
   if (pts.length) { const a = []; pts.forEach(p => { const w = l3rdW(d, p[0], p[1]); a.push(w[0] - l3.O[0], w[1] - l3.O[1], w[2] - l3.O[2]); }); const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(a, 3)); const ln = C.mode === "poly" ? new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })) : new THREE.LineLoop(geo, new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); ln.renderOrder = 1001; ln.raycast = () => {}; g.add(ln);
-    if (C.mode === "rect") pts.forEach(p => { const w = l3rdW(d, p[0], p[1]), m = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false })); const dd = Math.max(0.05, l3.camera.position.distanceTo(new THREE.Vector3(w[0] - l3.O[0], w[1] - l3.O[1], w[2] - l3.O[2])) * 0.01); m.scale.setScalar(dd); m.position.set(w[0] - l3.O[0], w[1] - l3.O[1], w[2] - l3.O[2]); m.renderOrder = 1001; m.raycast = () => {}; g.add(m); }); }
+    if (C.mode === "rect") { const hs = []; pts.forEach((p, i) => { const q = pts[(i + 1) % 4]; hs.push(l3rdW(d, p[0], p[1]), l3rdW(d, (p[0] + q[0]) / 2, (p[1] + q[1]) / 2)); }); g.add(l3rdPoints(hs, "sq", "#f59e0b", 13)); }
+    else if (pts.length) g.add(l3rdPoints(pts.map(p => l3rdW(d, p[0], p[1])), "ring", "#f59e0b", 14)); }
   g.raycast = () => {}; C.vis = g; l3.scene.add(g); l3Render();
 }
 function l3rdCropDrag(d) {
