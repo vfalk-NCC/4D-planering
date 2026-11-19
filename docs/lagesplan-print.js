@@ -208,6 +208,27 @@ function defaultTemplate() {
     ],
   };
 }
+/* APD-plan A1 (Victor 2026-11-19: mallen från NSV-ritningen: stor karta, fot med referenser, förklaringar, QR, 3D-vy, skalstock och ritningshuvud). Mått i A3-mm (skalas till A1). */
+function apdTemplate() {
+  const id = () => ghNewId(), map = { ...newMapEl(8, 10.5, 401, 203, "A1"), scale: 1000, label: { show: false, name: "", size: 9, align: "left" } };
+  return {
+    id: ghNewId(), type: "printtpl", name: "APD-plan A1 (NSV)", format: "A1", frame: { on: true, margin: 8, ticks: true },
+    elements: [
+      map,
+      { id: id(), type: "north", x: 380, y: 14, w: 24, h: 24, style: "rose4", color: "#000000", mapId: map.id },
+      { id: id(), type: "rect", x: 8, y: 214, w: 401, h: 72.5, stroke: "#000000", lw: 0.35, fill: "" },
+      { id: id(), type: "text", x: 24, y: 216.5, w: 78, h: 26, text: "REFERENSER\nAPD PLANER\nNSV-DP2-001-ENG   APD-PLAN   DP2   1:1000\nNSV-DP2-001-SE   APD-PLAN   DP2   1:1000\nNSV-DP2-003   LOTSKARTA   DP1, DP2, DP3", size: 6, bold: false, align: "left", color: "#000000" },
+      { id: id(), type: "qr", x: 64.5, y: 245, w: 33, h: 33, text: "https://" },
+      { id: id(), type: "text", x: 24, y: 272.5, w: 40, h: 12, text: "SKANNA MED MOBILTELEFON\nFÖR ATT HITTA\nHJÄRTSTARTARE", size: 5.5, bold: false, align: "left", color: "#000000" },
+      { id: id(), type: "legend", x: 104, y: 216.5, w: 150, h: 46, title: "FÖRKLARINGAR", cols: 2, size: 6, phases: true, site: true, cad: false, extra: "" },
+      { id: id(), type: "text", x: 104, y: 264, w: 90, h: 18, text: "INFO\nSkanna QR-koden med mobiltelefon för att hitta hjärtstartare.", size: 5.5, bold: false, align: "left", color: "#000000" },
+      { id: id(), type: "view3d", x: 248.5, y: 214, w: 111.5, h: 36, border: true, view: null },
+      { id: id(), type: "text", x: 306, y: 253, w: 52, h: 16, text: "NCC", size: 22, bold: true, align: "left", color: "#000000" },
+      { id: id(), type: "scalebar", x: 301, y: 273, w: 53, h: 11, mapId: map.id },
+      { id: id(), type: "title", x: 360, y: 214, w: 49, h: 72.5, size: 5.5, style: "classic", heading: "INFORMATION", color: "#000000", rows: ["INFORMATION", "APD-PLAN", "DATUM: {idag} | UPPRÄTTAD: {användare}", "PROJEKT: NSV BYGG, DP2", "OMRÅDE: VITÅFORS INDUSTRIOMRÅDE", "BYGGHERRE: LKAB", "ENTREPRENÖR: NCC GIT", "RITNING NR: NSV-DP2-001-ENG", "SKALA: {skala} | FORMAT: {format}"].join("\n") },
+    ],
+  };
+}
 function viewCenterModel() {
   if (!viewport || !plan || !plan.calib) return [0, 0];
   const vr = $("viewport").getBoundingClientRect();
@@ -1913,10 +1934,10 @@ async function switchTemplate(id) {
   renderPrintPanel(); drawPrintPage();
 }
 async function newTemplate(copy) {
-  const name = (await uiPrompt(copy ? "Namn på kopian:" : "Namn på den nya mallen:", copy ? pr.tpl.name + " (kopia)" : "Ny mall") || "").trim();
+  const name = (await uiPrompt(copy === "apd" ? "Namn på den nya APD-planen:" : copy ? "Namn på kopian:" : "Namn på den nya mallen:", copy === "apd" ? "APD-plan A1 (NSV)" : copy ? pr.tpl.name + " (kopia)" : "Ny mall") || "").trim();
   if (!name) return;
-  const t = copy ? { ...JSON.parse(JSON.stringify(pr.tpl)), id: ghNewId(), name } : { ...defaultTemplate(), name };
-  if (copy) { const idMap = {}; t.elements.forEach(e => { const n = ghNewId(); idMap[e.id] = n; e.id = n; }); t.elements.forEach(e => { if (e.mapId) e.mapId = idMap[e.mapId]; }); }
+  const t = copy === "apd" ? { ...apdTemplate(), name } : copy ? { ...JSON.parse(JSON.stringify(pr.tpl)), id: ghNewId(), name } : { ...defaultTemplate(), name };
+  if (copy === true) { const idMap = {}; t.elements.forEach(e => { const n = ghNewId(); idMap[e.id] = n; e.id = n; }); t.elements.forEach(e => { if (e.mapId) e.mapId = idMap[e.mapId]; }); }
   prLayersDetach();
   pr = { ...pr, tpl: migrateTpl(t), saved: false, sels: [], dirty: true, undo: [], redo: [], panMode: false, fmtAsk: null };
   renderPrintPanel(); drawPrintPage();
@@ -2180,6 +2201,7 @@ function bindPrint() {
   $("prTpl").onchange = e => switchTemplate(e.target.value);
   $("prSave").onclick = saveTemplate;
   $("prNew").onclick = () => newTemplate(false);
+  if ($("prNewApd")) $("prNewApd").onclick = () => newTemplate("apd");
   $("prCopy").onclick = () => newTemplate(true);
   $("prRename").onclick = renameTemplate;
   $("prDelete").onclick = deleteTemplate;
