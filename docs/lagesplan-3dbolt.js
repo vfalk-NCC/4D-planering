@@ -50,7 +50,7 @@ function l3bfParse(items, label) {
   const reH = new RegExp("\\b(BH\\d+)\\s+" + L3BF_NUM + "\\s+" + L3BF_J + "[^\\d\\s]?\\s*(25|32)\\b", "g");
   rows.forEach(r => {
     let m; reV.lastIndex = 0;
-    while ((m = reV.exec(r.text))) { const id = m[1]; if (vert.has(id)) warn.push(`${id}: finns flera gånger i ${label} (första används)`); else { if (m[5] == null) warn.push(`${id}: sättdjup saknas i ${label} – 2 m antas`); vert.set(id, { id, x: l3bfN(m[2]), y: l3bfN(m[3]), z: l3bfN(m[4]), len: m[5] == null ? 2 : l3bfN(m[5]), dim: +m[6], guess: m[5] == null }); } }
+    while ((m = reV.exec(r.text))) { const id = m[1]; if (vert.has(id)) warn.push(`${id}: finns flera gånger i ${label} (första används)`); else { if (m[5] == null) warn.push(`${id}: sättdjup saknas i ${label} – 2 m antas`); vert.set(id, { id, x: l3bfN(m[2]), y: l3bfN(m[3]), z: l3bfN(m[4]), len: m[5] == null ? 2 : l3bfN(m[5]), dim: +m[6], guess: m[5] == null, src: label }); } }
     reH.lastIndex = 0;
     while ((m = reH.exec(r.text))) { const id = m[1]; if (!hs.has(id)) hs.set(id, []); hs.get(id).push({ p: [l3bfN(m[2]), l3bfN(m[3]), l3bfN(m[4])], dim: +m[5] }); }
   });
@@ -62,7 +62,7 @@ function l3bfParse(items, label) {
     const L = Math.hypot(l[1].p[0] - l[0].p[0], l[1].p[1] - l[0].p[1], l[1].p[2] - l[0].p[2]);
     if (L < 0.2) { warn.push(`${id}: start och slut ligger på samma punkt (hoppas över)`); return; }
     if (L > 40) warn.push(`${id}: ovanligt lång (${L.toFixed(1)} m) – kontrollera start/slut`);
-    hor.push({ id, a: l[0].p, b: l[1].p, dim: l[0].dim });
+    hor.push({ id, a: l[0].p, b: l[1].p, dim: l[0].dim, src: label });
   });
   return { vert: [...vert.values()], hor, warn };
 }
@@ -105,11 +105,24 @@ function l3bfEnds(kind, e, opt) {
   return [top, end];
 }
 const l3bfDia = (dim, opt) => ((opt.as === "hole" ? L3BF_HOLE[dim] || dim * 1.8 : dim) / 1000) * (Number(opt.scale) || 1);
+/* Alla fakta om en stång som egenskaper (visas i högerpanelen och följer med IFC-exporten): [namn, värde]. */
+function l3bfProps(kind, e, a, b, opt) {
+  const V = kind === "V", L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), r = e.dim / 2000, steel = Math.PI * r * r * L, f = (v, d = 3) => l3bfF(v, d);
+  const num = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d, dwg = String(e.src || "").replace(/\.pdf$/i, "");
+  const p = [["Stag nr", e.id], ["Typ", V ? "Vertikal bergförankring" : "Horisontell bergförankring"], ["Dimension stång mm", `⌀${e.dim}`], ["Borrhål mm", `⌀${L3BF_HOLE[e.dim] || ""}`],
+    [V ? "Startpunkt X (SWEREF 99 20 15)" : "Startpunkt X", num(a[0])], ["Startpunkt Y", num(a[1])], ["Startpunkt Z (RH 2000)", num(a[2])]];
+  if (V) { p.push(["Sättdjup i berg m", e.len], ["Toppunkt Z", num(Math.max(a[2], b[2]))], ["Bottenpunkt Z", num(Math.min(a[2], b[2]))]); if (e.guess) p.push(["Obs", "Sättdjup saknas i ritningstabellen – 2 m antaget"]); }
+  else p.push(["Slutpunkt X", num(b[0])], ["Slutpunkt Y", num(b[1])], ["Slutpunkt Z", num(b[2])], ["Lutning grader", num(Math.atan2(b[2] - a[2], Math.hypot(b[0] - a[0], b[1] - a[1])) * 180 / Math.PI, 1)], ["Minst i berg m", e.dim >= 32 ? 4.5 : 1.5]);
+  p.push(["Längd m", num(L)], ["Stålvolym m³", num(steel, 5)], ["Vikt stål kg (7850 kg/m³)", num(steel * 7850, 1)], ["Koordinatsystem", "SWEREF 99 20 15 / RH 2000"], ["Källa (ritning)", dwg || ""],
+    ["Arbetsgång", V ? `Vertikala hål ⌀${L3BF_HOLE[e.dim] || ""} borras till angivet sättdjup, blås rent med tryckluft, cementpasta förs ned med slang till hålets botten` : `Horisontella hål ⌀${L3BF_HOLE[e.dim] || ""} borras enligt start- och slutpunkt, minst ${e.dim >= 32 ? "4,5" : "1,5"} m i berg, blås rent, cementpasta förs ned med slang till hålets botten`],
+    ["Visningsdiameter mm", num(l3bfDia(e.dim, opt) * 1000, 1)]);
+  return p;
+}
 /* Grupper: per typ och dimension (eller en per stång). Varje grupp: { name, key, col, bars: [{ id, a, b }] }. */
 function l3bfGroups(res, opt) {
-  const G = new Map(), add = (kind, dim, id, a, b, note) => { const key = kind + dim; if (!G.has(key)) G.set(key, { key, kind, dim, col: L3BF_COL[key] || "#f59e0b", name: `Bergförankring ${kind === "V" ? "vertikala" : "horisontella"} ⌀${dim}`, bars: [] }); G.get(key).bars.push({ id, a, b, note }); };
-  res.vert.forEach(v => { const [a, b] = l3bfEnds("V", v, opt); add("V", v.dim, v.id, a, b, `${v.id}: ${l3bfF(v.len)} m i berg`); });
-  res.hor.forEach(h => { const [a, b] = l3bfEnds("H", h, opt), L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]); add("H", h.dim, h.id, a, b, `${h.id}: ${l3bfF(L)} m`); });
+  const G = new Map(), add = (kind, dim, id, a, b, e) => { const key = kind + dim; if (!G.has(key)) G.set(key, { key, kind, dim, col: L3BF_COL[key] || "#f59e0b", name: `Bergförankring ${kind === "V" ? "vertikala" : "horisontella"} ⌀${dim}`, bars: [] }); G.get(key).bars.push({ id, a, b, props: l3bfProps(kind, e, a, b, opt) }); };
+  res.vert.forEach(v => { const [a, b] = l3bfEnds("V", v, opt); add("V", v.dim, v.id, a, b, v); });
+  res.hor.forEach(h => { const [a, b] = l3bfEnds("H", h, opt); add("H", h.dim, h.id, a, b, h); });
   return [...G.values()].sort((x, y) => x.key.localeCompare(y.key));
 }
 const l3bfF = (v, d = 2) => (Number.isFinite(v) ? v : 0).toLocaleString("sv-SE", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -123,7 +136,7 @@ function l3bfBuild(g, opt) {
     const base = pts.length; c.pts.forEach(q => pts.push([l3bfR3(q[0] - A0[0]), l3bfR3(q[1] - A0[1]), l3bfR3(q[2] - A0[2])]));
     c.faces.forEach(f => faces.push([f[0] + base, f[1] + base, f[2] + base]));
     const lp = c.pts.map(q => [l3bfR3(q[0] - b.a[0]), l3bfR3(q[1] - b.a[1]), l3bfR3(q[2] - b.a[2])]);
-    parts.push({ name: `${b.id} ⌀${g.dim}`, type: "mod:kropp", color: g.col, x: l3bfR3(b.a[0]), y: l3bfR3(b.a[1]), z: l3bfR3(b.a[2]), dz: 0, rot: 0, m: { k: "mesh", pts: lp, faces: c.faces, closed: true } });
+    parts.push({ name: `${b.id} ⌀${g.dim}`, type: "mod:kropp", color: g.col, x: l3bfR3(b.a[0]), y: l3bfR3(b.a[1]), z: l3bfR3(b.a[2]), dz: 0, rot: 0, m: { k: "mesh", pts: lp, faces: c.faces, closed: true, bfp: b.props } });
   });
   return { A0, m: { k: "mesh", pts, faces, closed: true, parts }, n: parts.length };
 }
@@ -134,7 +147,7 @@ function l3bfCreate(res, opt) {
   if (opt.replace) { const old = placements.filter(p => p.bf).map(p => p.id); if (old.length) l3dxRemove(old); }
   const ids = [], info = []; let n = 0;
   l3bfGroups(res, opt).forEach(g => {
-    const mk = (bars, name) => { const sub = { ...g, bars }, r = l3bfBuild(sub, opt); if (!r.n) return null; const p = modCreate(r.m, r.A0, { name, color: g.col, snapshot: false }); p.area = "Bergförankring"; p.bf = { kind: g.kind, dim: g.dim, n: r.n, as: opt.as };
+    const mk = (bars, name) => { const sub = { ...g, bars }, r = l3bfBuild(sub, opt); if (!r.n) return null; if (bars.length === 1) { r.m.bfp = bars[0].props; delete r.m.parts; } const p = modCreate(r.m, r.A0, { name, color: g.col, snapshot: false }); p.area = "Bergförankring"; p.bf = { kind: g.kind, dim: g.dim, n: r.n, as: opt.as };
       p.note = `${r.n} st ${g.kind === "V" ? "vertikala" : "horisontella"} bergförankringar ⌀${g.dim} ur ritningstabell (SWEREF 99 20 15, RH 2000). Visningsdiameter ${l3bfF(l3bfDia(g.dim, opt) * 1000, 0)} mm.`; return p; };
     if (opt.per === "bar") g.bars.forEach(b => { const p = mk([b], `${b.id} ⌀${g.dim}`); if (p) { ids.push(p.id); n++; } });
     else { const p = mk(g.bars, g.name); if (p) { ids.push(p.id); n += g.bars.length; } }
@@ -200,4 +213,30 @@ function l3bfOpen() {
     catch (err) { l3Status("Kunde inte skapa bergförankringarna: " + err.message, true); }
   };
   $("v3BfCsv").onclick = () => { if (!l3bf.rows) return; sync(); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([l3bfCsv(l3bf.rows, o)], { type: "text/csv" })); a.download = "bergforankring.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+}
+
+/* ---- 5. Egenskaperna i högerpanelen och i IFC-exporten ---- */
+const l3bfEsc = v => (typeof escHtml === "function" ? escHtml(String(v)) : String(v));
+const l3bfTbl = rows => `<table class="v3-kv" style="width:100%;font-size:12px;border-collapse:collapse">${rows.map(([k, v]) => `<tr><td style="color:#64748b;padding:1px 6px 1px 0;vertical-align:top">${l3bfEsc(k)}</td><td style="word-break:break-word"><b>${l3bfEsc(v)}</b></td></tr>`).join("")}</table>`;
+function l3bfSide(p) {
+  const m = p && p.m; if (!m) return "";
+  if (m.bfp) return `<div class="v3-sec">Bergförankring – ${l3bfEsc((m.bfp[0] || [])[1] || "")}</div>${l3bfTbl(m.bfp)}`;
+  if (p.bf && m.parts) {
+    const rows = m.parts.map(q => q.m && q.m.bfp).filter(Boolean), get = (b, k) => (b.find(x => x[0] === k) || [])[1], len = rows.reduce((a, b) => a + (Number(get(b, "Längd m")) || 0), 0), kg = rows.reduce((a, b) => a + (Number(get(b, "Vikt stål kg (7850 kg/m³)")) || 0), 0);
+    const head = ["Stag nr", "Längd m", "Start X", "Start Y", "Start Z"];
+    return `<div class="v3-sec">Bergförankring – ${p.bf.n} st ⌀${p.bf.dim}</div>${l3bfTbl([["Antal", rows.length], ["Total längd m", Math.round(len * 100) / 100], ["Total vikt stål kg", Math.round(kg)]])}
+      <details><summary style="cursor:pointer;margin:6px 0">Alla stänger (${rows.length})</summary><div style="max-height:220px;overflow:auto"><table style="font-size:11px;border-collapse:collapse;width:100%"><tr>${head.map(h => `<th style="text-align:left;padding:0 6px 0 0">${h}</th>`).join("")}</tr>${rows.map(b => `<tr><td>${l3bfEsc(get(b, "Stag nr"))}</td><td>${l3bfEsc(get(b, "Längd m"))}</td><td>${l3bfEsc(get(b, "Startpunkt X (SWEREF 99 20 15)") != null ? get(b, "Startpunkt X (SWEREF 99 20 15)") : get(b, "Startpunkt X"))}</td><td>${l3bfEsc(get(b, "Startpunkt Y"))}</td><td>${l3bfEsc(get(b, "Startpunkt Z (RH 2000)"))}</td></tr>`).join("")}</table></div></details>
+      <div class="v3-sub">Dela upp ger enskilda stänger med alla egenskaper.</div>`;
+  }
+  return "";
+}
+if (typeof modSideHtml === "function") { const l3bfSide0 = modSideHtml; modSideHtml = function (p) { return l3bfSide(p) + l3bfSide0(p); }; }
+if (typeof modProps === "function") {
+  const l3bfProps0 = modProps;
+  modProps = function (p) {
+    const out = l3bfProps0(p), m = p && p.m; if (!m) return out;
+    if (m.bfp) return out.concat(m.bfp.filter(([k]) => k !== "Typ" || true).map(([k, v]) => [k === "Typ" ? "Bergförankring" : k, v]));
+    if (p.bf && m.parts) { const rows = m.parts.map(q => q.m && q.m.bfp).filter(Boolean); out.push(["Antal stänger", rows.length], ["Stag nr", rows.map(b => (b[0] || [])[1]).join(", ")]); }
+    return out;
+  };
 }
