@@ -694,22 +694,41 @@ function l3gaTcModelId(m) {
   const w = m.src || {};
   return w.fileId || w.id || String(m.id || "").replace(/^f:/, "") || null;
 }
+/* Modell-id när Trimble Connect inte finns: filens id, annars modellens id eller namn (samma id används sedan av alla kopplingar till modellen). */
+function l3gaLocalModelId(m) { const w = (m && m.src) || {}; return String(w.fileId || w.id || String((m && m.id) || "").replace(/^f:/, "") || (m && m.name) || "lokal-modell"); }
+/* Samma skrivning som 4D-planering gör vid koppling (aktiviteten får gruppid, nya objekt blir kopior i samma grupp med samma delaktiviteter),
+   men direkt mot projektets data – fungerar utan Trimble Connect och i offline-läget (skickas när nätet finns). */
+async function l3gaCoupleLocal(a, add) {
+  const src = a.rows[0], gid = src.group_id || ghNewId(), now = new Date().toISOString();
+  const rows = add.map((o, i) => (i === 0 && !src.model_id) ? { ...src, group_id: gid, model_id: o.modelId, object_id: String(o.objectId), updated_at: now } : { ...src, id: ghNewId(), group_id: gid, model_id: o.modelId, object_id: String(o.objectId), updated_at: now });
+  if (!rows.some(r => r.id === src.id)) rows.push({ ...src, group_id: gid, updated_at: now });
+  const byId = new Map(rows.map(r => [String(r.id), r]));
+  await ghWriteJSON(token, l3gaPath("plan_items.json"), arr => { const base = Array.isArray(arr) ? arr : [], have = new Set(base.map(r => String(r.id))), next = base.map(r => byId.get(String(r.id)) || r); rows.forEach(r => { if (!have.has(String(r.id))) next.push(r); }); return next; }, `Koppla ${add.length} objekt till aktivitet (3D-vyn)`);
+  const copies = rows.filter(r => String(r.id) !== String(src.id));
+  if (copies.length) { // kopiorna får aktivitetens delaktiviteter
+    try {
+      const acts = await ghReadJSON(token, l3gaPath("plan_item_activities.json")), subs = (Array.isArray(acts) ? acts : []).filter(x => String(x.plan_item_id) === String(src.id));
+      if (subs.length) await ghWriteJSON(token, l3gaPath("plan_item_activities.json"), arr => [...(Array.isArray(arr) ? arr : []), ...copies.flatMap(r => subs.map(x => ({ ...x, id: ghNewId(), plan_item_id: r.id })))], "Delaktiviteter till nya kopplingar (3D-vyn)");
+    } catch (e) { console.warn("Delaktiviteter till kopplingarna", e); }
+  }
+  return { n: add.length };
+}
 async function l3gaCouple(a) {
   const sel = (typeof l3bs !== "undefined" ? l3bs.sel : []);
+  const noBridge = typeof bridgeOk === "function" && !bridgeOk(); // utan Trimble Connect (offline/fristående): kopplingen skrivs direkt i tidplanen här
   const objs = [], seen = new Set();
-  sel.forEach(e => { const u = e.mesh.userData.l3b, r = u.ranges[e.ri]; if (!r.guid || seen.has(r.guid) || e.mesh.userData.bcopy) return; seen.add(r.guid); objs.push({ modelId: l3gaTcModelId(u.model), objectId: r.guid, name: r.name }); });
+  sel.forEach(e => { const u = e.mesh.userData.l3b, r = u.ranges[e.ri]; if (!r.guid || seen.has(r.guid) || e.mesh.userData.bcopy) return; seen.add(r.guid); objs.push({ modelId: l3gaTcModelId(u.model) || (noBridge ? l3gaLocalModelId(u.model) : null), objectId: r.guid, name: r.name }); });
   if (!objs.length) { l3Status("Inget av de markerade objekten kan kopplas (saknar IFC-id, eller är osparade kopior).", true); return; }
   const mine = new Set(a.rows.map(r => String(r.object_id || ""))), add = objs.filter(o => !mine.has(o.objectId)), already = objs.length - add.length;
   if (!add.length) { l3Status(`Alla ${objs.length} markerade objekt är redan kopplade till ${a.name}.`); return; }
   if (add.some(o => !o.modelId)) { uiAlert("Kunde inte avgöra vilken modell i Trimble Connect objekten hör till. Läs in modellen från Trimble Connect (Lager → Trimble Connect) och försök igen."); return; }
-  if (typeof bridgeOk === "function" && !bridgeOk()) { uiAlert("Kopplingen görs av 4D-planering i Trimble Connect. Öppna lägesplanen med kartknappen i 4D-planering (på datorn) och försök igen."); return; }
   const elsewhere = new Map();
   (l3pl.rows || []).forEach(r => { if (r.object_id && add.some(o => o.objectId === String(r.object_id)) && l3gaKeyOf(r) !== a.key) elsewhere.set(String(r.object_id), String(r.activity || r.object_name || "")); });
   const others = [...new Set(elsewhere.values())];
   const ok = await uiConfirm(`Koppla ${add.length} objekt till ${a.name}?\n\n${a.area ? a.area + " · " : ""}${a.start} – ${a.end}${already ? `\n${already} av de markerade är redan kopplade hit och hoppas över.` : ""}${elsewhere.size ? `\n${elsewhere.size} av objekten är redan kopplade till ${others.slice(0, 3).join(", ")}${others.length > 3 ? " m.fl." : ""} – de kopplingarna finns kvar.` : ""}\n\nKopplingen sparas i 4D-planeringen (Powerproject) i Trimble Connect – samma som Koppla till markering i 4D-planering – och syns i TC, dashboarden och 3D.`, { ok: "Koppla och spara" });
   if (!ok) { l3Status("Inget kopplades."); return; }
   try {
-    const r = await askOpener("coupleObjects", { source: "pp", itemId: a.rows[0].id, objs: add.map(o => ({ modelId: o.modelId, objectId: o.objectId })) }, 120000);
+    const r = noBridge ? await l3gaCoupleLocal(a, add) : await askOpener("coupleObjects", { source: "pp", itemId: a.rows[0].id, objs: add.map(o => ({ modelId: o.modelId, objectId: o.objectId })) }, 120000);
     if (r && r.failed) { uiAlert(`Kunde inte koppla: ${r.failed}`); return; }
     l3Status(`${add.length} objekt kopplade till ${a.name} i 4D-planeringen.`);
     l3pl.rows = null; await l3plLoad(true);

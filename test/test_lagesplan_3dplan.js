@@ -126,6 +126,24 @@ const PP = [
     });
     if (cpl.length !== 1 || cpl[0].itemId !== 'p3' || cpl[0].source !== 'pp' || JSON.stringify(cpl[0].objs) !== JSON.stringify([{ modelId: 'F1', objectId: 'NEWGUID0000000000000001' }])) fail('Koppla: ' + JSON.stringify(cpl));
     page.__uiDialogHandlers.length = 0;
+    // Koppla utan Trimble Connect (offline/fristående): skrivs direkt i tidplanen, aktiviteten får gruppid och nya objektet blir en kopia i gruppen.
+    {
+      const n1 = puts.length; global.__mockWrite = true;
+      page.__uiDialogHandlers.push(d => d.accept());
+      const loc = await page.evaluate(async () => {
+        Object.defineProperty(window, 'opener', { value: null, configurable: true, writable: true });
+        const fake = { id: 'f:F1', name: 'B.ifc', visible: true, src: { fileId: 'F1' } }; l3b.models.push(fake);
+        l3bs.sel = [{ mesh: { userData: { l3b: { model: fake, ranges: [{ guid: 'LOCALGUID000000000000001', name: 'Pelare' }] } } }, ri: 0 }];
+        window.__alerts = []; window.__st = []; const ls0 = l3Status; l3Status = (m, e) => { window.__st.push(m); return ls0(m, e); }; const ua = uiAlert; uiAlert = m => { window.__alerts.push(m); return Promise.resolve(); };
+        await l3gaCouple(l3plActs(false).find(a => a.name === 'Takmontage')); uiAlert = ua;
+        l3b.models.pop(); l3bs.sel = []; l3Status = ls0; const br = bridgeOk(); Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true }); return { bridge: br, alerts: window.__alerts, st: window.__st };
+      });
+      await page.waitForTimeout(600);
+      const w = (puts.slice(n1).find(r => (r || []).some(x => x.object_id === 'LOCALGUID000000000000001')) || []);
+      const nr = w.find(x => x.object_id === 'LOCALGUID000000000000001'), p3 = w.find(x => x.id === 'p3');
+      if (loc.bridge || loc.alerts.length || !nr || nr.model_id !== 'F1' || !nr.group_id || nr.group_id !== (p3 || {}).group_id || nr.id !== 'p3') fail('Koppla utan Trimble Connect: ' + JSON.stringify({ loc, nr, p3, n: puts.length - n1 }));
+      page.__uiDialogHandlers.length = 0; console.log('OK: koppla 3D-objekt till aktivitet utan Trimble Connect (offline)');
+    }
     await page.evaluate(() => { l3plSet('view', 'board'); l3plDockRender(); });
     // Redigeringsdialogen som i dashboarden: Temporär/Rivning/Egen färg efter slut, och ✕ för ett objekt.
     {
