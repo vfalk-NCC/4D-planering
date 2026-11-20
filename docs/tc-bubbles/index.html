@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TC Bubbles</title>
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="style.css?v=1">
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+</head>
+<body>
+<header class="bar" id="bar">
+  <div class="grp">
+    <button type="button" data-act="shot" id="btnShot" title="Ta ett foto på 3D-vyn i Trimble Connect (bubblorna ligger kvar)">📷</button>
+    <label class="btn" title="Öppna en bild från datorn (eller klistra in med Ctrl+V)">🖼<input type="file" id="fileIn" accept="image/*" hidden></label>
+  </div>
+  <div class="grp">
+    <button type="button" data-act="add" title="Ny bubbla – klicka sedan i bilden där den ska peka (B)">＋ Bubbla</button>
+    <button type="button" data-act="dup" title="Dubblera vald bubbla (Ctrl+D)">⧉</button>
+    <button type="button" data-act="arrange" title="Ordna de olåsta bubblorna så att de inte täcker varandra">⇅</button>
+    <button type="button" data-act="lockall" title="Lås alla bubblor där de sitter / lås upp alla">🔒</button>
+    <button type="button" data-act="undo" title="Ångra (Ctrl+Z)">↶</button>
+  </div>
+  <div class="grp">
+    <button type="button" data-act="png" title="Ladda ner bilden som PNG">PNG</button>
+    <button type="button" data-act="pdf" title="Ladda ner bilden som PDF">PDF</button>
+    <button type="button" data-act="copy" title="Kopiera bilden till urklipp">📋</button>
+  </div>
+  <span class="msg" id="msg"></span>
+</header>
+<main class="main">
+  <div class="stage" id="stage"><canvas id="cv" width="1600" height="900"></canvas><div class="empty" id="empty"><b>Ingen bild ännu</b><span>Tryck 📷 för att ta ett foto på 3D-vyn i Trimble Connect, eller 🖼 för att öppna en bild.</span></div></div>
+  <aside class="side" id="side"></aside>
+</main>
+<script src="app.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+:root { --bg:#f1f5f9; --card:#fff; --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --pri:#1d4ed8; --warn:#b45309; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f172a; --card:#1e293b; --ink:#e2e8f0; --mut:#94a3b8; --line:#334155; --pri:#60a5fa; --warn:#fbbf24; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { display: flex; flex-direction: column; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 10px; background: var(--card); border-bottom: 1px solid var(--line); }
+.grp { display: flex; gap: 4px; }
+button, .btn, select, input[type=text], input[type=number], textarea { font: inherit; color: inherit; }
+button, .btn { height: 28px; min-width: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+button:hover, .btn:hover { border-color: var(--pri); }
+button.on { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+button.pri { background: var(--pri); color: #fff; border-color: var(--pri); }
+button.danger:hover { border-color: #dc2626; color: #dc2626; }
+button:disabled { opacity: .4; cursor: default; }
+.msg { margin-left: auto; color: var(--mut); font-size: 12px; max-width: 55vw; text-align: right; }
+.msg.warn { color: var(--warn); }
+.main { flex: 1; display: flex; min-height: 0; }
+.stage { flex: 1; min-width: 0; position: relative; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 10px; }
+.stage canvas { max-width: 100%; height: auto; background: #cbd5e1; border-radius: 4px; box-shadow: 0 2px 12px rgba(15,23,42,.25); touch-action: none; }
+.stage canvas.hidden { display: none; }
+.empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--mut); text-align: center; padding: 24px; pointer-events: none; }
+.empty.hidden { display: none; }
+.side { width: 300px; flex: none; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; background: var(--card); border-left: 1px solid var(--line); }
+@media (max-width: 800px) { .main { flex-direction: column; } .side { width: auto; max-height: 45%; border-left: 0; border-top: 1px solid var(--line); } }
+.sec { border: 1px solid var(--line); border-radius: 9px; padding: 7px 8px; display: flex; flex-direction: column; gap: 6px; }
+.sec > h3 { margin: 0; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--mut); display: flex; align-items: center; justify-content: space-between; cursor: pointer; }
+.sec.closed > :not(h3) { display: none; }
+.row { display: flex; gap: 5px; align-items: center; }
+.row > * { min-width: 0; }
+.f { display: flex; flex-direction: column; gap: 2px; }
+.f > span { color: var(--mut); font-size: 11px; display: flex; justify-content: space-between; }
+input[type=text], input[type=number], select, textarea { width: 100%; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+textarea { resize: vertical; min-height: 44px; }
+input[type=range] { width: 100%; }
+.sw { display: flex; gap: 4px; flex-wrap: wrap; }
+.sw i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; display: inline-block; }
+.sw i.on { border-color: var(--ink); }
+.list { display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow-y: auto; }
+.li { display: flex; align-items: center; gap: 5px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.li.sel { border-color: var(--pri); background: rgba(37,99,235,.1); }
+.li b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.li span { color: var(--mut); font-size: 11px; }
+.li button { height: 22px; min-width: 22px; padding: 0 4px; }
+.hint { color: var(--mut); font-size: 11px; }

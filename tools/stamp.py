@@ -27,7 +27,7 @@ for html in pathlib.Path(__file__).resolve().parent.parent.joinpath("docs").glob
 import json, os
 files = []
 for root, dirs, fs in os.walk(docs):
-    dirs[:] = [d for d in dirs if d not in ("test", "tests", "node_modules", ".git")]
+    dirs[:] = [d for d in dirs if d not in ("test", "tests", "node_modules", ".git", "tc-bubbles")]
     for f in fs:
         if f.endswith(".md") or f == "offline-manifest.json": continue
         full = pathlib.Path(root, f); files.append([str(full.relative_to(docs)).replace(os.sep, "/"), full.stat().st_size])
