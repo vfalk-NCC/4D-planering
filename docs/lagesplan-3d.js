@@ -1528,6 +1528,7 @@ function l3RenderSide(liveOnly) {
     ${lib.mod || (lib.smart && typeof smDef === "function" && (smDef(p) || {}).noDims) ? "" : `<div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
       ${lib.R ? f("R", "Räckvidd", "1") : ""}</div>`}
+    ${typeof l3reachHtml === "function" ? l3reachHtml(p) : ""}
     ${!lib.isModel ? `<div class="v3-sec">Utseende</div><div class="v3-look"><label class="v3-look-c"><span>Färg</span><input type="color" data-v3f="color" value="${col}" /></label>
       <label class="v3-look-o"><span>Genomskinlighet <b data-v3ov>${Math.round((1 - (Number(p.opacity) || 1)) * 100)} %</b></span><input type="range" min="0" max="90" step="5" data-v3o value="${Math.round((1 - (Number(p.opacity) || 1)) * 100)}" /></label></div>` : ""}
     <div class="v3-sec">4D</div>
@@ -1570,6 +1571,7 @@ function l3RenderSide(liveOnly) {
     };
   });
   if (typeof l3edSideBind === "function") l3edSideBind(side, p);
+  if (typeof l3reachBind === "function") l3reachBind(side, p);
   if (typeof detSideBind === "function") detSideBind(side, p, () => { side.dataset.id = ""; l3RenderSide(); });
   if (lib.smart && typeof smartBindSide === "function") smartBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; l3RenderSide(); });
   if (lib.crew && typeof crewBindSide === "function") crewBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; const act = document.activeElement; l3RenderSide(); });
