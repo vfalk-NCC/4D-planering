@@ -533,6 +533,7 @@ const L3V_PARTS = [
   ["datum", "4D-datum", "Datumet i tidplanen så att bygget visar rätt skede", true],
   ["visn", "Visning", "Allt i Visning-menyn: Originalmodell, tidslinje (originalfärg/framdrift), pulsering, spöke, bubblor, ritningen som mark …", true, 1],
   ["rutnat", "Rutnät", "Vilka rutnät som syns", true, 1],
+  ["bub", "Bubblor", "Bubblornas platser, lås och exakt vilka som visas (plus egna ändringar av namn, text och %)", true, 1],
   ["lager", "Lager & bakgrund", "2D-lager (ritning, DXF, ortofoto), placerade objekt, skyltar och bakgrundskarta", true, 1],
 ];
 const L3V_VISN_PREFS = ["bubOn", "bubClick", "bubScope", "bubMax", "bubProg", "bubFields", "bubLine", "bubNeutral", "actOutline", "plan", "objs", "labels", "legend"];
@@ -549,7 +550,7 @@ function l3vThumb() {
 function l3MakeView(name, parts) {
   const O = l3.O, cam = l3.camera, W = v => [0, 1, 2].map(i => Math.round((v.getComponent(i) + O[i]) * 1000) / 1000);
   const has = k => !parts || parts.includes(k);
-  const v = { name, p: W(cam.position), t: W(l3.orbit.target), ortho: !!cam.isOrthographicCamera, zoom: cam.zoom, at: new Date().toISOString() }; { const im = l3vThumb(); if (im) v.img = im; }
+  const v = { name, p: W(cam.position), t: W(l3.orbit.target), ortho: !!cam.isOrthographicCamera, zoom: cam.zoom, asp: (() => { const c = l3.renderer.domElement; return c.clientHeight ? Math.round(c.clientWidth / c.clientHeight * 1000) / 1000 : undefined; })(), at: new Date().toISOString() }; { const im = l3vThumb(); if (im) v.img = im; }
   if (parts) v.parts = parts.slice();
   if (has("clips")) v.clips = (l3.clips || []).map(c => { const pt = c.plane.coplanarPoint(new THREE.Vector3()); return { n: c.plane.normal.toArray(), p: W(pt), label: c.label, off: Math.round((Number(c.off) || 0) * 1000) / 1000, base: c.base, a: c.anchor ? W(c.anchor) : undefined }; });
   Object.assign(v, l3ViewState(parts));
@@ -618,10 +619,12 @@ function l3ViewState(parts) {
     const L = {}; if (typeof layerState !== "undefined") Object.entries(layerState).forEach(([k, x]) => { if (x && typeof x === "object" && "visible" in x) L[k] = [!!x.visible, Number(x.opacity)]; });
     st.lager = { ls: L, placed: l3Prefs().placedOn !== false, map: l3Prefs().mapOn === true, labels: l3Prefs().labels !== false };
   }
+  if (has("bub") && typeof l3bubViewState === "function") { try { st.bub = l3bubViewState(); } catch (e) { console.warn("Bubblor i vyn", e); } }
   if (has("rutnat") && typeof l3gd !== "undefined") st.grids = { all: l3Prefs().gdAll !== false, vis: l3gd.list.map(g => [g.id, !!g.vis]) };
   return st;
 }
 function l3ViewApplyState(v) {
+  if (typeof l3bub !== "undefined") { if (v.bub && typeof l3bubViewApply === "function") l3bubViewApply(v.bub); else { l3bub.frozen = null; l3bub.ovr.clear(); l3bub.autoSig = ""; l3bub.sig = ""; } }
   if (v.visn && typeof v.visn === "object") {
     const V = v.visn; try {
       Object.entries(V.prefs || {}).forEach(([k, val]) => { if (k === "plan") { const c = document.getElementById("v3ShowPlan"); if (c && c.checked !== !!val) { c.checked = !!val; c.dispatchEvent(new Event("change")); } else l3SetPref("plan", val); } else l3SetPref(k, val); });
@@ -678,7 +681,12 @@ function l3GoView(i) {
   // Snittfönstret öppnas inte av sig självt (Victor 2026-10-10) – saxarna i bilden flyttar snitten; är det öppet uppdateras det.
   l3ApplyClips(); if (!l3.clips.length) l3DlgClose("v3Clip"); else if (document.getElementById("v3Clip") && !document.getElementById("v3Clip").classList.contains("hidden")) l3RenderClipDlg();
   l3FlyTo(T, dist, dir, l3ViewMs());
-  l3Status(`Vy: ${v.name}`);
+  // Exakt samma bild varje gång: efter flygningen sätts kamera, mål och zoom till precis det som sparades.
+  const snap = () => { try { cam.position.copy(P); l3.orbit.target.copy(T); if (v.ortho && Number.isFinite(v.zoom)) cam.zoom = v.zoom; cam.updateProjectionMatrix(); l3.orbit.update(); if (typeof l3bub !== "undefined") l3bub.autoSig = ""; l3Render(); } catch (e) { /* */ } };
+  const cam = l3.camera, id = l3.flyId; setTimeout(() => { if (l3.flyId === id) snap(); }, l3ViewMs() + 80);
+  l3.curView = v.name;
+  const cv = l3.renderer.domElement, asp = cv.clientHeight ? cv.clientWidth / cv.clientHeight : 0;
+  l3Status(v.asp && asp && Math.abs(asp / v.asp - 1) > 0.03 ? `Vy: ${v.name} – bildytan har ett annat format än när vyn sparades (docka menyerna som då för exakt samma utsnitt).` : `Vy: ${v.name}`);
 }
 function l3DelView(i) { const list = l3SavedViews(); const v = list.splice(i, 1)[0]; l3StoreViews(list, v ? { del: v.name } : undefined); l3RenderSavedViews(); if (v) l3Status(`Vyn "${v.name}" borttagen.`); }
 function l3RenderSavedViews() {
