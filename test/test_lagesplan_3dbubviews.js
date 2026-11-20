@@ -72,6 +72,37 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // 7) Ta bort fri bubbla
   await page.click('#v3Bubbles .v3-bub.fr [data-ba=off]'); await page.waitForTimeout(300);
   ok(await page.evaluate(() => document.querySelectorAll('#v3Bubbles .v3-bub.fr').length) === 0, 'Fri bubbla borttagen');
+  // 8) Riktig tidplansbubbla: sparad vy fryser urvalet och platsen, och påverkar filmens/utskriftens bubbla
+  const real = await page.evaluate(async () => {
+    const row = { id: 'zz1', object_name: 'Betongpelare', activity: 'Gjut', start_date: '2026-10-01', end_date: '2026-12-31', progress: 40 }; items.push(row);
+    placements = [{ id: 'tp1', type: 'bod', name: 'Bod', x: 6512340, y: 150105, z: 0, L: 8, B: 3, H: 2.7, rot: 0, dz: 0, color: '#f59e0b', itemId: row.id }]; l3BuildPlacements();
+    $('dateInput').value = '2026-11-10'; l3SetPref('bubScope', 'all'); l3SetPref('bubOn', true); l3bub.sig = '';
+    l3bub.frozen = null; l3bubRebuild(); const a = l3bub.anchors.find(x => !x.free); l3FlyTo(a.v, 30, new THREE.Vector3(1, -1, 0.8), 0); l3Render(); await new Promise(r => setTimeout(r, 300));
+    const key = a.key, el = document.querySelector(`#v3Bubbles .v3-bub[data-bk="${key}"]`); if (!el) return { err: 'ingen kort' };
+    const r = l3.renderer.domElement.getBoundingClientRect(); const x = 0.3, y = 0.4; l3bub.ovr.set(key, { x, y, lk: true }); l3boSet(key, { x, y, lk: true });
+    l3boSet(key, { name: 'Pelare P1', prog: 30 });
+    l3Render(); await new Promise(r => setTimeout(r, 100));
+    l3SaveView('Vecka 45', l3vParts().concat(['bub']));
+    return { key, saved: l3SavedViews().find(v => v.name === 'Vecka 45').bub };
+  });
+  ok(!real.err && real.saved.keys.includes(real.key) && real.saved.edits[real.key].name === 'Pelare P1', 'Riktig bubbla sparas i vyn: ' + JSON.stringify(real));
+  const after = await page.evaluate(async key => {
+    l3boSet(key, { name: null, prog: null, x: null, y: null, lk: null }); l3bub.ovr.clear(); $('dateInput').value = '2027-03-01'; l3bub.sig = ''; l3Render(); await new Promise(r => setTimeout(r, 100));
+    const gone = !document.querySelector(`#v3Bubbles .v3-bub[data-bk="${key}"]`);   // slutdatum passerat -> försvunnen
+    l3GoView(l3SavedViews().findIndex(v => v.name === 'Vecka 45')); await new Promise(r => setTimeout(r, 900));
+    const el = document.querySelector(`#v3Bubbles .v3-bub[data-bk="${key}"]`), W = l3.renderer.domElement.getBoundingClientRect().width;
+    const res = { gone, shown: !!el, left: el && parseFloat(el.style.left) / W, txt: el && el.textContent.replace(/\s+/g, ' '), lk: el && el.classList.contains('lk'), dt: $('dateInput').value };
+    l3SetPref('bubScope', 'marked'); l3Render(); await new Promise(r => setTimeout(r, 100)); res.released = !document.querySelector(`#v3Bubbles .v3-bub[data-bk="${key}"]`);
+    return res;
+  }, real.key);
+  ok(after.gone && after.shown && Math.abs(after.left - 0.3) < 0.003 && /Pelare P1/.test(after.txt) && /30 %/.test(after.txt) && after.lk && after.dt === '2026-11-10' && after.released, 'Vyn återskapar bubblan exakt: ' + JSON.stringify(after));
+  const film = await page.evaluate(() => {
+    l3SetPref('bubScope', 'all'); const key = [...l3bub.ovr.keys()][0]; const calls = [];
+    const ctx = new Proxy({}, { get: (o, k) => k === 'measureText' ? () => ({ width: 10 }) : (...a) => { if (k === 'fillText') calls.push(a); }, set: () => true });
+    l3SetPref('bubFields', { name: true, date: false, progress: false }); l3fxBubbles(ctx, 1000, 600, 1);
+    return { first: calls.find(c => /Pelare/.test(c[0])), key };
+  });
+  ok(film.first && Math.abs(film.first[1] - (0.3 * 1000 - 125 + 15)) < 2, 'Filmen/utskriften lägger bubblan på sparad plats: ' + JSON.stringify(film));
   ok(!errors.length, 'JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dbubviews');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

@@ -259,7 +259,7 @@ function l3fxBubbles(ctx, W, H, s) {
   const cfg = l3bubCfg(); l3bubRebuild(cfg.scope === "all" || cfg.scope === "marked" ? cfg.scope : "active");
   const k = 1.25 * s, CW = 200 * k, cam = l3.camera.position;
   const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
-    .filter(o => o.q.z < 1 && o.q.x > -1 && o.q.x < 1 && o.q.y > -1 && o.q.y < 1).sort((x, y) => x.d - y.d).slice(0, cfg.max);
+    .filter(o => o.q.z < 1 && o.q.x > -1 && o.q.x < 1 && o.q.y > -1 && o.q.y < 1).sort((x, y) => (l3bubStored(x.a.key) ? 0 : 1) - (l3bubStored(y.a.key) ? 0 : 1) || x.d - y.d).slice(0, l3bub.frozen ? 200 : cfg.max); // sparade platser först
   const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
   const placed = [];
   ctx.save(); ctx.textBaseline = "top";
@@ -274,11 +274,15 @@ function l3fxBubbles(ctx, W, H, s) {
     if (L.note) lines.push({ t: L.note, f: `italic 500 ${11 * k}px system-ui, sans-serif`, c: "#0f172a" });
     const lh = 16 * k, h = 12 * k + lines.length * lh + (L.progress !== null ? 16 * k : 0);
     const cands = []; for (let j = 0; j < 6; j++) for (const dx of [0, 0.62 * CW, -0.62 * CW, 1.24 * CW, -1.24 * CW]) cands.push([dx, -(26 * k + j * (h + 6 * k))]);
-    let pos = cands[0];
-    for (const c of cands) { const cx = ax + c[0], by = ay + c[1]; if (!placed.some(p => Math.abs(p.x - cx) < CW + 6 * k && p.y - p.h - 4 * k < by && by - h - 4 * k < p.y)) { pos = c; break; } }
-    const cx = Math.max(CW / 2 + 6 * k, Math.min(W - CW / 2 - 6 * k, ax + pos[0])), by = Math.max(h + 6 * k, ay + pos[1]);
+    const st = l3bubStored(a.key); let cx, by;
+    if (st) { cx = Math.max(CW / 2 + 6 * k, Math.min(W - CW / 2 - 6 * k, st.x * W)); by = Math.max(h + 6 * k, Math.min(H, st.y * H)); } // exakt där bubblan sitter i 3D-vyn
+    else {
+      let pos = cands[0];
+      for (const c of cands) { const px = ax + c[0], py = ay + c[1]; if (!placed.some(p => Math.abs(p.x - px) < CW + 6 * k && p.y - p.h - 4 * k < py && py - h - 4 * k < p.y)) { pos = c; break; } }
+      cx = Math.max(CW / 2 + 6 * k, Math.min(W - CW / 2 - 6 * k, ax + pos[0])); by = Math.max(h + 6 * k, ay + pos[1]);
+    }
     placed.push({ x: cx, y: by, h });
-    const ph = l3Phase(a.row), col = cfg.neutral ? "#475569" : phaseColor(ph), tipX = Math.max(cx - CW / 2 + 12 * k, Math.min(cx + CW / 2 - 12 * k, ax));
+    const col = l3bubColor(a, cfg), tipX = Math.max(cx - CW / 2 + 12 * k, Math.min(cx + CW / 2 - 12 * k, ax));
     ctx.lineCap = "round";
     if (cfg.line) {
       ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 5 * k; ctx.beginPath(); ctx.moveTo(tipX, by); ctx.lineTo(ax, ay); ctx.stroke();

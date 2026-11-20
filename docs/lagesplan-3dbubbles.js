@@ -78,11 +78,11 @@ function l3bubRebuild(scopeOverride) {
   const at = $("dateInput").value || todayIso();
   // Auto: aktiviteter som är aktiva (pågående/försenade) vid datumet, plus markerade. Följer tidslinjen när man drar.
   const scope = scopeOverride || cfg.scope, isAct = g => ["pagaende", "forsenad"].includes(l3Phase(g.row));
-  let list = [...groups.entries()].filter(([k, g]) => l3boGet(k).on || scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
+  const FZ = l3bub.frozen; // sparad vy: exakt de bubblor som var med, oavsett urval och datum
+  let list = FZ ? [...groups.entries()].filter(([k]) => FZ.has(k)) : [...groups.entries()].filter(([k, g]) => l3boGet(k).on || scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
   // Passerat slutdatum: bubblan försvinner (verkligt slut om det finns och är senare).
-  list = list.filter(([k, g]) => { if (markedKeys.has(k) || l3boGet(k).on) return true; if (l3boGet(k).off) return false; if (g.row.temporary === true && g.row.bubble_off === true) return false; const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
-  list = list.filter(([k, g]) => markedKeys.has(k) || !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at))); // markerade visas oavsett status
-  if (l3bub.frozen) list = list.filter(([k]) => l3bub.frozen.has(k)); // sparad vy: exakt de bubblor som var med
+  if (!FZ) list = list.filter(([k, g]) => { if (markedKeys.has(k) || l3boGet(k).on) return true; if (l3boGet(k).off) return false; if (g.row.temporary === true && g.row.bubble_off === true) return false; const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
+  if (!FZ) list = list.filter(([k, g]) => markedKeys.has(k) || !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at))); // markerade visas oavsett status
   l3bub.anchors = list.map(([k, g]) => {
     // Bubblan sitter vid objektens gemensamma överkant (mitt i gruppen i sida, högst upp).
     const n = g.pts.length, v = new THREE.Vector3();
@@ -90,7 +90,7 @@ function l3bubRebuild(scopeOverride) {
     return { row: g.row, v, n, marked: markedKeys.has(k), key: k };
   });
   // Fria bubblor (inte kopplade till tidplanen) – visas alltid så länge de inte är släckta.
-  (l3bo.list || l3boLocal()).filter(x => x.free && x.p && !x.off && !(l3bub.frozen && !l3bub.frozen.has(x.k))).forEach(x => l3bub.anchors.push({ row: { id: x.k, object_name: x.name || "Bubbla", __free: x }, v: new THREE.Vector3(x.p[0] - l3.O[0], x.p[1] - l3.O[1], x.p[2] - l3.O[2]), n: 1, marked: false, key: x.k, free: true }));
+  if (scopeOverride !== "marked" || FZ) (l3bo.list || l3boLocal()).filter(x => x.free && x.p && !x.off && !(l3bub.frozen && !l3bub.frozen.has(x.k))).forEach(x => l3bub.anchors.push({ row: { id: x.k, object_name: x.name || "Bubbla", __free: x }, v: new THREE.Vector3(x.p[0] - l3.O[0], x.p[1] - l3.O[1], x.p[2] - l3.O[2]), n: 1, marked: false, key: x.k, free: true }));
   l3bub.total = list.length; l3bub.cap = cfg.max;
 }
 function l3bubSig() {
@@ -108,6 +108,9 @@ function l3bubProgAt(r, at) {
   if (t >= e) return 100; if (t <= s) return 0;
   return Math.round(100 * (t - s) / Math.max(1, e - s));
 }
+/* Sparad plats (bråkdel av bildytan) för en bubbla: vyns egen, annars projektets. */
+function l3bubStored(key) { const v = l3bub.ovr && l3bub.ovr.get(key); if (v) return v; const o = l3boGet(key); return o.x !== undefined && o.y !== undefined ? { x: o.x, y: o.y, lk: !!o.lk } : null; }
+function l3bubColor(a, cfg) { if (cfg.neutral) return "#475569"; if (a.free) { const fr = a.row.__free; return fr.col || (Number(fr.prog) >= 100 ? "#16a34a" : "#2563eb"); } return phaseColor(l3Phase(a.row)); }
 function l3bubLines(r, f, marked) {
   if (r.__free) {
     const o = r.__free;
@@ -137,6 +140,7 @@ function l3bubRender() {
   if (!host) { const lab = document.getElementById("v3Labels"); if (!lab) return; host = document.createElement("div"); host.id = "v3Bubbles"; host.className = "v3-bubbles"; lab.parentNode.insertBefore(host, lab.nextSibling); }
   if (on && typeof l3pl !== "undefined" && l3pl.rec && (l3plPrefs().film || {}).fxBubbles === true) { if (host.innerHTML) host.innerHTML = ""; host.dataset.h = ""; return; } // under filmen ritas bubblorna i filmens bild
   if (!on || !l3) { if (host.innerHTML) host.innerHTML = ""; l3bub.sig = ""; return; }
+  if (l3bub.frozen && typeof l3bubCfgSig === "function" && l3bub.fzCfg !== l3bubCfgSig()) { l3bub.frozen = null; l3bub.autoSig = ""; } // urvalet ändrat → vyns bubblor släpps
   const sig = l3bubSig() + "|" + auto + "|" + on; if (sig !== l3bub.sig) { l3bub.sig = sig; l3bubRebuild(auto ? undefined : "marked"); }
   const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position, cfg = l3bubCfg(), W = L3BUB_W;
   const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
@@ -145,7 +149,7 @@ function l3bubRender() {
   // Stabil placering: sparad plats (dragen/låst, i vyn eller i projektet) vinner; resten får en automatisk plats som är densamma så länge kameran är densamma.
   const csig = [l3.camera.position.x, l3.camera.position.y, l3.camera.position.z, l3.orbit.target.x, l3.orbit.target.y, l3.orbit.target.z, l3.camera.zoom, r.width, r.height].map(v => Math.round(v * 100)).join(",") + "|" + vis.map(o => o.a.key).join(",");
   if (l3bub.autoSig !== csig) { l3bub.autoSig = csig; l3bub.auto = new Map(); }
-  const stored = key => (l3bub.ovr && l3bub.ovr.get(key)) || (l3boGet(key).x !== undefined ? { x: l3boGet(key).x, y: l3boGet(key).y, lk: !!l3boGet(key).lk } : null);
+  const stored = l3bubStored;
   const placed = []; let cards = "", lines = "";
   const meta = vis.map(({ a, q }) => { const L = l3bubLines(a.row, cfg.f, true); return { a, q, L, h: l3bubHeight(L), st: stored(a.key) }; });
   meta.filter(m => m.st).forEach(m => placed.push({ x: m.st.x * r.width, y: m.st.y * r.height, h: m.h })); // sparade platser räknas som upptagna
@@ -162,7 +166,7 @@ function l3bubRender() {
       cx = Math.max(w / 2 + 4, Math.min(r.width - w / 2 - 4, ax + pos[0])); by = Math.max(h + 4, ay + pos[1]);
       placed.push({ x: cx, y: by, h }); l3bub.auto.set(a.key, { x: cx / r.width, y: by / r.height });
     }
-    const ph = a.free ? null : l3Phase(a.row), fr = a.row.__free, col = cfg.neutral ? "#475569" : a.free ? (fr.col || (Number(fr.prog) >= 100 ? "#16a34a" : "#2563eb")) : phaseColor(ph), tipX = Math.max(cx - w / 2 + 10, Math.min(cx + w / 2 - 10, ax)), lk = !!(st && st.lk);
+    const ph = a.free ? null : l3Phase(a.row), col = l3bubColor(a, cfg), tipX = Math.max(cx - w / 2 + 10, Math.min(cx + w / 2 - 10, ax)), lk = !!(st && st.lk);
     // Ledlinjen från kortets underkant till objektet, med en prick på objektet.
     if (cfg.line) lines += `<line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".85"/><line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="${col}" stroke-width="2" stroke-linecap="round"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="5.5" fill="#fff"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="3.6" fill="${col}"/>`;
     const ek = escHtml(a.key);

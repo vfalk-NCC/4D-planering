@@ -28,6 +28,7 @@ function l3bubPanel(focusKey) {
       <select id="v3BpProg" title="Framdriften i bubblorna">${[["calc", "% efter datum"], ["plan", "% från tidplan"]].map(([v, t]) => `<option value="${v}" ${(p.bubProg || "calc") === v ? "selected" : ""}>${t}</option>`).join("")}</select>
       <input type="number" id="v3BpMax" min="1" max="100" value="${cfg.max}" title="Högst antal bubblor" style="width:54px" />
     </div>
+    ${l3bub.frozen ? `<div class="v3-sub" title="Bubblorna följer den sparade vyn tills du ändrar urvalet (Pågående/Alla, högst antal, På/Av).">📌 Vyns bubblor (${l3bub.frozen.size}) – släpps när urvalet ändras</div>` : ""}
     <div class="v3-bp-chips" title="Vad som visas i bubblorna">${L3BUB_FIELDS.map(([k]) => `<button type="button" data-bpc="${k}" class="${cfg.f[k] ? "on" : ""}" title="${L3BUB_ICONS[k][1]}">${L3BUB_ICONS[k][0]}</button>`).join("")}</div>
     <div class="v3-bp-tools">
       <button type="button" id="v3BpAdd" title="Ny fri bubbla – klicka i modellen där den ska sitta">➕ Fri</button>
@@ -76,6 +77,8 @@ function l3bubPanel(focusKey) {
   if (focusKey) { const r = d.querySelector(`.v3-bp-r[data-bpk="${CSS.escape(focusKey)}"] input`); if (r) { try { r.focus(); r.select(); } catch (e) { /* */ } } }
   return d;
 }
+/* Vyns bubblor gäller tills man ändrar urvalet (Visa/Bara markerade/Alla, högst antal, på/av) – då släpps de och urvalet följer inställningarna igen. */
+const l3bubCfgSig = () => { const c = l3bubCfg(); return [c.scope, c.max, !!l3Prefs().bubOn].join("|"); };
 /* Fri bubbla: klicka i modellen (eller på marken) – bubblan får namn och framdrift för hand och hör inte till någon aktivitet. */
 function l3bubAddFree() {
   const cv = l3.renderer.domElement; l3Status("Klicka i modellen där den fria bubblan ska sitta (Esc avbryter).");
@@ -103,9 +106,10 @@ function l3bubViewState() {
 function l3bubViewApply(b) {
   if (!b || typeof b !== "object") return;
   l3bub.ovr = new Map(Object.entries(b.items || {}).map(([k, a]) => [k, { x: a[0], y: a[1], lk: !!a[2] }]));
-  l3bub.frozen = Array.isArray(b.keys) ? new Set(b.keys) : null;
-  l3bub.autoSig = ""; l3bub.sig = "";
   if (b.on !== undefined) l3SetPref("bubOn", !!b.on);
+  l3bub.frozen = Array.isArray(b.keys) && b.keys.length && b.on !== false ? new Set(b.keys) : null; l3bub.fzCfg = l3bubCfgSig();
+  l3bub.autoSig = ""; l3bub.sig = "";
+  if (b.edits || b.keys) { const E = b.edits || {}, clr = (b.keys || []).filter(k => !E[k] && !String(k).startsWith("f:") && (l3boGet(k).name || l3boGet(k).dt || l3boGet(k).ac || Number.isFinite(l3boGet(k).prog))); clr.forEach(k => { E[k] = {}; }); b = { ...b, edits: E }; }
   if (b.edits) { const ps = Object.entries(b.edits).filter(([k, e]) => { const c = l3boGet(k); return (c.name || "") !== (e.name || "") || (c.dt || "") !== (e.dt || "") || (c.ac || "") !== (e.ac || "") || c.prog !== e.prog; }).map(([k, e]) => [k, { name: e.name || null, dt: e.dt || null, ac: e.ac || null, prog: Number.isFinite(e.prog) ? e.prog : null }]); if (ps.length) l3boSetMany(ps); }
   l3Render();
 }
