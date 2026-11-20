@@ -1128,8 +1128,8 @@ body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id
 button.danger { background: #dc2626 !important; border-color: #dc2626 !important; color: #fff !important; }
 button.danger:disabled, button.primary:disabled { opacity: .45; cursor: not-allowed; }
 /* Exportera markerade som IFC – i sidhuvudet bredvid ångra/gör om. */
-.header-actions #btnExportSelIfcTop { display: inline-flex; align-items: center; gap: 2px; }
-.header-actions #btnExportSelIfcTop .hdr-ifc { font-size: 9px; font-weight: 700; letter-spacing: .02em; }
+.header-actions #btnExportSelIfcTop, .header-actions #btnExportSelHtmlTop { display: inline-flex; align-items: center; gap: 2px; }
+.header-actions #btnExportSelIfcTop .hdr-ifc, .header-actions #btnExportSelHtmlTop .hdr-ifc { font-size: 9px; font-weight: 700; letter-spacing: .02em; }
 /* Veckosammanfattning (avancerat, test – week-summary.js). */
 #weekSumDialog .ws-box { width: 760px; max-width: 96vw; max-height: 92vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .ws-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; font-size: 15px; }
