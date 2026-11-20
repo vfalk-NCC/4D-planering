@@ -498,6 +498,13 @@ function buildPlacementsIfc(projName, only) {
     if (el) doc.props(el, props);
     const reach = placeNameOpt.reach ? mk("reach", `${p.name || lib.label} – räckvidd`, "reach") : null; // räckviddsringar följer bara med om man bockar i det
     if (reach) doc.props(reach, [["Typ", `${lib.label} räckvidd`], ["Räckvidd m", placeR3(Number(p.R) || 0)], ["Start", start], ["Slut", end], ["Placerings-ID", p.id]]);
+    // Räckvidd som cylinder (valt i 3D-editorn): följer alltid med, med vald höjd, färg och opacitet (utan toningseffekten).
+    if (p.reachMode === "cyl" && Number(p.R) > 0 && !lib.isModel) {
+      const h = Number(p.reachH) > 0 ? Number(p.reachH) : Number(p.H) || Number(lib.H) || 10, col = /^#[0-9a-f]{6}$/i.test(p.reachCol || "") ? p.reachCol : (p.color || lib.color || "#38bdf8"), op = Number.isFinite(Number(p.reachOp)) && p.reachOp !== undefined && p.reachOp !== "" ? Math.max(3, Math.min(100, Number(p.reachOp))) : 22, tr = Math.round((1 - op / 100) * 100) / 100;
+      const m = placePrismMesh(doc, placeCircle(p, Number(p.R), 96), o[2], o[2] + h, o); E(`IFCSTYLEDITEM(${m},(${doc.style(`${col}:${tr}`, col, lib.label, tr)}),$)`);
+      const cy = E(`IFCBUILDINGELEMENTPROXY('${placeGuid(p.id, "reachcyl")}',$,${ifcStr(`${p.name || lib.label} – räckviddscylinder`)},${ifcStr("Placerad i 4D-planering")},${ifcStr(lib.label)},${doc.place(o)},${doc.shape(m, "Tessellation")},${ifcStr(p.id)},.NOTDEFINED.)`);
+      elems.push(cy); doc.props(cy, [["Typ", `${lib.label} räckviddscylinder`], ["Radie m", placeR3(Number(p.R))], ["Höjd m", placeR3(h)], ["Start", start], ["Slut", end], ["Placerings-ID", p.id]]);
+    }
   });
   return { text: doc.finish(elems, `Etablering ${projName || ""}.ifc`), n: list.length };
 }

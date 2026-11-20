@@ -62,8 +62,31 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Ringval ger fylld skiva i vald färg
   await page.selectOption('[data-reach="mode"]', 'ring'); await page.waitForTimeout(500);
   ok(await page.evaluate(() => { let d = null; l3.placeMeshes.get('pb1').traverse(o => { if (o.userData.reach && o.isMesh) d = o; }); return !!d && d.geometry.type === 'CircleGeometry'; }), 'Ring ritas som skiva');
+  // Gå-läget: kranens levande radie som cylinder, följer med vid lås och i IFC
+  const wk = await page.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+    l3SetPref('walkPerson', 'third'); l3SetPref('walkReach', { mode: 'cyl', h: 30, op: 40, col: '#ff8800', fx: true });
+    l3wEnter(new THREE.Vector3(0, 0, 0)); l3wSetKind('crane'); l3wWork(); l3wCtlPanel(); l3w.ctlT.out = 1; l3w.ctlT.ang = 0.5; l3w.ctlT.ext = 0.6;
+    for (let i = 0; i < 40 && !(l3w.ctl.out > 0.9); i++) await wait(250); await wait(400);
+    const cyl = l3w.av.g.userData.reachCyl, info = l3w.info.find(x => x[0] === 'Radie');
+    out.cyl = !!cyl && cyl.visible; out.h = cyl && cyl.scale.z; out.r = cyl && cyl.scale.x; out.info = info && parseFloat(info[1].replace(',', '.')); out.ringHidden = !l3w.av.g.children.find(c => c.userData.noIfc && c.children.length > 3).visible;
+    out.panel = !!document.querySelector('.v3-ctl .v3-rw [data-rw="mode"]') && !!document.querySelector('.v3-ctl [data-rw="h"]');
+    const r0 = cyl.scale.x; l3w.ctlT.ang = 1.0; await wait(1500); out.grows = Math.abs(cyl.scale.x - r0) > 1;   // radien följer bommen
+    l3wLock(); const it = l3w.locked[0]; out.locked = !!it; const g = it.g.userData.reachCyl; out.stays = !!g && g.visible;
+    const e1 = await l3vIfcExport(it, false); g.visible = false; const e0 = await l3vIfcExport(it, false); g.visible = true;
+    out.tris = e1.tris - e0.tris; out.keys = Object.keys(e1).join();
+    l3SetPref('walkPerson', 'first'); l3wLockRemove(it.id); l3wExit(true); return out;
+  });
+  ok(wk.cyl && wk.h === 30 && Math.abs(wk.r - wk.info) < 0.2 && wk.ringHidden && wk.panel && wk.grows && wk.locked && wk.stays && wk.tris >= 180, 'Gå-läget: ' + JSON.stringify(wk));
+  // Placerad animerad maskin: kan visa cylinder och den följer med i IFC
+  const mach = await page.evaluate(async () => {
+    placements = [{ id: 'mc1', type: 'mach:crane', name: 'Mobilkran A', x: 6512340, y: 150105, z: 0, L: 12, B: 3, H: 3.6, R: 30, rot: 0, dz: 0, color: '#dc2626', reachMode: 'cyl', reachH: 20, reachOp: 35, reachCol: '#22c55e' }]; l3BuildPlacements(); l3Render();
+    let n = 0; l3.placeMeshes.get('mc1').traverse(o => { if (o.userData.reach) n++; });
+    const r = buildPlacementsIfc('Test'), txt = r ? r.text : ''; return { n, lib: (placeLib('mach:crane') || {}).R, ifcCyl: /Radie m/.test(txt) && (txt.match(/IFCBUILDINGELEMENTPROXY\(/g) || []).length >= 2, ifcStyle: /22c55e|0\.1333/i.test(txt) || /IFCCOLOURRGB/.test(txt) };
+  });
+  ok(mach.n >= 3 && mach.lib === 30 && mach.ifcCyl, 'Animerad maskin: cylinder och IFC: ' + JSON.stringify(mach));
   // Syns i vyn (skärmbild)
-  await page.evaluate(() => { const p = placements.find(x => x.id === 'tk1'); p.reachMode = 'cyl'; p.reachFx = true; p.reachOp = 30; p.reachCol = '#38bdf8'; p.reachH = 40; l3RebuildOne(p); l3SelectIds([]); l3Frame(false); l3Render(); });
+  await tk(); await page.evaluate(() => { const p = placements.find(x => x.id === 'tk1'); p.reachMode = 'cyl'; p.reachFx = true; p.reachOp = 30; p.reachCol = '#38bdf8'; p.reachH = 40; l3RebuildOne(p); l3SelectIds([]); l3Frame(false); l3Render(); });
   await page.waitForTimeout(800); await page.screenshot({ path: '/tmp/reach.png' });
   ok(!errors.length, 'JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dreach');

@@ -5,11 +5,12 @@
    – Arbetar: bocka "Arbetar" när du sätter nyckeln – bom, grävarm, flak osv. rör sig från den nyckeln, mjuk övergång mellan nycklar.
    – Samma läge ritas i 3D-vyn, i filmen och i renderingsfilmen (l3animApply anropar l3machApply för varje bild). */
 
+const L3MACH_R = { crane: 30, excavator: 9, loader: 7, truck: 10 }; // räckvidd (m) som kan visas som ring eller cylinder
 const L3MACH = {
   crane: ["Mobilkran (animerad)", 12, 3, 3.6, "#dc2626"], excavator: ["Grävmaskin (animerad)", 8.5, 2.8, 3.2, "#f59e0b"],
   truck: ["Lastbil (animerad)", 9, 2.6, 3.4, "#2563eb"], loader: ["Hjullastare (animerad)", 8, 2.6, 3.4, "#eab308"], human: ["Byggare (animerad)", 0.8, 0.8, 1.8, "#f97316"],
 };
-if (typeof PLACE_LIB !== "undefined") Object.entries(L3MACH).forEach(([k, v]) => { PLACE_LIB["mach:" + k] = { group: "Maskiner", label: v[0], L: v[1], B: v[2], H: v[3], color: v[4], mach: k }; });
+if (typeof PLACE_LIB !== "undefined") Object.entries(L3MACH).forEach(([k, v]) => { PLACE_LIB["mach:" + k] = { group: "Maskiner", label: v[0], L: v[1], B: v[2], H: v[3], color: v[4], mach: k, ...(L3MACH_R[k] ? { R: L3MACH_R[k] } : {}) }; });
 
 const l3machStep = { moving: false, phase: 0, speed: 0, crouch: 0, jz: 0, work: 0, t: 0, travel: 0, dt: 0.016, steer: 0, rev: false, brake: false };
 /* Bygger maskinen i objektets grupp (anropas av l3PlacementGroup). */

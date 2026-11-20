@@ -17,7 +17,7 @@ const l3reachFx = p => p.reachFx !== false;
 /* Cylindern: öppen mantel, RGBA per hörn (toning uppåt och band när effekten är på), plus ljusa kantlinjer upptill och nedtill. */
 function l3reachBuild(p) {
   const R = Math.max(0.1, Number(p.R) || 0), h = l3reachH(p), op = l3reachOp(p) / 100, fx = l3reachFx(p), c = new THREE.Color(l3reachCol(p));
-  const N = Math.max(48, Math.min(160, Math.round(R * 3))), M = fx ? Math.max(6, Math.min(24, Math.round(h / 2))) : 1, pos = [], col = [], idx = [];
+  const N = p._segs || Math.max(48, Math.min(160, Math.round(R * 3))), M = fx ? Math.max(6, Math.min(24, Math.round(h / 2))) : 1, pos = [], col = [], idx = [];
   for (let j = 0; j <= M; j++) {
     const t = j / M, a = fx ? op * (1 - 0.7 * t) * (j % 2 ? 0.6 : 1) + (j === M ? 0 : 0) : op;
     for (let i = 0; i <= N; i++) { const u = i / N * Math.PI * 2; pos.push(R * Math.cos(u), R * Math.sin(u), h * t); col.push(c.r, c.g, c.b, a); }
@@ -87,3 +87,52 @@ function l3reachBind(side, p) {
     el.onblur = () => { el._snap = false; };
   });
 }
+
+/* ---- Gå-läget (WASD) och låsta fordon: kranens och grävmaskinens räckvidd som cylinder (Victor 2026-11-20) ----------------------------------------------------------------------
+   Radien är den levande arbetsradien (bommen/armen rör sig, cylindern växer och krymper med den). Höjden skrivs in själv; tomt = automatisk (kranens bomspets, grävmaskinen 8 m).
+   Inställningarna sparas som val (walkReach) och gäller både körning och låsta fordon. Cylindern följer med fordonet, ligger kvar när det låses och följer med till IFC. */
+const L3RW_KINDS = { crane: { cx: -1.3, rad: "Radie", hgt: "Lyfthöjd (bomspets)", auto: 0 }, excavator: { cx: 0, rad: "Räckvidd (skopspets)", hgt: null, auto: 8 } };
+function l3rwCfg() { const w = l3Prefs().walkReach || {}; return { mode: w.mode === "cyl" ? "cyl" : "ring", h: Number(w.h) > 0 ? Number(w.h) : 0, op: Number.isFinite(Number(w.op)) && w.op !== undefined && w.op !== "" ? Math.max(3, Math.min(100, Number(w.op))) : 22, col: /^#[0-9a-f]{6}$/i.test(w.col || "") ? w.col : "#38bdf8", fx: w.fx !== false }; }
+function l3rwSet(k, v) { l3SetPref("walkReach", { ...(l3Prefs().walkReach || {}), [k]: v }); }
+const l3rwNum = (info, lab) => { const x = (info || []).find(q => q[0] === lab); return x ? parseFloat(String(x[1]).replace(",", ".")) : NaN; };
+/* Enhetscylinder (radie 1, höjd 1) som skalas till levande mått; samma geometri (utan toning) följer med till IFC. */
+function l3rwMake(cfg) {
+  const grp = new THREE.Group(); grp.userData.noHit = true;
+  const parts = l3reachBuild({ R: 1, reachH: 1, reachOp: cfg.op, reachCol: cfg.col, reachFx: cfg.fx, _segs: 128 });
+  parts.forEach((m, i) => { m.userData.noHit = true; m.raycast = () => {}; m.renderOrder = 3; if (i > 0) m.userData.noIfc = true; if (i === 0) { m.userData.ifcGeo = new THREE.CylinderGeometry(1, 1, 1, 96, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5); m.userData.ifcColor = cfg.col; m.userData.ifcTr = Math.round((1 - cfg.op / 100) * 100) / 100; } grp.add(m); });
+  grp.userData.key = [cfg.op, cfg.col, cfg.fx].join(); grp.userData.on = true; return grp;
+}
+function l3rwSync() {
+  if (typeof l3w === "undefined" || !l3w.on || !l3w.av || !l3w.av.g) return;
+  const g = l3w.av.g, K = L3RW_KINDS[l3w.kind], cfg = l3rwCfg(); let cyl = g.userData.reachCyl;
+  const ring = g.children.find(ch => ch.userData && ch.userData.noIfc && ch.children.length > 3);
+  if (!K || cfg.mode !== "cyl") { if (cyl) { cyl.visible = false; cyl.userData.on = false; } return; }
+  if (!cyl || cyl.userData.key !== [cfg.op, cfg.col, cfg.fx].join()) {
+    if (cyl) { g.remove(cyl); cyl.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    cyl = l3rwMake(cfg); g.add(cyl); g.userData.reachCyl = cyl;
+  }
+  cyl.userData.on = true;
+  const R = l3rwNum(l3w.info, K.rad), show = !!(ring && ring.visible) && R > 0.05; if (ring) ring.visible = false; // cylindern ersätter ringen med etiketter
+  cyl.visible = show; if (!show) return;
+  const H = cfg.h > 0 ? cfg.h : (K.hgt ? Math.max(3, l3rwNum(l3w.info, K.hgt) || 10) : K.auto);
+  cyl.position.set(K.cx, 0, 0.05); cyl.scale.set(R, R, H);
+}
+(function wrapWalk() {
+  if (typeof l3wApply !== "function" || typeof l3wCtlPanel !== "function") { setTimeout(wrapWalk, 250); return; }
+  if (l3wApply.__rw) return;
+  const a0 = l3wApply; l3wApply = function () { const r = a0.apply(this, arguments); try { l3rwSync(); } catch (e) { console.warn("Räckvidd (gå-läge)", e); } return r; }; l3wApply.__rw = true;
+  const p0 = l3wCtlPanel; l3wCtlPanel = function () {
+    const r = p0.apply(this, arguments), p = l3w.ctlEl;
+    if (p && !p.classList.contains("hidden") && L3RW_KINDS[l3w.kind] && !p.querySelector(".v3-rw")) {
+      const c = l3rwCfg();
+      const anc = p.querySelector('[data-cb="out"]') || p.querySelector('[data-cb="auto"]'); (anc || p).insertAdjacentHTML(anc ? "afterend" : "beforeend", `<div class="v3-rw"><div class="v3-rw-r"><span>Räckvidd</span><select data-rw="mode"><option value="ring"${c.mode === "ring" ? " selected" : ""}>Ring</option><option value="cyl"${c.mode === "cyl" ? " selected" : ""}>Cylinder</option></select></div>${c.mode === "cyl" ? `<div class="v3-rw-r"><span>Höjd</span><input type="text" inputmode="decimal" data-rw="h" placeholder="auto" value="${c.h ? String(c.h).replace(".", ",") : ""}" style="width:56px"><em>m</em><input type="color" data-rw="col" value="${c.col}" title="Färg"><input type="range" data-rw="op" min="3" max="100" value="${Math.round(c.op)}" title="Opacitet"><label class="v3-rw-fx" title="Effekt: toning uppåt, band och ljusa kanter"><input type="checkbox" data-rw="fx"${c.fx ? " checked" : ""}><span>✨ Effekt</span></label></div>` : ""}</div>`);
+    }
+    if (p && !p._rw) {
+      p._rw = true;
+      const h = e => { const t = e.target.closest("[data-rw]"); if (!t) return; const k = t.dataset.rw; if (k === "mode") l3rwSet("mode", t.value); else if (k === "h") l3rwSet("h", Number(String(t.value).replace(",", ".")) || 0); else if (k === "col") l3rwSet("col", t.value); else if (k === "op") l3rwSet("op", Number(t.value)); else if (k === "fx") l3rwSet("fx", !!t.checked); if (k === "mode") { const o = p.querySelector(".v3-rw"); if (o) o.remove(); l3wCtlPanel(); } l3wApply(); l3Render(); };
+      p.addEventListener("change", h); p.addEventListener("input", e => { if (e.target.dataset && (e.target.dataset.rw === "op" || e.target.dataset.rw === "col")) h(e); });
+    }
+    return r;
+  };
+  l3wCtlPanel.__rw = true;
+})();
