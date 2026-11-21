@@ -11,7 +11,8 @@ const L3MX_DEF = {
   point: { x: 1, y: 1, z: 1 },
   area: { area: 1, perim: 0 },
   poly: { seg: 1 },
-  laser: { n: 1, u: 1, v: 1, back: 0, max: 60 },
+  laser: { u: 1, v: 1, n: 1, nbr: 0, max: 60 },
+  ytvol: { area: 1, holes: 1, vol: 1, cube: 1, outline: 1 },
   prof: { grid: 1, coord: 1, slope: 1, snap: 1 },
 };
 function l3mxCfg() {
@@ -80,7 +81,8 @@ const L3MX_GROUPS = [
   ["point", "Punkt", [["x", "X"], ["y", "Y"], ["z", "Z"]]],
   ["area", "Yta", [["area", "m²"], ["perim", "Omkrets"]]],
   ["poly", "Polylinje", [["seg", "Delsträckor"]]],
-  ["laser", "3-axlig laser", [["n", "Normal"], ["u", "Axel 1"], ["v", "Axel 2"], ["back", "Inåt"]]],
+  ["laser", "3-axlig laser", [["u", "Axel 1"], ["v", "Axel 2"], ["n", "Djup"], ["nbr", "Grannar"]]],
+  ["ytvol", "Yta & volym", [["area", "Yta"], ["holes", "Hål"], ["vol", "Volym"], ["cube", "Kub"], ["outline", "Kontur"]]],
   ["prof", "Profil", [["grid", "Rutnät"], ["coord", "Koordinater"], ["slope", "Lutning"], ["snap", "Fäst mot linje"]]],
 ];
 function l3mxPanel() {
@@ -96,9 +98,9 @@ function l3mxPanel() {
 }
 
 /* ---- Hjälptext överst (som i förebilden) ---- */
-const L3MX_HINT = { laser: "Mät avstånd till närmaste ytor i tre riktningar från en punkt (ytans normal och de två axlarna i ytan). Håll över ytan för förhandsvisning, tryck för att lägga ut, högerklicka för att avsluta.", profile: "Rita en linje i vyn: tryck första och andra punkten. Profilen visar ett snitt genom allt som är tänt i modellen. Högerklicka för att avsluta." };
+const L3MX_HINT = { laser: "Mät från en punkt längs objektets egna axlar: avstånd till ytans kanter i två riktningar och djupet rakt in. Håll över ytan för förhandsvisning, tryck för att lägga ut, högerklicka för att avsluta.", surfvol: "Tryck på en yta: ytans area med håltagningar, objektets volym och kubens volym (längd × bredd × höjd). Högerklicka för att avsluta.", profile: "Rita en linje i vyn: tryck första och andra punkten. Profilen visar ett snitt genom allt som är tänt i modellen. Högerklicka för att avsluta." };
 function l3mxHintSync() {
-  if (typeof L3_MEAS_START !== "undefined" && !L3_MEAS_START.laser) { L3_MEAS_START.laser = "3-axlig laser: håll över en yta så visas avståndet till närmaste ytor i tre riktningar. Tryck för att lägga ut."; L3_MEAS_START.profile = "Profil: tryck första punkten på linjen."; }
+  if (typeof L3_MEAS_START !== "undefined" && !L3_MEAS_START.laser) { L3_MEAS_START.laser = "3-axlig laser: håll över en yta så visas avståndet till närmaste ytor i tre riktningar. Tryck för att lägga ut."; L3_MEAS_START.profile = "Profil: tryck första punkten på linjen."; L3_MEAS_START.surfvol = "Yta & volym: tryck på en yta så visas ytan med håltagningar, volymen och kuben."; }
   const host = document.getElementById("v3Canvas"); if (!host) return;
   const mode = l3.tool === "measure" ? (l3Prefs().measure || "dist") : "", txt = L3MX_HINT[mode];
   if (!txt) { if (l3mx.hint) l3mx.hint.style.display = "none"; return; }
@@ -106,32 +108,54 @@ function l3mxHintSync() {
   l3mx.hint.textContent = txt; l3mx.hint.style.display = "block";
 }
 
-/* ---- 3-axlig laser ---- */
+/* ---- Objektets egna axlar (för 3-axlig laser och Yta & volym) ---- */
 const l3mxHit = e => { const hs = typeof l3Ray === "function" ? l3Ray(e, l3Surfaces()) : []; return hs.find(x => x.face && x.object.isMesh) || null; };
 function l3mxRay(from, dir, max) {
   const rc = new THREE.Raycaster(from, dir, 0, max), cl = l3.renderer.clippingPlanes; rc.firstHitOnly = !(cl && cl.length);
   return rc.intersectObjects(l3Surfaces(), true).find(h => h.object.visible && !h.object.userData.noHit && h.object.type !== "LineSegments" && h.object.type !== "Line" && (typeof l3VisibleChain !== "function" || l3VisibleChain(h.object)) && (typeof l3NotClipped !== "function" || l3NotClipped(h.point))) || null;
 }
-function l3mxLaserAt(e) {
-  const h = l3mxHit(e); if (!h) return null;
-  const mesh = h.object.userData && h.object.userData.l3bMain ? h.object.userData.l3bMain : h.object;
-  const P = h.point.clone(), n = h.face.normal.clone().transformDirection(mesh.matrixWorld).normalize();
+/* Ramen för ytan man tryckte på, i OBJEKTETS egna riktningar: n = ytans normal (utåt), u/v = ytans kanter (lodräta ytor: vågrätt och lodrätt; vågräta ytor: minsta låda runt ytan, så att
+   axlarna följer objektets sidor även när objektet är vridet). Samma ram som Smart mått. */
+function l3mxFrame(h) {
+  if (typeof l3SmartGeom !== "function") return null;
+  const g = l3SmartGeom(h); if (!g || g.V.length < 3) return null;
+  const mesh = h.object.userData && h.object.userData.l3bMain ? h.object.userData.l3bMain : h.object, P = h.point.clone(), n = h.face.normal.clone().transformDirection(mesh.matrixWorld).normalize();
+  if (g.placeId && typeof placements !== "undefined") { // flerdelat etableringsobjekt: närmaste egen axel (vridningen)
+    const pl = placements.find(x => x.id === g.placeId), rot = ((pl && Number(pl.rot)) || 0) * Math.PI / 180, ax = [new THREE.Vector3(Math.cos(rot), Math.sin(rot), 0), new THREE.Vector3(-Math.sin(rot), Math.cos(rot), 0), new THREE.Vector3(0, 0, 1)];
+    let bd = 0, bn = null; ax.forEach(a => { const d = n.dot(a); if (Math.abs(d) > Math.abs(bd)) { bd = d; bn = a.clone().multiplyScalar(Math.sign(d) || 1); } }); if (bn) n.copy(bn);
+  }
   if (n.dot(l3.camera.position.clone().sub(P)) < 0) n.negate();
-  const Z = new THREE.Vector3(0, 0, 1), horiz = Math.abs(n.z) > 0.95;
-  let u, v; if (!horiz) { u = Z.clone(); v = new THREE.Vector3().crossVectors(n, u).normalize(); } else { u = new THREE.Vector3(1, 0, 0); v = new THREE.Vector3(0, 1, 0); }
-  const C = l3mxCfg().laser, out = [], max = C.max, o = n.clone().multiplyScalar(0.008);
-  const add = (lbl, dir, from, grp) => { const r = l3mxRay(from, dir, max); if (r && r.distance > 0.01) out.push({ lbl, pt: r.point.clone(), d: r.distance, obj: r.object }); };
-  if (C.n) add("Ut", n, P.clone().add(o));
-  if (C.back) add("In", n.clone().negate(), P.clone().sub(o));
-  if (C.u) { add(horiz ? "X+" : "Upp", u, P.clone().add(o)); add(horiz ? "X−" : "Ner", u.clone().negate(), P.clone().add(o)); }
-  if (C.v) { add(horiz ? "Y+" : "Sida 1", v, P.clone().add(o)); add(horiz ? "Y−" : "Sida 2", v.clone().negate(), P.clone().add(o)); }
-  return { P, n, hits: out, obj: h.object };
+  let side = g.V.filter(v => Math.abs(v.clone().sub(P).dot(n)) < 0.015); if (side.length < 3 || g.placeId) side = g.V;
+  const Z = new THREE.Vector3(0, 0, 1), horiz = Math.abs(n.z) > 0.95; let u, v;
+  if (!horiz) { v = Z.clone().addScaledVector(n, -Z.dot(n)).normalize(); u = new THREE.Vector3().crossVectors(v, n).normalize(); }
+  else {
+    let best = null;
+    for (let a = 0; a < 180; a += 1.5) { const c = Math.cos(a * Math.PI / 180), s = Math.sin(a * Math.PI / 180); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; side.forEach(q => { const X = q.x * c + q.y * s, Y = -q.x * s + q.y * c; if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); const ar = (x1 - x0) * (y1 - y0); if (!best || ar < best.ar - 1e-9) best = { ar, c, s, w: x1 - x0, d: y1 - y0 }; }
+    u = new THREE.Vector3(best.c, best.s, 0); v = new THREE.Vector3(-best.s, best.c, 0); if (best.d > best.w) { const t = u; u = v; v = t; }
+  }
+  const ext = (pts, ax) => { let lo = 1e9, hi = -1e9; pts.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; };
+  const [u0, u1] = ext(side, u), [v0, v1] = ext(side, v), [n0, n1] = ext(g.V, n);
+  return { g, P, n, u, v, horiz, side, u0, u1, v0, v1, n0, n1, obj: h.object };
+}
+/* 3-axlig laser: från punkten längs objektets egna axlar till ytans kanter (±axel 1, ±axel 2) och rakt in genom objektet (djup). */
+function l3mxLaserAt(e) {
+  const h = l3mxHit(e); if (!h) return null; const F = l3mxFrame(h); if (!F) return null;
+  const C = l3mxCfg().laser, out = [], { P, n, u, v } = F, pu = P.dot(u), pv = P.dot(v), pn = P.dot(n);
+  const add = (lbl, dir, d, col) => { if (d > 0.005) out.push({ lbl, pt: P.clone().addScaledVector(dir, d), d, dir: dir.clone(), from: P.clone() }); };
+  if (C.u) { add("Axel 1 +", u, F.u1 - pu); add("Axel 1 −", u.clone().negate(), pu - F.u0); }
+  if (C.v) { add(F.horiz ? "Axel 2 +" : "Upp", v, F.v1 - pv); add(F.horiz ? "Axel 2 −" : "Ner", v.clone().negate(), pv - F.v0); }
+  if (C.n) add("Djup", n.clone().negate(), pn - F.n0);
+  if (C.nbr) { // avstånd till närmaste andra objekt i samma riktningar
+    const o = n.clone().multiplyScalar(0.008), dirs = [["→ granne 1", u], ["← granne 1", u.clone().negate()], ["→ granne 2", v], ["← granne 2", v.clone().negate()], ["Ut", n]];
+    dirs.forEach(([lbl, d]) => { const r = l3mxRay(P.clone().add(o), d, C.max); if (r && r.distance > 0.01 && !(F.g.mesh === (r.object.userData.l3bMain || r.object) && r.face && r.face.a >= F.g.lo && r.face.a < F.g.hi)) out.push({ lbl, pt: r.point.clone(), d: r.distance, dir: d.clone(), from: P.clone(), nbr: true }); });
+  }
+  return { P, n, hits: out, obj: h.object, F };
 }
 function l3mxLaserHover(e) {
   if (typeof l3mSegLabelsClear === "function") l3mSegLabelsClear("mx:live");
   const L = l3mxLaserAt(e); l3mx.lastLaser = L; if (!L) { l3ShowMarker(null); return; }
   const host = l3.renderer.domElement.parentElement; l3Dot(L.P, 0xfde047);
-  L.hits.forEach((h, i) => { l3TmpLine(L.P, h.pt, 0xfde047, false); l3Dot(h.pt, 0xfde047); const el = document.createElement("div"); el.className = "v3-meas v3-mx-lab"; el.textContent = `${l3mxF(h.d)} m`; host.appendChild(el); el._at = L.P.clone().lerp(h.pt, 0.5); l3m.labels.set(`mx:live:${i}`, el); });
+  L.hits.forEach((h, i) => { l3TmpLine(L.P, h.pt, h.nbr ? 0x38bdf8 : 0xfde047, h.nbr); l3Dot(h.pt, h.nbr ? 0x38bdf8 : 0xfde047); const el = document.createElement("div"); el.className = "v3-meas v3-mx-lab"; el.textContent = `${l3mxF(h.d)} m`; host.appendChild(el); el._at = L.P.clone().lerp(h.pt, 0.5); l3m.labels.set(`mx:live:${i}`, el); });
   if (typeof l3mPlaceLabels === "function") l3mPlaceLabels();
 }
 function l3mxLaserClick(e) {
@@ -140,7 +164,52 @@ function l3mxLaserClick(e) {
   const obj = typeof l3mObjAt === "function" ? l3mObjAt(e) : null; l3mx.plain = true;
   try { L.hits.forEach(h => { const m = l3mAdd("dist", [L.P.clone(), h.pt.clone()], `${l3mxF(h.d)} m`, [obj, null]); m.note = h.lbl; m.showNote = false; }); } finally { l3mx.plain = false; }
   l3Clear(l3.groups.tmp); l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
-  l3Status(`3-axlig laser: ${L.hits.length} mått utlagda. Tryck på nästa punkt, högerklicka för att avsluta.`); l3Render();
+  l3Status(`3-axlig laser: ${L.hits.length} mått utlagda längs objektets axlar. Tryck på nästa punkt, högerklicka för att avsluta.`); l3Render();
+}
+
+/* ---- Yta & volym: ytan man tryckte på (med håltagningar) och objektets volym och kub ---- */
+function l3mxRegion(F) {
+  const { g, P, n, u, v } = F, V = g.V, tol = 0.012, key = q => `${Math.round(q.x * 1000)},${Math.round(q.y * 1000)},${Math.round(q.z * 1000)}`, cand = [];
+  g.tris.forEach((t, i) => { const a = V[t[0]], b = V[t[1]], c = V[t[2]]; if (Math.abs(a.clone().sub(P).dot(n)) > tol || Math.abs(b.clone().sub(P).dot(n)) > tol || Math.abs(c.clone().sub(P).dot(n)) > tol) return; const nn = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)), l = nn.length(); if (l < 1e-12 || Math.abs(nn.dot(n)) / l < 0.999) return; cand.push({ i, t, area: l / 2, k: t.map(j => key(V[j])) }); });
+  if (!cand.length) return null;
+  // triangeln under tryckpunkten (annars närmaste)
+  const inside = c => { const [a, b, d] = c.t.map(j => V[j]), ab = b.clone().sub(a), ac = d.clone().sub(a), ap = P.clone().sub(a), d00 = ab.dot(ab), d01 = ab.dot(ac), d11 = ac.dot(ac), d20 = ap.dot(ab), d21 = ap.dot(ac), den = d00 * d11 - d01 * d01 || 1e-12, vv = (d11 * d20 - d01 * d21) / den, ww = (d00 * d21 - d01 * d20) / den; return vv >= -1e-6 && ww >= -1e-6 && vv + ww <= 1 + 1e-6; };
+  let start = cand.find(inside); if (!start) { let bd = 1e18; cand.forEach(c => { const m = c.t.reduce((s2, j) => s2.add(V[j]), new THREE.Vector3()).multiplyScalar(1 / 3), d = m.distanceToSquared(P); if (d < bd) { bd = d; start = c; } }); }
+  const byEdge = new Map(), ek = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+  cand.forEach(c => { for (let e = 0; e < 3; e++) { const k = ek(c.k[e], c.k[(e + 1) % 3]); (byEdge.get(k) || byEdge.set(k, []).get(k)).push(c); } });
+  const seen = new Set([start]), q = [start];
+  while (q.length) { const c = q.pop(); for (let e = 0; e < 3; e++) (byEdge.get(ek(c.k[e], c.k[(e + 1) % 3])) || []).forEach(o => { if (!seen.has(o)) { seen.add(o); q.push(o); } }); }
+  const region = [...seen], net = region.reduce((s2, c) => s2 + c.area, 0), cnt = new Map();
+  region.forEach(c => { for (let e = 0; e < 3; e++) { const a = c.k[e], b = c.k[(e + 1) % 3], k = ek(a, b), r = cnt.get(k) || { n: 0, a, b, pa: V[c.t[e]], pb: V[c.t[(e + 1) % 3]] }; r.n++; cnt.set(k, r); } });
+  const bnd = [...cnt.values()].filter(r => r.n === 1), next = new Map(); bnd.forEach(r => { (next.get(r.a) || next.set(r.a, []).get(r.a)).push(r); });
+  const loops = [], used = new Set();
+  bnd.forEach(r0 => { if (used.has(r0)) return; const pts = []; let r = r0, guard = 0; while (r && !used.has(r) && guard++ < 100000) { used.add(r); pts.push(r.pa); r = (next.get(r.b) || []).find(x => !used.has(x)); } if (pts.length >= 3) loops.push(pts); });
+  const la = pts => { let s2 = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; s2 += (a.dot(u) * b.dot(v) - b.dot(u) * a.dot(v)); } return Math.abs(s2) / 2; };
+  const areas = loops.map(la), oi = areas.indexOf(Math.max(...areas)), gross = areas[oi] || net, holes = loops.filter((_, i) => i !== oi), holeA = holes.reduce((s2, h2) => s2 + la(h2), 0);
+  return { net, gross, outer: loops[oi] || [], holes, holeA, tris: region.length };
+}
+function l3mxSurfVolClick(e) {
+  const h = l3mxHit(e); if (!h) { l3Status("Yta & volym: tryck på en yta i modellen.", true); return; }
+  const F = l3mxFrame(h); if (!F) { l3Status("Yta & volym: det går inte att läsa objektets form.", true); return; }
+  const C = l3mxCfg().ytvol, { g, P } = F, f = x => l3Fmt(x, 2), lines = [];
+  const W = F.u1 - F.u0, H = F.v1 - F.v0, D = F.n1 - F.n0, boxVol = W * H * D;
+  let vol = 0; g.tris.forEach(([a, b, c]) => { const A = g.V[a].clone().sub(P), B = g.V[b].clone().sub(P), Cc = g.V[c].clone().sub(P); vol += A.dot(B.clone().cross(Cc)) / 6; }); vol = Math.abs(vol);
+  let how = "ur objektets form (med håltagningar)"; if (!(vol > 1e-6) || vol > boxVol * 1.02 + 1e-6) { vol = boxVol; how = "kuben (formen är inte sluten)"; }
+  const R = (C.area || C.holes || C.outline) ? l3mxRegion(F) : null, obj = typeof l3mObjAt === "function" ? l3mObjAt(e) : null;
+  l3mx.plain = true;
+  try {
+    if (typeof l3ClearMeasure === "function") l3ClearMeasure();
+    if (R && C.outline && R.outer.length >= 3) { const step = Math.max(1, Math.ceil(R.outer.length / 60)), pts = R.outer.filter((_, i) => i % step === 0).map(q => q.clone()); const m = l3mAdd("area", pts, `${f(R.net)} m²`, pts.map(() => obj)); m.note = R.holes.length ? `netto, ${R.holes.length} håltagning${R.holes.length > 1 ? "ar" : ""} ${f(R.holeA)} m²` : "netto"; m.showNote = true; }
+    const parts = [];
+    if (R && C.area) parts.push(`Yta ${f(R.net)} m²${R.holes.length && C.holes ? ` (brutto ${f(R.gross)} m², hål ${R.holes.length} st ${f(R.holeA)} m²)` : ""}`);
+    else if (R && C.holes && R.holes.length) parts.push(`Hål ${R.holes.length} st ${f(R.holeA)} m²`);
+    if (C.vol) parts.push(`Volym ${l3Fmt(vol, 3)} m³`);
+    if (C.cube) parts.push(`Kub ${f(W)} × ${f(H)} × ${f(D)} m = ${l3Fmt(boxVol, 3)} m³`);
+    const m3 = l3mAdd("objvol", [P.clone()], parts.join(" · ") || "—", [obj]); // hela sammanfattningen i etiketten (punktetiketter visar inte kommentaren)
+    m3.dims = [W, H, D].map(x => Math.round(x * 1000) / 1000); m3.how = how; lines.push(...parts);
+  } finally { l3mx.plain = false; }
+  l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
+  l3Status(`${lines.join(" · ") || "Yta & volym"} (${how}). Tryck på nästa yta.`); l3Render();
 }
 
 /* ---- Profil ---- */
@@ -280,12 +349,14 @@ function l3mxProfileClick(e) {
 function l3mxHover(e) {
   if (l3.tool !== "measure") return false; const mode = l3Prefs().measure;
   if (mode === "laser") { l3mxLaserHover(e); return true; }
+  if (mode === "surfvol") { l3ShowMarker(null); return true; }
   if (mode === "profile") { l3mxProfileHover(e); return true; }
   return false;
 }
 function l3mxClick(e) {
   if (l3.tool !== "measure") return false; const mode = l3Prefs().measure;
   if (mode === "laser") { l3mxLaserClick(e); return true; }
+  if (mode === "surfvol") { l3mxSurfVolClick(e); return true; }
   if (mode === "profile") { l3mxProfileClick(e); return true; }
   return false;
 }

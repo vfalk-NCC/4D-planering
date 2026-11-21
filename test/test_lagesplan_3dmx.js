@@ -58,9 +58,31 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3m.list.length = 0; l3SmartMeasure(ev); return { n: l3m.list.length, notes: l3m.list.map(m => m.note || m.kind) };
   });
   ok(sm.n === 2, 'Smart mått med bara bredd och höjd ger två mått: ' + JSON.stringify(sm));
-  // 4) 3-axlig laser: live-träffar i tre riktningar
-  const lz = await page.evaluate(() => { ['n', 'u', 'v'].forEach(k => l3mxSet('laser', k, 1)); const g = l3.placeMeshes.get('b1'), cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), q = l3ToScreen(g.position.clone().add(new THREE.Vector3(0, -1.5, 1.3))); const ev = { clientX: r.left + q.x, clientY: r.top + q.y }; const L = l3mxLaserAt(ev); return L ? { n: L.hits.length, lbl: L.hits.map(h => h.lbl).join(), d: L.hits.map(h => Math.round(h.d * 100) / 100).join() } : null; });
-  ok(lz && lz.n >= 1, '3-axlig laser ger träffar: ' + JSON.stringify(lz));
+  // 4) 3-axlig laser längs objektets egna axlar (objektet är vridet 30°, så världens X/Y ska inte användas)
+  const lz = await page.evaluate(async () => {
+    ['u', 'v', 'n'].forEach(k => l3mxSet('laser', k, 1)); l3mxSet('laser', 'nbr', 0);
+    const p = placements.find(x => x.id === 'b1'); p.rot = 30; l3RebuildOne(p); l3Render();
+    const g = l3.placeMeshes.get('b1'); l3FlyTo(g.position.clone().add(new THREE.Vector3(0, 0, 1)), 20, new THREE.Vector3(0.0001, -0.0001, 1), 0); l3Render(); await new Promise(r => setTimeout(r, 400));
+    const cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), q = l3ToScreen(g.position.clone().add(new THREE.Vector3(0.5, 0.2, 2.7)));
+    const L = l3mxLaserAt({ clientX: r.left + q.x, clientY: r.top + q.y }); if (!L) return null;
+    const ang = 30 * Math.PI / 180, ax = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0), ay = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
+    return { n: L.hits.length, lbl: L.hits.map(h => h.lbl), along: L.hits.filter(h => /Axel/.test(h.lbl)).map(h => Math.round(Math.max(Math.abs(h.dir.dot(ax)), Math.abs(h.dir.dot(ay))) * 1000) / 1000), d: L.hits.map(h => Math.round(h.d * 100) / 100) };
+  });
+  ok(lz && lz.n >= 5 && lz.along.length === 4 && lz.along.every(v => v > 0.99), 'Lasern följer objektets axlar (30°): ' + JSON.stringify(lz));
+  // 4b) Yta med håltagning: nettoyta, brutto och hål (syntetiskt nät med ett hål)
+  const rg = await page.evaluate(() => { const V = [], tris = [], id = (x, y) => y * 5 + x; for (let y = 0; y <= 3; y++) for (let x = 0; x <= 4; x++) V.push(new THREE.Vector3(x, y, 0)); for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) { if (x === 1 && y === 1) continue; tris.push([id(x, y), id(x + 1, y), id(x + 1, y + 1)], [id(x, y), id(x + 1, y + 1), id(x, y + 1)]); }
+    const R = l3mxRegion({ g: { V, tris }, P: new THREE.Vector3(0.3, 0.2, 0), n: new THREE.Vector3(0, 0, 1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) }); return R && { net: R.net, gross: R.gross, holes: R.holes.length, holeA: R.holeA }; });
+  ok(rg && Math.abs(rg.net - 11) < 1e-6 && Math.abs(rg.gross - 12) < 1e-6 && rg.holes === 1 && Math.abs(rg.holeA - 1) < 1e-6, 'Nettoyta med håltagning: ' + JSON.stringify(rg));
+  // 4c) Yta & volym på riktigt objekt: mått med volym, kub och yta
+  const sv = await page.evaluate(async () => {
+    ['area', 'holes', 'vol', 'cube', 'outline'].forEach(k => l3mxSet('ytvol', k, 1));
+    const g = l3.placeMeshes.get('b1'), cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), q = l3ToScreen(g.position.clone().add(new THREE.Vector3(0.5, 0.2, 2.7)));
+    l3m.list.length = 0; l3mxSurfVolClick({ clientX: r.left + q.x, clientY: r.top + q.y }); const ov = l3m.list.find(m => m.kind === 'objvol'); return { n: l3m.list.length, note: ov && ov.text, text: ov && ov.text, kinds: l3m.list.map(m => m.kind).join() };
+  });
+  ok(sv.n >= 2 && /Kub/.test(sv.note) && /Volym/.test(sv.note) && /Yta/.test(sv.note) && /m³/.test(sv.text), 'Yta & volym: ' + JSON.stringify(sv));
+  // utan kub/volym i valen
+  const sv2 = await page.evaluate(() => { ['vol', 'cube', 'outline'].forEach(k => l3mxSet('ytvol', k, 0)); const g = l3.placeMeshes.get('b1'), cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), q = l3ToScreen(g.position.clone().add(new THREE.Vector3(0.5, 0.2, 2.7))); l3m.list.length = 0; l3mxSurfVolClick({ clientX: r.left + q.x, clientY: r.top + q.y }); const ov = l3m.list.find(m => m.kind === 'objvol'); return { n: l3m.list.length, note: ov && ov.text }; });
+  ok(sv2.n === 1 && !/Kub|Volym/.test(sv2.note || ''), 'Valen styr Yta & volym: ' + JSON.stringify(sv2));
   // 5) Profil: snitt genom allt som är tänt
   const pr = await page.evaluate(() => { const g = l3.placeMeshes.get('b1'), A = g.position.clone().add(new THREE.Vector3(-10, 0, 1)), B = g.position.clone().add(new THREE.Vector3(22, 0, 1)); l3mxProfileOpen(A, B); const P = l3mx.prof; return P ? { names: P.sec.series.map(s => s.name), n: P.sec.series.map(s => s.n), L: Math.round(P.sec.L * 10) / 10 } : null; });
   ok(pr && pr.names.includes('Etablering') && pr.L === 32 && pr.n[0] >= 8, 'Profil genom etableringsobjekten: ' + JSON.stringify(pr));
