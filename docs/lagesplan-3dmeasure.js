@@ -120,7 +120,8 @@ function l3mDraw() {
     if (m.kind === "cutfill") { const G = l3vol.geoms.get(m); if (!G) l3volEnsure(m); l3volDrawInto(grp, host, m, P, G); }
     const pts = new THREE.Points(new THREE.BufferGeometry().setFromPoints(P), new THREE.PointsMaterial({ color: col, size: 6, sizeAttenuation: false, depthTest: false }));
     pts.renderOrder = 11; pts.userData.noHit = true; pts.raycast = () => {}; grp.add(pts);
-    if (m.kind === "poly" && P.length >= 3) l3mSegLabels(P, m.id + ":seg", m.saved);
+    if (typeof l3mxDraw === "function") l3mxDraw(m, P, grp);
+    if (m.kind === "poly" && P.length >= 3 && (typeof l3mxCfg !== "function" || l3mxCfg().poly.seg)) l3mSegLabels(P, m.id + ":seg", m.saved);
     const at = (m.kind === "point" || m.kind === "objvol") ? P[0].clone() : m.kind === "volume" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length).add(new THREE.Vector3(0, 0, (Number(m.h) || 0) / 2)) : m.kind === "poly" ? l3mPathMid(D) : m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
     if (m.kind === "cutfill") { const r0 = m.vol && m.vol.res, zt = Math.max(...P.map(p => p.z)) + (r0 ? r0.tmax : 0) + 1.2; at.copy(P.reduce((s2, p) => s2.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length)); at.z = zt; } // samlad text ovanför kropparna
     const el = document.createElement("div");
@@ -348,7 +349,7 @@ function l3mToggle(on) { const show = on === undefined ? l3mAllHidden() : !!on; 
    "Måtten tycker jag att ni kan lägga in under kommentarer"). */
 function l3mBarHtml() {
   const n = l3m.list.length, uns = l3m.list.filter(x => !x.saved).length;
-  return `<span class="v3-snapbar-sep"></span><button type="button" id="v3MeasBtn" title="Måtten som ligger kvar – visas under fliken Kommentarer (ta bort, dölj, spara, detaljer)">Mått ${n}${uns ? ` <em>${uns} osparade</em>` : ""} ›</button>`;
+  return `<span class="v3-snapbar-sep"></span><button type="button" id="v3MeasBtn" title="Måtten som ligger kvar – visas under fliken Kommentarer (ta bort, dölj, spara, detaljer)">Mått ${n}${uns ? ` <em>${uns} osparade</em>` : ""} ›</button><button type="button" id="v3MxBtn" title="Välj vilka mått som visas för varje verktyg">⚙ Visa</button>`;
 }
 function l3mRenderBar() { if (typeof l3RenderSnapBar === "function") l3RenderSnapBar(); if (typeof l3LayersRender === "function") l3LayersRender(); if (typeof l3kRenderTab === "function") l3kRenderTab(); }
 function l3mShowInTab() {
@@ -361,6 +362,7 @@ function l3mShowInTab() {
 function l3mBindBar(bar) {
   const b = bar.querySelector("#v3MeasBtn");
   if (b) b.onclick = e => { e.stopPropagation(); l3mShowInTab(); };
+  const mx = bar.querySelector("#v3MxBtn"); if (mx) mx.onclick = e => { e.stopPropagation(); if (typeof l3mxPanel === "function") l3mxPanel(); };
 }
 
 /* Vilket objekt en mätpunkt ligger på (från tryckets träff i 3D). */
@@ -822,10 +824,13 @@ function l3SmartMeasure(e) {
   const obj = typeof l3mObjAt === "function" ? l3mObjAt(e) : null, f = x => l3Fmt(x, 2), nm = [obj && obj.name, g.name].find(Boolean) || "objektet";
   const wl = horiz ? "Längd" : "Bredd", hl = horiz ? "Bredd" : "Höjd";
   if (typeof l3ClearMeasure === "function") l3ClearMeasure();
-  const m1 = l3mAdd("dist", [A1, A2], `${f(W)} m`, [obj, obj]), m2 = l3mAdd("dist", [B1, B2], `${f(H)} m`, [obj, obj]), m3 = l3mAdd("objvol", [P.clone()], `${l3Fmt(vol, 3)} m³`, [obj]);
-  m1.note = wl; m1.showNote = true; m2.note = hl; m2.showNote = true;
+  const SC = typeof l3mxCfg === "function" ? l3mxCfg().smart : { w: 1, h: 1, d: 1, vol: 1, up: 1, down: 1, left: 1, right: 1, out: 1 }; // vilka mått som ska läggas ut (Mått som visas)
+  if (typeof l3mx !== "undefined") l3mx.plain = true;
+  const m1 = SC.w ? l3mAdd("dist", [A1, A2], `${f(W)} m`, [obj, obj]) : null, m2 = SC.h ? l3mAdd("dist", [B1, B2], `${f(H)} m`, [obj, obj]) : null, m3 = SC.vol ? l3mAdd("objvol", [P.clone()], `${l3Fmt(vol, 3)} m³`, [obj]) : null;
+  if (m1) { m1.note = wl; m1.showNote = true; } if (m2) { m2.note = hl; m2.showNote = true; }
   // Fri höjd upp och ner från tryckpunkten till närmaste andra objekt (Victor 2026-10-13: "mått enligt grön och gul pil").
   [["Upp", 1], ["Ner", -1]].forEach(([lbl, sgn]) => {
+    if (!(sgn > 0 ? SC.up : SC.down)) return;
     const from = P.clone().add(new THREE.Vector3(0, 0, 0.01 * sgn)), h2 = l3SmartRay(from, new THREE.Vector3(0, 0, sgn), g);
     if (!h2 || h2.distance < 0.03) return;
     const mm = l3mAdd("dist", [P.clone(), h2.point.clone()], `${f(h2.distance + 0.01)} m`, [obj, null]); mm.note = `${lbl} till närmaste objekt`; mm.showNote = true;
@@ -836,12 +841,14 @@ function l3SmartMeasure(e) {
     const cr = new THREE.Vector3(1, 0, 0).applyQuaternion(l3.camera.quaternion), ur = u.dot(cr) >= 0 ? u : u.clone().negate(), lt = ur.clone().negate();
     const nOut = n.dot(l3.camera.position.clone().sub(P)) >= 0 ? n.clone() : n.clone().negate();
     [["Höger", ur], ["Vänster", lt], ["Ut från ytan", nOut]].forEach(([lbl, dir]) => {
+      if (!(lbl === "Höger" ? SC.right : lbl === "Vänster" ? SC.left : SC.out)) return;
       const from = P.clone().addScaledVector(nOut, lbl === "Ut från ytan" ? 0.01 : -0.01), h2 = l3SmartRay(from, dir.clone().normalize(), g);   // sidled: strax innanför ytan, så att grannen i samma plan träffas
       if (!h2 || h2.distance < 0.03) return;
       const mm = l3mAdd("dist", [P.clone(), h2.point.clone()], `${f(h2.distance + 0.01)} m`, [obj, null]); mm.note = `${lbl} till närmaste objekt`; mm.showNote = true;
     });
   }
-  m3.dims = [W, H, D].map(x => Math.round(x * 1000) / 1000); m3.note = `${f(W)} × ${f(H)} × ${f(D)} m`; m3.showNote = true; m3.how = how;
+  if (m3) { m3.dims = [W, H, D].map(x => Math.round(x * 1000) / 1000); const dn = [SC.w && f(W), SC.h && f(H), SC.d && f(D)].filter(Boolean); m3.note = dn.length ? `${dn.join(" × ")} m` : ""; m3.showNote = !!dn.length; m3.how = how; }
+  if (typeof l3mx !== "undefined") l3mx.plain = false;
   l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
   l3Status(`Smart mått på ${nm}: ${wl.toLowerCase()} ${f(W)} m · ${hl.toLowerCase()} ${f(H)} m · djup ${f(D)} m · volym ${l3Fmt(vol, 3)} m³ (${how}). Kryssa bort ett mått med × efter måttet. Tryck på nästa objekt.`);
   l3Render();

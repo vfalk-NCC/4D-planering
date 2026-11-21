@@ -47,7 +47,7 @@ function l3RenderSnapBar() {
   }
   const tool = (l3.tool === "move" ? `<label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : "")
     + (l3.tool === "draw" || l3.tool === "model" ? l3dwBarHtml() : "")
-    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["quick", "Snabbmått"], ["slope", "Lutning"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"], ["road", "Byggväg"], ["wall", "Stödmur"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${m === "wall" && !(typeof l3sw !== "undefined" && l3sw.cur) ? `<button type="button" id="v3SwPaste" class="v3-ghost" title="Skriv eller klistra in X Y Z – pålarna placeras i koordinaterna">⎘ Klistra in pålkoordinater…</button>` : ""}${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
+    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["laser", "3-axlig laser"], ["profile", "Profil"], ["point", "Punkt"], ["dist", "Avstånd"], ["quick", "Snabbmått"], ["slope", "Lutning"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"], ["road", "Byggväg"], ["wall", "Stödmur"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${m === "wall" && !(typeof l3sw !== "undefined" && l3sw.cur) ? `<button type="button" id="v3SwPaste" class="v3-ghost" title="Skriv eller klistra in X Y Z – pålarna placeras i koordinaterna">⎘ Klistra in pålkoordinater…</button>` : ""}${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
   bar.innerHTML = tool; if (typeof l3dwBarBind === "function") l3dwBarBind(bar); bar.style.display = tool ? "" : "none"; host.style.setProperty("--v3-tb", tool ? Math.round(bar.offsetHeight + 8) + "px" : "0px"); // Originalvy/Layout-banner ligger under mätfältet
   if (typeof l3mBindBar === "function") l3mBindBar(bar); if (tool) requestAnimationFrame(() => host.style.setProperty("--v3-tb", Math.round(bar.offsetHeight + 8) + "px"));
   if (pop) pop.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
@@ -412,6 +412,7 @@ function l3ToolHover(e) {
   l3Clear(l3.groups.tmp);
   if (typeof l3dwOn === "function" && l3dwOn() && l3dwHover(e)) { l3Render(); return; } // Rita / Modellera
   if (typeof l3dToolHover === "function" && l3dToolHover(e)) { l3Render(); return; }
+  if (typeof l3mxHover === "function" && l3mxHover(e)) { l3Render(); return; } // 3-axlig laser och Profil
   const t = l3.tool, st = l3t.step;
   if (l3.addType || l3.vPick || l3.clipPick) { l3ShowMarker(l3Snap(e)); l3Render(); return; }
   if (l3.dlgPick) {
@@ -511,6 +512,7 @@ function l3ToolTap(e) {
   const t = l3.tool, st = l3t.step;
   // Volym: höjden från en yta i modellen (efter att basytan ritats).
   if (t === "measure" && l3t.volPick) { const s = l3Snap(e); if (s) l3VolFinish(l3t.volPick, s.point.z - l3t.volPick.z0, true); return true; }
+  if (typeof l3mxClick === "function" && l3mxClick(e)) return true; // 3-axlig laser och Profil
   // Smart (Victor 2026-10-13): bredd, höjd och volym på objektet med ett tryck.
   if (t === "measure" && l3Prefs().measure === "smart") { if (typeof l3SmartMeasure === "function") l3SmartMeasure(e); return true; }
   // Punkt (Victor 2026-10-10: "alternativet Punkt som ger mig xyz").
