@@ -170,7 +170,7 @@ function l3mxLaserClick(e) {
   const obj = typeof l3mObjAt === "function" ? l3mObjAt(e) : null; l3mx.plain = true;
   try { L.hits.forEach(h => { const m = l3mAdd("dist", [(h.from || L.P).clone(), h.pt.clone()], `${l3mxF(h.d)} m`, [obj, null]); m.note = h.lbl; m.showNote = false; }); } finally { l3mx.plain = false; }
   l3Clear(l3.groups.tmp); l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
-  if (L.corner) { l3mxSurfVolClick(e); return; } // hörn: ge även yta och volym
+  l3mxSurfVolClick(e, true); return; // Smartmått ger alltid även yta och volym (valen under Mått som visas → Yta & volym)
   l3Status(`Smartmått: ${L.hits.length} mått utlagda längs objektets axlar. Tryck på nästa punkt, högerklicka för att avsluta.`); l3Render();
 }
 
@@ -195,7 +195,7 @@ function l3mxRegion(F) {
   const areas = loops.map(la), oi = areas.indexOf(Math.max(...areas)), gross = areas[oi] || net, holes = loops.filter((_, i) => i !== oi), holeA = holes.reduce((s2, h2) => s2 + la(h2), 0);
   return { net, gross, outer: loops[oi] || [], holes, holeA, tris: region.length };
 }
-function l3mxSurfVolClick(e) {
+function l3mxSurfVolClick(e, keep) {
   const h = l3mxHit(e); if (!h) { l3Status("Yta & volym: tryck på en yta i modellen.", true); return; }
   const F = l3mxFrame(h); if (!F) { l3Status("Yta & volym: det går inte att läsa objektets form.", true); return; }
   const C = l3mxCfg().ytvol, { g, P } = F, f = x => l3Fmt(x, 2), lines = [];
@@ -205,7 +205,7 @@ function l3mxSurfVolClick(e) {
   const R = (C.area || C.holes || C.outline) ? l3mxRegion(F) : null, obj = typeof l3mObjAt === "function" ? l3mObjAt(e) : null;
   l3mx.plain = true;
   try {
-    if (typeof l3ClearMeasure === "function") l3ClearMeasure();
+    if (!keep && typeof l3ClearMeasure === "function") l3ClearMeasure();
     if (R && C.outline && R.outer.length >= 3) { const step = Math.max(1, Math.ceil(R.outer.length / 60)), pts = R.outer.filter((_, i) => i % step === 0).map(q => q.clone()); const m = l3mAdd("area", pts, `${f(R.net)} m²`, pts.map(() => obj)); m.note = R.holes.length ? `netto, ${R.holes.length} håltagning${R.holes.length > 1 ? "ar" : ""} ${f(R.holeA)} m²` : "netto"; m.showNote = true; }
     const parts = [];
     if (R && C.area) parts.push(`Yta ${f(R.net)} m²${R.holes.length && C.holes ? ` (brutto ${f(R.gross)} m², hål ${R.holes.length} st ${f(R.holeA)} m²)` : ""}`);
