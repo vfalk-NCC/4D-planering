@@ -154,6 +154,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   p = await P('f');
   if (p.x !== 6512338 || p.y !== 150128 || p.pts[0][0] !== 6512338) fail('Första punkten: ' + JSON.stringify([p.x, p.y, p.pts[0]]));
 
+  // Tryck på en punkt (utan drag): flyttpilarna kommer fram på punkten; Z-flytt går rakt ner, x/y ligger kvar.
+  await page.evaluate(() => l3SelectIds(['f'])); await view(); await page.waitForTimeout(80);
+  const hp = await hd(1); await page.mouse.click(hp[0], hp[1]); await page.waitForTimeout(150);
+  const pg = await page.evaluate(() => ({ on: !!(l3pg.G && l3.gizmo.object === l3pg.G), i: l3pg.i }));
+  if (!pg.on || pg.i !== 1) fail('Punkten ska få flyttpilar: ' + JSON.stringify(pg));
+  const q1 = (await P('f')).pts[1].slice();
+  await page.evaluate(() => { l3.gizmo.dispatchEvent({ type: 'mouseDown' }); l3pg.G.position.z -= 1.5; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); });
+  await page.waitForTimeout(150);
+  p = await P('f');
+  if (Math.abs(p.pts[1][0] - q1[0]) > 1e-6 || Math.abs(p.pts[1][1] - q1[1]) > 1e-6 || Math.abs(p.pts[1][2] - (q1[2] - 1.5)) > 0.01) fail('Pilarna ska flytta punkten rakt ner: ' + JSON.stringify([q1, p.pts[1]]));
+  await page.keyboard.press('Escape'); await page.waitForTimeout(80);
+  if (await page.evaluate(() => l3pg.id)) fail('Esc ska ta bort pilarna');
   // Inga handtag i andra verktyg eller med flera markerade.
   await page.evaluate(() => { l3SelectIds(['a', 'c']); l3Render(); }); await page.waitForTimeout(80);
   if (await page.locator('.v3-hds .v3-hd').count()) fail('Inga handtag med flera markerade');
