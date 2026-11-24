@@ -145,6 +145,9 @@ function l3mxLaserAt(e) {
     F.side.forEach(q => { const w = q.clone().project(l3.camera), sx = (w.x * 0.5 + 0.5) * r.width + r.left, sy = (-w.y * 0.5 + 0.5) * r.height + r.top, d = Math.hypot(sx - e.clientX, sy - e.clientY); if (d < bd) { bd = d; bv = q; } });
     if (bv) { F.P.copy(bv); corner = true; }
   } catch (_) {}
+  try { // måtten gäller den sammanhängande plana ytan man pekar på (inte andra delar som råkar ligga i samma plan)
+    const R = l3mxRegion(F); if (R && R.outer.length >= 3) { const ex = ax => { let lo = 1e9, hi = -1e9; R.outer.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
+  } catch (_) {}
   const C = l3mxCfg().laser, out = [], { P, n, u, v } = F, pu = P.dot(u), pv = P.dot(v), pn = P.dot(n);
   const add = (lbl, dir, d, col) => { if (d > 0.005) out.push({ lbl, pt: P.clone().addScaledVector(dir, d), d, dir: dir.clone(), from: P.clone() }); };
   const span = (lbl, dir, lo, hi, p0) => { const a = P.clone().addScaledVector(dir, lo - p0), b = P.clone().addScaledVector(dir, hi - p0); if (hi - lo > 0.005) out.push({ lbl, pt: b, from: a, d: hi - lo, dir: dir.clone(), full: true }); }; // hela sträckan, inte från pekaren
