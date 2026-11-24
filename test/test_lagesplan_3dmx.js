@@ -66,9 +66,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), q = l3ToScreen(g.position.clone().add(new THREE.Vector3(0.5, 0.2, 2.7)));
     const L = l3mxLaserAt({ clientX: r.left + q.x, clientY: r.top + q.y }); if (!L) return null;
     const ang = 30 * Math.PI / 180, ax = new THREE.Vector3(Math.cos(ang), Math.sin(ang), 0), ay = new THREE.Vector3(-Math.sin(ang), Math.cos(ang), 0);
-    return { n: L.hits.length, lbl: L.hits.map(h => h.lbl), along: L.hits.filter(h => /Axel/.test(h.lbl)).map(h => Math.round(Math.max(Math.abs(h.dir.dot(ax)), Math.abs(h.dir.dot(ay))) * 1000) / 1000), d: L.hits.map(h => Math.round(h.d * 100) / 100) };
+    return { n: L.hits.length, lbl: L.hits.map(h => h.lbl), along: L.hits.filter(h => /Längd|Bredd/.test(h.lbl)).map(h => Math.round(Math.max(Math.abs(h.dir.dot(ax)), Math.abs(h.dir.dot(ay))) * 1000) / 1000), d: L.hits.map(h => Math.round(h.d * 100) / 100) };
   });
-  ok(lz && lz.n >= 5 && lz.along.length === 4 && lz.along.every(v => v > 0.99), 'Lasern följer objektets axlar (30°): ' + JSON.stringify(lz));
+  ok(lz && lz.n >= 3 && lz.along.length === 2 && lz.along.every(v => v > 0.99), 'Smartmått följer objektets axlar (30°): ' + JSON.stringify(lz));
   // 4b) Yta med håltagning: nettoyta, brutto och hål (syntetiskt nät med ett hål)
   const rg = await page.evaluate(() => { const V = [], tris = [], id = (x, y) => y * 5 + x; for (let y = 0; y <= 3; y++) for (let x = 0; x <= 4; x++) V.push(new THREE.Vector3(x, y, 0)); for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) { if (x === 1 && y === 1) continue; tris.push([id(x, y), id(x + 1, y), id(x + 1, y + 1)], [id(x, y), id(x + 1, y + 1), id(x, y + 1)]); }
     const R = l3mxRegion({ g: { V, tris }, P: new THREE.Vector3(0.3, 0.2, 0), n: new THREE.Vector3(0, 0, 1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) }); return R && { net: R.net, gross: R.gross, holes: R.holes.length, holeA: R.holeA }; });

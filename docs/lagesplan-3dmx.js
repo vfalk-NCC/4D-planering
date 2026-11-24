@@ -1,6 +1,6 @@
 /* Mått – inställningar, 3-axlig laser och profil (Victor 2026-11-21, efter videon med mätverktygen i ett annat program):
    1) "Mått som visas": för varje verktyg väljs vilka mått som skrivs ut, så att det inte alltid kommer alla (Smart mått, Avstånd, Punkt, Yta, Polylinje, Laser, Profil).
-   2) 3-axlig laser: över ytan visas live avståndet till närmaste ytor i tre riktningar (ytans normal och de två axlarna i ytan); tryck lägger ut dem som vanliga mått.
+   2) Smartmått: över ytan visas live avståndet till närmaste ytor i tre riktningar (ytans normal och de två axlarna i ytan); tryck lägger ut dem som vanliga mått.
    3) Profil: två punkter ger ett snitt genom ALLT som är tänt i modellen (IFC-modeller, etablering, terräng m.m.) som diagram i högermenyn, med mätning i diagrammet.
    Utseendet: gula linjer och gul text med mörk kant, grön streckad höjd, röda delmått, och en grå hjälptext överst – som i förebilden. */
 
@@ -81,7 +81,7 @@ const L3MX_GROUPS = [
   ["point", "Punkt", [["x", "X"], ["y", "Y"], ["z", "Z"]]],
   ["area", "Yta", [["area", "m²"], ["perim", "Omkrets"]]],
   ["poly", "Polylinje", [["seg", "Delsträckor"]]],
-  ["laser", "3-axlig laser", [["u", "Axel 1"], ["v", "Axel 2"], ["n", "Djup"], ["nbr", "Grannar"]]],
+  ["laser", "Smartmått – axlar", [["u", "Längd"], ["v", "Bredd/höjd"], ["n", "Djup (från punkten)"], ["nbr", "Grannar"]]],
   ["ytvol", "Yta & volym", [["area", "Yta"], ["holes", "Hål"], ["vol", "Volym"], ["cube", "Kub"], ["outline", "Kontur"]]],
   ["prof", "Profil", [["grid", "Rutnät"], ["coord", "Koordinater"], ["slope", "Lutning"], ["snap", "Fäst mot linje"]]],
 ];
@@ -100,7 +100,7 @@ function l3mxPanel() {
 /* ---- Hjälptext överst (som i förebilden) ---- */
 const L3MX_HINT = { laser: "Mät från en punkt längs objektets egna axlar: avstånd till ytans kanter i två riktningar och djupet rakt in. Håll över ytan för förhandsvisning, tryck för att lägga ut, högerklicka för att avsluta.", surfvol: "Tryck på en yta: ytans area med håltagningar, objektets volym och kubens volym (längd × bredd × höjd). Högerklicka för att avsluta.", profile: "Rita en linje i vyn: tryck första och andra punkten. Profilen visar ett snitt genom allt som är tänt i modellen. Högerklicka för att avsluta." };
 function l3mxHintSync() {
-  if (typeof L3_MEAS_START !== "undefined" && !L3_MEAS_START.laser) { L3_MEAS_START.laser = "3-axlig laser: håll över en yta så visas avståndet till närmaste ytor i tre riktningar. Tryck för att lägga ut."; L3_MEAS_START.profile = "Profil: tryck första punkten på linjen."; L3_MEAS_START.surfvol = "Yta & volym: tryck på en yta så visas ytan med håltagningar, volymen och kuben."; }
+  if (typeof L3_MEAS_START !== "undefined" && !L3_MEAS_START.laser) { L3_MEAS_START.laser = L3_MEAS_START.smart; L3_MEAS_START.profile = "Profil: tryck första punkten på linjen."; L3_MEAS_START.surfvol = "Yta & volym: tryck på en yta så visas ytan med håltagningar, volymen och kuben."; }
   const host = document.getElementById("v3Canvas"); if (!host) return;
   const mode = l3.tool === "measure" ? (l3Prefs().measure || "dist") : "", txt = L3MX_HINT[mode];
   if (!txt) { if (l3mx.hint) l3mx.hint.style.display = "none"; return; }
@@ -137,34 +137,41 @@ function l3mxFrame(h) {
   const [u0, u1] = ext(side, u), [v0, v1] = ext(side, v), [n0, n1] = ext(g.V, n);
   return { g, P, n, u, v, horiz, side, u0, u1, v0, v1, n0, n1, obj: h.object };
 }
-/* 3-axlig laser: från punkten längs objektets egna axlar till ytans kanter (±axel 1, ±axel 2) och rakt in genom objektet (djup). */
+/* Smartmått: från punkten längs objektets egna axlar till ytans kanter (±axel 1, ±axel 2) och rakt in genom objektet (djup). */
 function l3mxLaserAt(e) {
   const h = l3mxHit(e); if (!h) return null; const F = l3mxFrame(h); if (!F) return null;
+  let corner = false; try { // snappa mot hörn: punkten flyttas till närmaste hörn (inom 14 px)
+    const r = l3.renderer.domElement.getBoundingClientRect(); let bd = 14, bv = null;
+    F.side.forEach(q => { const w = q.clone().project(l3.camera), sx = (w.x * 0.5 + 0.5) * r.width + r.left, sy = (-w.y * 0.5 + 0.5) * r.height + r.top, d = Math.hypot(sx - e.clientX, sy - e.clientY); if (d < bd) { bd = d; bv = q; } });
+    if (bv) { F.P.copy(bv); corner = true; }
+  } catch (_) {}
   const C = l3mxCfg().laser, out = [], { P, n, u, v } = F, pu = P.dot(u), pv = P.dot(v), pn = P.dot(n);
   const add = (lbl, dir, d, col) => { if (d > 0.005) out.push({ lbl, pt: P.clone().addScaledVector(dir, d), d, dir: dir.clone(), from: P.clone() }); };
-  if (C.u) { add("Axel 1 +", u, F.u1 - pu); add("Axel 1 −", u.clone().negate(), pu - F.u0); }
-  if (C.v) { add(F.horiz ? "Axel 2 +" : "Upp", v, F.v1 - pv); add(F.horiz ? "Axel 2 −" : "Ner", v.clone().negate(), pv - F.v0); }
+  const span = (lbl, dir, lo, hi, p0) => { const a = P.clone().addScaledVector(dir, lo - p0), b = P.clone().addScaledVector(dir, hi - p0); if (hi - lo > 0.005) out.push({ lbl, pt: b, from: a, d: hi - lo, dir: dir.clone(), full: true }); }; // hela sträckan, inte från pekaren
+  if (C.u) span("Längd", u, F.u0, F.u1, pu);
+  if (C.v) { if (F.horiz) span("Bredd", v, F.v0, F.v1, pv); else { add("Upp", v, F.v1 - pv); add("Ner", v.clone().negate(), pv - F.v0); } }
   if (C.n) add("Djup", n.clone().negate(), pn - F.n0);
   if (C.nbr) { // avstånd till närmaste andra objekt i samma riktningar
     const o = n.clone().multiplyScalar(0.008), dirs = [["→ granne 1", u], ["← granne 1", u.clone().negate()], ["→ granne 2", v], ["← granne 2", v.clone().negate()], ["Ut", n]];
     dirs.forEach(([lbl, d]) => { const r = l3mxRay(P.clone().add(o), d, C.max); if (r && r.distance > 0.01 && !(F.g.mesh === (r.object.userData.l3bMain || r.object) && r.face && r.face.a >= F.g.lo && r.face.a < F.g.hi)) out.push({ lbl, pt: r.point.clone(), d: r.distance, dir: d.clone(), from: P.clone(), nbr: true }); });
   }
-  return { P, n, hits: out, obj: h.object, F };
+  return { P, n, hits: out, obj: h.object, F, corner };
 }
 function l3mxLaserHover(e) {
   if (typeof l3mSegLabelsClear === "function") l3mSegLabelsClear("mx:live");
   const L = l3mxLaserAt(e); l3mx.lastLaser = L; if (!L) { l3ShowMarker(null); return; }
   const host = l3.renderer.domElement.parentElement; l3Dot(L.P, 0xfde047);
-  L.hits.forEach((h, i) => { l3TmpLine(L.P, h.pt, h.nbr ? 0x38bdf8 : 0xfde047, h.nbr); l3Dot(h.pt, h.nbr ? 0x38bdf8 : 0xfde047); const el = document.createElement("div"); el.className = "v3-meas v3-mx-lab"; el.textContent = `${l3mxF(h.d)} m`; host.appendChild(el); el._at = L.P.clone().lerp(h.pt, 0.5); l3m.labels.set(`mx:live:${i}`, el); });
+  L.hits.forEach((h, i) => { l3TmpLine(h.from || L.P, h.pt, h.nbr ? 0x38bdf8 : 0xfde047, h.nbr); l3Dot(h.pt, h.nbr ? 0x38bdf8 : 0xfde047); const el = document.createElement("div"); el.className = "v3-meas v3-mx-lab"; el.textContent = `${l3mxF(h.d)} m`; host.appendChild(el); el._at = (h.from || L.P).clone().lerp(h.pt, 0.5); l3m.labels.set(`mx:live:${i}`, el); });
   if (typeof l3mPlaceLabels === "function") l3mPlaceLabels();
 }
 function l3mxLaserClick(e) {
-  const L = l3mxLaserAt(e) || l3mx.lastLaser; if (!L || !L.hits.length) { l3Status("3-axlig laser: håll över en yta i modellen.", true); return; }
+  const L = l3mxLaserAt(e) || l3mx.lastLaser; if (!L || !L.hits.length) { l3Status("Smartmått: håll över en yta i modellen.", true); return; }
   if (typeof l3mSegLabelsClear === "function") l3mSegLabelsClear("mx:live");
   const obj = typeof l3mObjAt === "function" ? l3mObjAt(e) : null; l3mx.plain = true;
-  try { L.hits.forEach(h => { const m = l3mAdd("dist", [L.P.clone(), h.pt.clone()], `${l3mxF(h.d)} m`, [obj, null]); m.note = h.lbl; m.showNote = false; }); } finally { l3mx.plain = false; }
+  try { L.hits.forEach(h => { const m = l3mAdd("dist", [(h.from || L.P).clone(), h.pt.clone()], `${l3mxF(h.d)} m`, [obj, null]); m.note = h.lbl; m.showNote = false; }); } finally { l3mx.plain = false; }
   l3Clear(l3.groups.tmp); l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
-  l3Status(`3-axlig laser: ${L.hits.length} mått utlagda längs objektets axlar. Tryck på nästa punkt, högerklicka för att avsluta.`); l3Render();
+  if (L.corner) { l3mxSurfVolClick(e); return; } // hörn: ge även yta och volym
+  l3Status(`Smartmått: ${L.hits.length} mått utlagda längs objektets axlar. Tryck på nästa punkt, högerklicka för att avsluta.`); l3Render();
 }
 
 /* ---- Yta & volym: ytan man tryckte på (med håltagningar) och objektets volym och kub ---- */
@@ -348,14 +355,14 @@ function l3mxProfileClick(e) {
 /* Anropas av verktygen (lagesplan-3dtools.js): true = hanterat. */
 function l3mxHover(e) {
   if (l3.tool !== "measure") return false; const mode = l3Prefs().measure;
-  if (mode === "laser") { l3mxLaserHover(e); return true; }
+  if (mode === "laser" || mode === "smart") { l3mxLaserHover(e); return true; }
   if (mode === "surfvol") { l3ShowMarker(null); return true; }
   if (mode === "profile") { l3mxProfileHover(e); return true; }
   return false;
 }
 function l3mxClick(e) {
   if (l3.tool !== "measure") return false; const mode = l3Prefs().measure;
-  if (mode === "laser") { l3mxLaserClick(e); return true; }
+  if (mode === "laser" || mode === "smart") { l3mxLaserClick(e); return true; }
   if (mode === "surfvol") { l3mxSurfVolClick(e); return true; }
   if (mode === "profile") { l3mxProfileClick(e); return true; }
   return false;
