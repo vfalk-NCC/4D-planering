@@ -24,12 +24,14 @@ function l3pgChange() {
   p.pts[i] = [placeR3(G.position.x + O[0]), placeR3(G.position.y + O[1]), placeR3(G.position.z + O[2] - dz)];
   if (i === 0) { p.x = p.pts[0][0]; p.y = p.pts[0][1]; p.z = p.pts[0][2]; }
   if (l3pg.raf) return;
-  l3pg.raf = requestAnimationFrame(() => { l3pg.raf = 0; const q = l3pgPlace(); if (q) { l3RebuildOne(q); if (typeof l3HandlesBuild === "function") l3HandlesBuild(); } l3Render(); });
+  l3pg.raf = requestAnimationFrame(() => { l3pg.raf = 0; const q = l3pgPlace(); if (q) { l3pgRebuild(q); if (typeof l3HandlesBuild === "function") l3HandlesBuild(); } l3Render(); });
 }
+/* Ombyggnaden får inte låta markeringen flytta gizmot tillbaka till hela objektet (det hände mitt i draget). */
+function l3pgRebuild(p) { l3pg.busy = true; try { l3RebuildOne(p); } finally { l3pg.busy = false; } if (l3pg.G && l3.gizmo.object !== l3pg.G) { const d = l3.gizmo.dragging; l3.gizmo.attach(l3pg.G); l3.gizmo.dragging = d; } }
 function l3pgEnd() {
   const p = l3pgPlace(); if (!p) return;
   if (l3pg.raf) { cancelAnimationFrame(l3pg.raf); l3pg.raf = 0; }
-  placeTouch(p); l3RebuildOne(p); if (typeof l3HandlesBuild === "function") l3HandlesBuild(); l3Changed(); if (typeof l3RenderSide === "function") l3RenderSide(); l3Render();
+  placeTouch(p); l3pgRebuild(p); if (typeof l3HandlesBuild === "function") l3HandlesBuild(); l3Changed(); if (typeof l3RenderSide === "function") l3RenderSide(); l3Render();
 }
 (function () {
   const wrap = (name, fn) => { const f0 = window[name]; if (typeof f0 !== "function" || f0._pg) return false; const f1 = function () { return fn(f0, this, arguments); }; f1._pg = true; window[name] = f1; return true; };
@@ -43,7 +45,7 @@ function l3pgEnd() {
     // Ett tryck på en punkt (utan drag) markerar den.
     wrap("l3HandleUp", (f, t, a) => { const H = typeof l3H !== "undefined" ? l3H : null, wasMoved = H && H.moved, r = f.apply(t, a); if (H && !a[0] && !wasMoved && H.h && H.h.key === "pt") l3pgSelect(H.p, H.h.i); return r; });
     // Markeringen byts/avmarkeras → pilarna försvinner; annars behålls de (gizmot får inte stjäla tillbaka objektet).
-    wrap("l3RefreshSel", (f, t, a) => { const r = f.apply(t, a); try { const p = l3pgPlace(); if (!p || !l3.sel.has(p.id) || l3.sel.size !== 1 || (l3.tool || "select") !== "select") l3pgClear(); else if (l3pg.G && l3.gizmo.object !== l3pg.G && !l3.gizmo.dragging) l3.gizmo.attach(l3pg.G); } catch (e) { console.warn(e); } return r; });
+    wrap("l3RefreshSel", (f, t, a) => { if (l3pg.busy) return; const r = f.apply(t, a); try { const p = l3pgPlace(); if (!p || !l3.sel.has(p.id) || l3.sel.size !== 1 || (l3.tool || "select") !== "select") l3pgClear(); else if (l3pg.G && l3.gizmo.object !== l3pg.G && !l3.gizmo.dragging) l3.gizmo.attach(l3pg.G); } catch (e) { console.warn(e); } return r; });
     window.addEventListener("keydown", e => { if (e.key === "Escape" && l3pg.id) l3pgClear(); }, true);
   };
   bind();

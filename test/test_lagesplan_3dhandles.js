@@ -160,8 +160,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const pg = await page.evaluate(() => ({ on: !!(l3pg.G && l3.gizmo.object === l3pg.G), i: l3pg.i }));
   if (!pg.on || pg.i !== 1) fail('Punkten ska få flyttpilar: ' + JSON.stringify(pg));
   const q1 = (await P('f')).pts[1].slice();
-  await page.evaluate(() => { l3.gizmo.dispatchEvent({ type: 'mouseDown' }); l3pg.G.position.z -= 1.5; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); });
-  await page.waitForTimeout(150);
+  await page.evaluate(() => { l3.gizmo.dispatchEvent({ type: 'mouseDown' }); l3pg.G.position.z -= 1.5; l3.gizmo.dispatchEvent({ type: 'objectChange' }); });
+  await page.waitForTimeout(200);
+  if (!await page.evaluate(() => l3.gizmo.object === l3pg.G)) fail('Gizmot ska ligga kvar på punkten under draget (inte hoppa till hela objektet)');
+  await page.evaluate(() => l3.gizmo.dispatchEvent({ type: 'mouseUp' }));
+  await page.waitForTimeout(100);
   p = await P('f');
   if (Math.abs(p.pts[1][0] - q1[0]) > 1e-6 || Math.abs(p.pts[1][1] - q1[1]) > 1e-6 || Math.abs(p.pts[1][2] - (q1[2] - 1.5)) > 0.01) fail('Pilarna ska flytta punkten rakt ner: ' + JSON.stringify([q1, p.pts[1]]));
   await page.keyboard.press('Escape'); await page.waitForTimeout(80);
