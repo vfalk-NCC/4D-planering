@@ -137,6 +137,7 @@ function l3vExcavator() {
   const update = st => {
     const c = st.ctl || { slew: 0, boom: 0.4, stick: 1.1, bucket: 0.7 }; tur.rotation.z = c.slew; bm.rotation.y = -c.boom; sk.rotation.y = c.stick; bk.rotation.y = c.bucket;
     fp.position.copy(E); placeShoes(st.travel || 0); g.updateMatrixWorld(true); rams.forEach(r => r());
+    if (typeof l3digTick === "function") { l3dig.lastG = g; l3dig.lastTip = tip; l3digTick(g, tip, c); }   // gräv-simulatorn
     tip.getWorldPosition(tv); g.worldToLocal(tv); const reach = Math.hypot(tv.x, tv.y), depth = -tv.z;
     const show = !!st.showRadius; rg.visible = show; if (show) { rcur.scale.set(Math.max(0.2, reach), Math.max(0.2, reach), 1); rlab.position.set((reach + 1) * Math.cos(c.slew), (reach + 1) * Math.sin(c.slew), 0.5); rlab.userData.set("Räckvidd " + l3vFmt(reach) + " m", "#ffb45a"); g.userData.rad = { ox: 0, oy: 0, oz: 0.05, R: reach, Rmax: 0, slew: c.slew, step: 2, maxRing: 12, name: "Räckvidd", mname: "", hex: 0xff8a1a, util: 0 }; }
     st.info = [["Räckvidd (skopspets)", l3vFmt(reach) + " m"], [depth >= 0 ? "Skopspets under marken" : "Skopspets över marken", l3vFmt(Math.abs(depth)) + " m"], ["Svängvinkel", Math.round(c.slew * 180 / Math.PI) + "°"]];

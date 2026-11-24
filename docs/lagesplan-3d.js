@@ -1076,7 +1076,7 @@ function l3Ray(e, targets) {
 function l3NotClipped(p) { const cl = l3 && l3.renderer.clippingPlanes; return !cl || !cl.length || cl.every(pl => pl.distanceToPoint(p) >= -1e-6); }
 const l3VisibleChain = o => { while (o) { if (!o.visible) return false; o = o.parent; } return true; };
 /* Förhandsvisningar (stödmur/pålar/byggdelar, byggväg, 3D-text) går att fästa mot och vrida runt redan medan de redigeras (Victor 2026-11-12). */
-const l3PreviewObjs = () => [l3.groups.wall, l3.groups.road, typeof l3tx !== "undefined" && l3tx.group].filter(g => g && g.visible !== false && g.children && g.children.length);
+const l3PreviewObjs = () => [l3.groups.wall, l3.groups.road, typeof l3tx !== "undefined" && l3tx.group, typeof l3dig !== "undefined" && l3dig.group].filter(g => g && g.visible !== false && g.children && g.children.length);
 function l3PreviewMark(g) { if (!g) return; g.traverse(m => { if (m.isMesh) { m.userData.previewHit = true; delete m.raycast; } }); }
 const l3Surfaces = (exceptId) => [l3.planMesh, l3.objMesh, ...l3.groups.bldg.children, ...[...l3.placeMeshes.entries()].filter(([id]) => !(exceptId instanceof Set ? exceptId.has(id) : id === exceptId)).map(([, g]) => g), ...l3PreviewObjs()].filter(o => o && o.visible !== false);
 function l3PlaceAt(e) {
