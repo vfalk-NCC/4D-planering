@@ -106,6 +106,23 @@ async function l3oaRemoveSel(node) {
 }
 const l3orgKey = () => `lagesplan-org-${projectId}`;
 
+/* Organizer som JSON-fil (Victor 2026-11-23: "Går det att importera uppdelning jag har gjort i organizer … in i
+   SketchUp"). Samma form som tcOrganizerFetch ger: { forest, trees: [{ id, name, groups: [{ id, name, parentId,
+   guids }] }], at } – läses av NSV Koppling i SketchUp (Organizer-grupper). Bara läsning, inget skickas. */
+function l3orgDownload() {
+  const d = l3org.data;
+  if (!d || !Array.isArray(d.trees) || !d.trees.length) { l3Status("Hämta Organizer med ↻ först.", true); return; }
+  const out = { projectId, forest: d.forest || null, at: d.at || new Date().toISOString(), trees: d.trees };
+  const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `Organizer_${String(projectId).replace(/[^\w-]+/g, "_")}_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  const n = d.trees.reduce((s, t) => s + (t.groups || []).length, 0);
+  l3Status(`Organizer sparad som JSON (${d.trees.length} träd, ${n} grupper).`);
+}
+
 function l3orgRestore() {
   if (l3org.loaded) return;
   l3org.loaded = true;
@@ -121,6 +138,13 @@ async function l3orgFetch() {
     else {
       l3org.data = { forest: r.forest || null, trees: r.trees || [], at: r.at || new Date().toISOString() }; l3org.log = r.log || [];
       try { localStorage.setItem(l3orgKey(), JSON.stringify(l3org.data)); } catch (e) { /* för stor för webbläsarens minne – visas ändå nu */ }
+      // Sparas också i projektets data (projects/<id>/tc_organizer.json) så att SketchUp-verktyget (NSV Koppling)
+      // kan få den senaste indelningen utan nedladdning (Victor 2026-11-23). Misslyckas det visas den ändå här.
+      if (typeof ghWriteJSON === "function" && typeof token !== "undefined" && token) {
+        const snap = { projectId, ...l3org.data };
+        ghWriteJSON(token, `projects/${encodeURIComponent(projectId)}/tc_organizer.json`, () => [snap], "3D: Organizer-indelningen hämtad från TC")
+          .catch(e => console.warn("Kunde inte spara Organizer i projektets data", e));
+      }
       const n = l3org.data.trees.reduce((s, t) => s + t.groups.length, 0);
       l3Status(`Organizer: ${l3org.data.trees.length} ${l3org.data.trees.length === 1 ? "träd" : "träd"} med ${n} grupper hämtade från Trimble Connect.`);
     }
@@ -248,10 +272,11 @@ function l3orgHtml() {
   const pend = l3oa.list.reduce((k, a) => k + l3oaPending(a).length, 0);
   const sync = pend ? `<div class="v3-org-sync"><span>${pend} tillagda objekt väntar på att skrivas till Organizer i Trimble Connect.</span><button type="button" id="v3OrgSync" ${l3oa.syncing ? "disabled" : ""}>${l3oa.syncing ? '<span class="pm-spin"></span> Skickar…' : "Skicka"}</button></div>` : "";
   const warn = !l3org.err && l3org.log.some(x => /kunde inte tolkas/.test(x)) ? `<details class="v3-org-log"><summary>Alla länkar kunde inte kopplas till objekt</summary><ul>${l3org.log.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : "";
-  return `<section class="v3-org-sec"><div class="v3-org-h"><b>Organizer i Trimble Connect</b>${d ? `<em title="Senast hämtad">${esc(String(d.at || "").slice(0, 16).replace("T", " "))}</em>` : ""}<button type="button" class="v3-ic" id="v3OrgGet" title="Hämta Organizer från Trimble Connect">${l3org.loading ? '<span class="pm-spin"></span>' : "↻"}</button></div>${err}${sync}${warn}${d && d.trees.length ? `<div class="v3-org-tools"><input type="search" id="v3OrgQ" placeholder="Filtrera grupper…" value="${esc(U.q || "")}" aria-label="Filtrera Organizer-grupper"><select id="v3OrgSort" aria-label="Sortera grupperna" title="Ordning på grupperna"><option value="org"${U.sort === "org" ? " selected" : ""}>Som i Organizer</option><option value="az"${U.sort === "az" ? " selected" : ""}>A–Ö</option><option value="za"${U.sort === "za" ? " selected" : ""}>Ö–A</option><option value="big"${U.sort === "big" ? " selected" : ""}>Flest objekt</option><option value="here"${U.sort === "here" ? " selected" : ""}>Flest i modellen</option></select><label class="v3-org-chk" title="Visa bara grupper som har objekt i de inlästa modellerna"><input type="checkbox" id="v3OrgHere"${U.here ? " checked" : ""}> Bara med objekt här</label>${qn || U.here || U.sort !== "org" ? `<button type="button" class="v3-ic" id="v3OrgRst" title="Ta bort filter och sortering">↺</button>` : ""}</div>` : ""}${body}</section>`;
+  return `<section class="v3-org-sec"><div class="v3-org-h"><b>Organizer i Trimble Connect</b>${d ? `<em title="Senast hämtad">${esc(String(d.at || "").slice(0, 16).replace("T", " "))}</em>` : ""}<button type="button" class="v3-ic" id="v3OrgGet" title="Hämta Organizer från Trimble Connect">${l3org.loading ? '<span class="pm-spin"></span>' : "↻"}</button>${d && d.trees.length ? `<button type="button" class="v3-ic" id="v3OrgDl" title="Spara indelningen som JSON (för SketchUp – NSV Koppling › Organizer-grupper)">⬇</button>` : ""}</div>${err}${sync}${warn}${d && d.trees.length ? `<div class="v3-org-tools"><input type="search" id="v3OrgQ" placeholder="Filtrera grupper…" value="${esc(U.q || "")}" aria-label="Filtrera Organizer-grupper"><select id="v3OrgSort" aria-label="Sortera grupperna" title="Ordning på grupperna"><option value="org"${U.sort === "org" ? " selected" : ""}>Som i Organizer</option><option value="az"${U.sort === "az" ? " selected" : ""}>A–Ö</option><option value="za"${U.sort === "za" ? " selected" : ""}>Ö–A</option><option value="big"${U.sort === "big" ? " selected" : ""}>Flest objekt</option><option value="here"${U.sort === "here" ? " selected" : ""}>Flest i modellen</option></select><label class="v3-org-chk" title="Visa bara grupper som har objekt i de inlästa modellerna"><input type="checkbox" id="v3OrgHere"${U.here ? " checked" : ""}> Bara med objekt här</label>${qn || U.here || U.sort !== "org" ? `<button type="button" class="v3-ic" id="v3OrgRst" title="Ta bort filter och sortering">↺</button>` : ""}</div>` : ""}${body}</section>`;
 }
 function l3orgBind(host) {
   const gb = host.querySelector("#v3OrgGet"); if (gb) gb.onclick = () => l3orgFetch();
+  const db = host.querySelector("#v3OrgDl"); if (db) db.onclick = () => l3orgDownload();
   const sb = host.querySelector("#v3OrgSync"); if (sb) sb.onclick = () => l3oaSync();
   const oq = host.querySelector("#v3OrgQ"); if (oq) { let tm = 0; oq.oninput = () => { clearTimeout(tm); tm = setTimeout(() => l3orgUi({ q: oq.value }), 220); }; oq.onkeydown = e => e.stopPropagation(); }
   const os = host.querySelector("#v3OrgSort"); if (os) os.onchange = () => l3orgUi({ sort: os.value });
