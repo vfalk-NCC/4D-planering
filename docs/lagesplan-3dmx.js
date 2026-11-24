@@ -12,7 +12,7 @@ const L3MX_DEF = {
   area: { area: 1, perim: 0 },
   poly: { seg: 1 },
   laser: { u: 1, v: 1, n: 1, nbr: 0, max: 60 },
-  ytvol: { area: 1, holes: 1, vol: 1, cube: 1, outline: 1 },
+  ytvol: { area: 1, holes: 1, vol: 1, cube: 0, outline: 0 },
   prof: { grid: 1, coord: 1, slope: 1, snap: 1 },
 };
 function l3mxCfg() {
@@ -206,7 +206,8 @@ function l3mxRegion(F) {
 function l3mxSurfVolClick(e, keep) {
   const h = l3mxHit(e); if (!h) { l3Status("Yta & volym: tryck på en yta i modellen.", true); return; }
   const F = l3mxFrame(h); if (!F) { l3Status("Yta & volym: det går inte att läsa objektets form.", true); return; }
-  const C = l3mxCfg().ytvol, { g, P } = F, f = x => l3Fmt(x, 2), lines = [];
+  const C = Object.assign({}, l3mxCfg().ytvol), { g, P } = F, f = x => l3Fmt(x, 2), lines = [];
+  if (keep) { C.cube = 0; C.outline = 0; } // Smartmått: bara yta och verklig volym i en ruta
   const W = F.u1 - F.u0, H = F.v1 - F.v0, D = F.n1 - F.n0, boxVol = W * H * D;
   let vol = 0; g.tris.forEach(([a, b, c]) => { const A = g.V[a].clone().sub(P), B = g.V[b].clone().sub(P), Cc = g.V[c].clone().sub(P); vol += A.dot(B.clone().cross(Cc)) / 6; }); vol = Math.abs(vol);
   let how = "ur objektets form (med håltagningar)"; if (!(vol > 1e-6) || vol > boxVol * 1.02 + 1e-6) { vol = boxVol; how = "kuben (formen är inte sluten)"; }
