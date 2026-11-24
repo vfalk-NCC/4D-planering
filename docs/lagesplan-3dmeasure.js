@@ -532,7 +532,7 @@ function l3mChanged(m) {
    vit skylt med måttet – och kommentaren om den ska med – som 3D-text på båda sidor, vänd mot vyn.
    Egenskaperna (värde, vågrätt, höjdskillnad, lutning, objekt, koordinater …) ligger i "4D-planering". */
 // Victor 2026-10-10: tunnare linjer, rundade brytningar, en upp-och-nedvänd kon på varje mätpunkt, mindre text.
-const L3M_IFC = { r: 0.012, bend: 0.08, cone: { h: 0.14, r: 0.045 }, T: 0.03, tT: 0.012, pad: 0.07, lift: 0.3, red: "#dc2626", h1: 0.14, h2: 0.1 };
+const L3M_IFC = { r: 0.012, bend: 0.08, cone: { h: 0.14, r: 0.045 }, T: 0.03, tT: 0.012, pad: 0.07, lift: 0.3, red: "#dc2626", h1: 0.14, h2: 0.1, draw: true, violet: "#7c3aed" };   // draw: ritningsstil (snedstreck i ändarna, liten etikett nära linjen) för avstånd och polylinjer
 /* Väg med rundade hörn: raka bitar och en båge (radie R, begränsad av bitarnas längd) i varje brytning. */
 function l3mFillet(P, closed, R) {
   const V = P.map(p => new THREE.Vector3(p[0], p[1], p[2])), n = V.length, out = [];
@@ -593,7 +593,7 @@ function l3mIfcBuild(list, withNotes) {
   d.normalize();
   const r = [d.y, -d.x], n = [-d.x, -d.y];
   const dir = v => E(`IFCDIRECTION(${ifcPt(v)})`);
-  const red = doc.style("matt", L3M_IFC.red, "Mått"), white = doc.style("matt-skylt", "#ffffff", "Måttskylt"), fillSt = doc.style("matt-yta", L3M_IFC.red, "Måttyta", 0.6);
+  const violet = doc.style("matt-yta-vol", L3M_IFC.violet, "Mått yta/volym"), red = doc.style("matt", L3M_IFC.red, "Mått"), white = doc.style("matt-skylt", "#ffffff", "Måttskylt"), fillSt = doc.style("matt-yta", L3M_IFC.red, "Måttyta", 0.6);
   const elems = [];
   // Volymens egna färg (vald i måttlistan) – en stil per färg.
   const stC = new Map(), stOf = (c, fill) => { const k = c + (fill ? "f" : ""); if (!stC.has(k)) stC.set(k, fill ? doc.style("matt-yta-" + c.slice(1), c, "Måttyta", 0.6) : doc.style("matt-" + c.slice(1), c, "Mått")); return stC.get(k); };
@@ -632,8 +632,16 @@ function l3mIfcBuild(list, withNotes) {
     if (path.length >= 2) { const t = tri(l3mSweep(path, RT), mRed); if (t) meshItems.push(t); }
     // Utdragen polylinje: hjälplinjer även från mellanpunkterna upp till kedjan.
     if (offd) for (let i = 1; i < P.length - 1; i++) { const t = tri(l3mSweep([rel(P[i]), rel(DP[i])].map(v => new THREE.Vector3(v[0], v[1], v[2])), RT * 0.6), red); if (t) meshItems.push(t); }
+    const drawing = L3M_IFC.draw && (m.kind === "dist" || m.kind === "poly");
+    if (drawing) P.forEach((p, i) => {   // ritningsstil: ett snedstreck (45°) vid varje mätpunkt i stället för kon och kula
+      const nb = P[i + 1] || P[i - 1], sg = P[i + 1] ? 1 : -1; let d = nb ? [(nb[0] - p[0]) * sg, (nb[1] - p[1]) * sg, (nb[2] - p[2]) * sg] : [1, 0, 0]; const dl = Math.hypot(...d) || 1; d = d.map(x => x / dl);
+      const w = Math.abs(d[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1], tk = [d[0] + w[0], d[1] + w[1], d[2] + w[2]], tl = Math.hypot(...tk) || 1, L2 = 0.09 * sc, v = rel(p);
+      const a = new THREE.Vector3(v[0] - tk[0] / tl * L2, v[1] - tk[1] / tl * L2, v[2] - tk[2] / tl * L2), b = new THREE.Vector3(v[0] + tk[0] / tl * L2, v[1] + tk[1] / tl * L2, v[2] + tk[2] / tl * L2), t = tri(l3mSweep([a, b], RT * 1.3), mRed); if (t) meshItems.push(t);
+    });
+    else {
     P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, CH, CR), mRed); if (t) meshItems.push(t); });
     P.forEach(p => { const v = rel(p), t = tri(l3mBall({ x: v[0], y: v[1], z: v[2] }, CR * 0.9), mRed); if (t) meshItems.push(t); });   // en kula på varje mätpunkt
+    }
     void segs; void dotAt;
     if (m.kind === "volume" && P.length >= 3) {
       // Volymen som en halvgenomskinlig prisma.
@@ -659,13 +667,13 @@ function l3mIfcBuild(list, withNotes) {
     const cut1 = s => String(s || "").replace(/[^\x20-\x7e\u00c5\u00c4\u00d6\u00e5\u00e4\u00f6]/g, "").toUpperCase().slice(0, 40);
     const srcLine = vr ? (a => [a[0] && { t: "YTA: " + cut1(a[0]), h: L3M_IFC.h2 * 0.8 }, a[1] && { t: "MOT: " + cut1(a[1]), h: L3M_IFC.h2 * 0.8 }].filter(Boolean))([vr.srcA, vr.srcB]) : [];
     const lines = vr ? [{ t: `Schakt -${ftxt(vr.cut)}`, h: L3M_IFC.h1 }, { t: `Fyllning +${ftxt(vr.fill)}`, h: L3M_IFC.h1 }, { t: `Netto ${vr.net < 0 ? "-" : "+"}${ftxt(Math.abs(vr.net))}`, h: L3M_IFC.h2 }, ...srcLine,
-      { t: `Yta ${Math.round(vr.area).toLocaleString("sv-SE").replace(/[\u00a0\u202f\s]+/g, " ")} m2 - ruta ${String(vr.cell).replace(".", ",")} m${vr.tris ? " - " + vr.tris + " tr." : ""}`, h: L3M_IFC.h2 * 0.8 }, ...(vr.at ? [{ t: String(vr.at).slice(0, 10), h: L3M_IFC.h2 * 0.8 }] : []), ...raw.map(t => ({ t, h: L3M_IFC.h2 }))] : [{ t: m.text, h: L3M_IFC.h1 }, ...raw.map(t => ({ t, h: L3M_IFC.h2 }))];
+      { t: `Yta ${Math.round(vr.area).toLocaleString("sv-SE").replace(/[\u00a0\u202f\s]+/g, " ")} m2 - ruta ${String(vr.cell).replace(".", ",")} m${vr.tris ? " - " + vr.tris + " tr." : ""}`, h: L3M_IFC.h2 * 0.8 }, ...(vr.at ? [{ t: String(vr.at).slice(0, 10), h: L3M_IFC.h2 * 0.8 }] : []), ...raw.map(t => ({ t, h: L3M_IFC.h2 }))] : m.kind === "objvol" ? String(m.text).split(" · ").map((t, i) => ({ t: t.replace(/\u00b2/g, "2").replace(/\u00b3/g, "3"), h: i ? L3M_IFC.h2 * 1.15 : L3M_IFC.h1 })) : [{ t: String(m.text).replace(/\u00b2/g, "2").replace(/\u00b3/g, "3"), h: L3M_IFC.h1 }, ...raw.map(t => ({ t, h: L3M_IFC.h2 }))];
     const W = Math.max(0.6, ...lines.map(l => W1(l.t, l.h))) + L3M_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3M_IFC.pad * 1.4;
     const at = (m.kind === "point" || m.kind === "objvol") ? P[0] : m.kind === "volume" ? (c => [c[0], c[1], c[2] + Math.max(0, Number(m.h) || 0)])(P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0])) : m.kind === "poly" ? l3mPathMid(DP).toArray() : m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
-    const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + L3M_IFC.lift + H / 2];
+    const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + (drawing ? 0.04 * sc : L3M_IFC.lift) + H / 2];
     // Vit linje från skylten ner till måttlinjen – visar att skylten hör till måttet (Victor 2026-10-10).
     const lead = tube(rel(at), rel([at[0], at[1], center[2] - H / 2]), 0.012, white);
-    if (lead && showBoard) items.push(lead); // hör till måttets element
+    if (lead && showBoard && !drawing) items.push(lead); // hör till måttets element
     // Rör och konor som trianglar (Tessellation), platta och ledlinje som extruderade (SweptSolid).
     const reps = [];
     if (items.length) reps.push(E(`IFCSHAPEREPRESENTATION(${doc.body},'Body','SweptSolid',(${items.join(",")}))`));
@@ -684,7 +692,7 @@ function l3mIfcBuild(list, withNotes) {
       [[1, 1], [-1, -1]].forEach(([sr, sn]) => {
         const meshes = [];
         let y = bh / 2 - L3M_IFC.pad * 0.7;
-        lns.forEach(({ t, h }, li) => { const msh = ifcTextSolid(doc, t, { h, t: L3M_IFC.tT, rx: 1, ry: 0, start: -bw / 2 + L3M_IFC.pad, across: y - h / 2, style: li ? doc.textStyle : red }); if (msh) meshes.push(msh); y -= h * 1.4; });
+        lns.forEach(({ t, h }, li) => { const msh = ifcTextSolid(doc, t, { h, t: L3M_IFC.tT, rx: 1, ry: 0, start: -bw / 2 + L3M_IFC.pad, across: y - h / 2, style: m.kind === "objvol" ? violet : li ? doc.textStyle : red }); if (msh) meshes.push(msh); y -= h * 1.4; });
         if (!meshes.length) return;
         const p = [ctr[0] + sn * n[0] * L3M_IFC.T / 2, ctr[1] + sn * n[1] * L3M_IFC.T / 2, ctr[2]];
         elems.push(doc.proxy(`${nm.slice(0, 100)} – text`, "Text", "4D-måtttext", axes(p, sr * r[0], sr * r[1], sn * n[0], sn * n[1]), doc.shape(meshes.join(","), "Tessellation"), m.id));

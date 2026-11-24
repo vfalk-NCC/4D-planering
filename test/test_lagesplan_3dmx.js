@@ -72,6 +72,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // 4a) Hörnsnap: ett mått per sida runt ytan
   const cn = await page.evaluate(() => { const L0 = (() => { const g = l3.placeMeshes.get('b1'), cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), q = l3ToScreen(g.position.clone().add(new THREE.Vector3(0.5, 0.2, 2.7))); return l3mxLaserAt({ clientX: r.left + q.x, clientY: r.top + q.y }); })(); if (!L0) return null; const c = l3mxRegion(L0.F).outer[0], cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), w = c.clone().project(l3.camera); const L = l3mxLaserAt({ clientX: r.left + (w.x * 0.5 + 0.5) * r.width, clientY: r.top + (-w.y * 0.5 + 0.5) * r.height }); return L && { corner: L.corner, n: L.hits.length, sides: L.hits.every(h => h.side) }; });
   ok(cn && cn.corner && cn.sides && cn.n >= 4, 'Hörn: ett mått per sida: ' + JSON.stringify(cn));
+  // 4d) IFC-export i ritningsstil: snedstreck (inga koner) för avstånd, och en skylt med yta/volym i flera rader
+  const ifx = await page.evaluate(() => {
+    l3m.list.length = 0; l3mx.plain = true;
+    try { l3mAdd('dist', [new THREE.Vector3(0, 0, 3), new THREE.Vector3(3.2, 0, 3)], '3,2 m', [null, null]); l3mAdd('objvol', [new THREE.Vector3(1, 1, 3)], 'Yta 17,25 m² · Volym 46,5 m³', [null]); } finally { l3mx.plain = false; }
+    const r = l3mIfcBuild(l3m.list.map((m, i) => ({ m, nr: i + 1 })), false); const txt = typeof r === 'string' ? r : r && (r.text || r.step || JSON.stringify(r)); return { ok: !!r, n: l3m.list.length, len: txt ? txt.length : 0, sq: txt ? /\?\?/.test('') : false };
+  });
+  ok(ifx && ifx.ok && ifx.n === 2 && ifx.len > 1000, 'IFC-export av mått byggs: ' + JSON.stringify(ifx));
   // 4b) Yta med håltagning: nettoyta, brutto och hål (syntetiskt nät med ett hål)
   const rg = await page.evaluate(() => { const V = [], tris = [], id = (x, y) => y * 5 + x; for (let y = 0; y <= 3; y++) for (let x = 0; x <= 4; x++) V.push(new THREE.Vector3(x, y, 0)); for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) { if (x === 1 && y === 1) continue; tris.push([id(x, y), id(x + 1, y), id(x + 1, y + 1)], [id(x, y), id(x + 1, y + 1), id(x, y + 1)]); }
     const R = l3mxRegion({ g: { V, tris }, P: new THREE.Vector3(0.3, 0.2, 0), n: new THREE.Vector3(0, 0, 1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) }); return R && { net: R.net, gross: R.gross, holes: R.holes.length, holeA: R.holeA }; });
