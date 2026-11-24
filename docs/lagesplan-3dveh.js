@@ -123,6 +123,7 @@ function l3vExcavator() {
   bk.add(B(0.95, 1.25, 0.07, K2, 0.52, 0, 0.04), fr, B(0.07, 1.25, 0.3, K2, 0.04, 0, -0.12), B(1.15, 0.06, 0.78, K2, 0.62, 0.62, -0.28), B(1.15, 0.06, 0.78, K2, 0.62, -0.62, -0.28), B(0.4, 1.2, 0.1, K, 0.1, 0, 0.35));
   [-0.5, -0.25, 0, 0.25, 0.5].forEach(y => { const th = B(0.12, 0.1, 0.32, steel, 1.2, y, -0.68); th.rotation.y = 0.45; bk.add(th); });
   const tip = l3vAnchor(bk, 1.26, 0, -0.78);
+  const soilM = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 10), new THREE.MeshLambertMaterial({ color: 0x5b4231 })); soilM.position.set(0.66, 0, -0.3); soilM.visible = false; soilM.userData.noIfc = true; bk.add(soilM);   // jord i skopan (gräv-simulatorn)
   // ---- hydraulcylindrar (två för bommen)
   const rams = [];
   [-0.3, 0.3].forEach(y => rams.push(l3vRam(tur, l3vAnchor(tur, 0.55, y, 0.38), l3vAnchor(bm, 1.57, y, 0.1), [K2, steel], 0.14, 0.085)));
@@ -137,6 +138,7 @@ function l3vExcavator() {
   const update = st => {
     const c = st.ctl || { slew: 0, boom: 0.4, stick: 1.1, bucket: 0.7 }; tur.rotation.z = c.slew; bm.rotation.y = -c.boom; sk.rotation.y = c.stick; bk.rotation.y = c.bucket;
     fp.position.copy(E); placeShoes(st.travel || 0); g.updateMatrixWorld(true); rams.forEach(r => r());
+    { const fl = typeof l3dig !== "undefined" && l3dig.on && l3dig.lastG === g ? Math.min(1, l3dig.load / l3dig.cap) : 0; soilM.visible = fl > 0.02; if (fl > 0.02) { soilM.scale.set(0.5 + 0.35 * fl, 0.95 + 0.25 * fl, 0.22 + 0.34 * fl); soilM.position.z = -0.42 + 0.22 * fl; } }
     if (typeof l3digTick === "function") { l3dig.lastG = g; l3dig.lastTip = tip; l3digTick(g, tip, c); }   // gräv-simulatorn
     tip.getWorldPosition(tv); g.worldToLocal(tv); const reach = Math.hypot(tv.x, tv.y), depth = -tv.z;
     const show = !!st.showRadius; rg.visible = show; if (show) { rcur.scale.set(Math.max(0.2, reach), Math.max(0.2, reach), 1); rlab.position.set((reach + 1) * Math.cos(c.slew), (reach + 1) * Math.sin(c.slew), 0.5); rlab.userData.set("Räckvidd " + l3vFmt(reach) + " m", "#ffb45a"); g.userData.rad = { ox: 0, oy: 0, oz: 0.05, R: reach, Rmax: 0, slew: c.slew, step: 2, maxRing: 12, name: "Räckvidd", mname: "", hex: 0xff8a1a, util: 0 }; }

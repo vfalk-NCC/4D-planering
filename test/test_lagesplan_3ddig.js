@@ -88,6 +88,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(ras.settled > 0.1, 'Kanten rasar: ' + JSON.stringify(ras));
   ok(ras.dv < 0.05, 'Rasets volym bevaras: ' + ras.dv);
   ok(ras.fx, 'Damm/klumpar skapas');
+  // bild för ögonkoll
+  await page.evaluate(async () => {
+    l3digReset(); const hf = l3dig.hf, cx = hf.x0 + 10, cy = hf.y0 + 10, g = new THREE.Object3D(), tip = new THREE.Object3D(); l3.scene.add(tip); l3.scene.add(g); l3dig.cap = 2.5;
+    for (let s = 0; s <= 60; s++) { tip.position.set(cx - 3 + s * 0.08, cy + Math.sin(s * 0.2) * 0.4, 5 - 1.1); tip.updateMatrixWorld(true); l3digTick(g, tip, { bucket: 1 }); }
+    for (let s = 0; s <= 60; s++) { tip.position.set(cx + 4, cy - 3, 6.0); tip.updateMatrixWorld(true); l3digTick(g, tip, { bucket: 0.1 }); }
+    l3FlyTo(new THREE.Vector3(cx, cy, 5), 14, new THREE.Vector3(0.6, -1, 0.9), 0); l3Render(); await new Promise(r => setTimeout(r, 500)); l3Render();
+  });
+  await page.screenshot({ path: '/tmp/dig.png' });
   ok(!errors.length, 'JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3ddig');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

@@ -2,7 +2,7 @@
    Underlaget är meshen från "Skapa mesh" (Lager → ⋯ på molnet): den läggs över ett höjdraster (en höjd per ruta) som blir en tät jordkropp med sidor ner till en botten.
    Skopspetsen (grävmaskinens "tip") sveper genom marken och sänker rutorna den passerar – volymen som försvinner räknas i m³ (fast mått) och blir last i skopan
    (uppluckrad med en faktor). Lasten töms i en hög där skopan hålls öppen över marken, eller med knappen. Prefix l3dig. */
-const l3dig = { on: false, group: null, mesh: null, skirt: null, hf: null, removed: 0, piled: 0, load: 0, cap: 1.2, swell: 1.3, prev: new WeakMap(), repose: true, angle: 38, fx: true, spill: 0, dirty: null, pts: null, t0: 0 };
+const l3dig = { on: false, group: null, mesh: null, skirt: null, hf: null, removed: 0, piled: 0, load: 0, cap: 1.2, swell: 1.3, prev: new WeakMap(), repose: true, angle: 38, fx: true, snd: false, ac: null, sndT: 0, spill: 0, dirty: null, pts: null, t0: 0 };
 const L3DIG_REL = 0.04;
 
 /* ---- Höjdraster av meshen ---- */
@@ -47,6 +47,17 @@ function l3digClear() {
   if (l3dig.group) { l3.scene.remove(l3dig.group); l3dig.group.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
   l3dig.group = l3dig.mesh = l3dig.skirt = l3dig.hf = l3dig.pts = null; l3dig.dirty = null; l3dig.on = false; l3dig.load = 0; l3dig.removed = 0; l3dig.piled = 0;
 }
+/* Färg: orörd mark behåller meshens färger; uppgrävd jord blir mörk, fuktig brun (ju djupare desto mörkare), utlagd jord ljusare och torrare. */
+function l3digColors(i0, j0, i1, j1) {
+  const hf = l3dig.hf, col = l3dig.mesh.geometry.getAttribute("color"), { nx, ny, H, H0, C } = hf; if (!col) return;
+  for (let j = Math.max(0, j0 - 1); j <= Math.min(ny - 1, j1 + 1); j++) for (let i = Math.max(0, i0 - 1); i <= Math.min(nx - 1, i1 + 1); i++) {
+    const k = j * nx + i; if (!(H[k] === H[k])) continue; const d = H[k] - H0[k]; let r = C[k * 3] / 255, g = C[k * 3 + 1] / 255, b = C[k * 3 + 2] / 255;
+    if (d < -0.03) { const t = Math.min(1, -d / 1.5), dr = 0.36 - 0.14 * t, dg = 0.26 - 0.1 * t, db = 0.17 - 0.07 * t, m = Math.min(1, -d / 0.15); r += (dr - r) * m; g += (dg - g) * m; b += (db - b) * m; }
+    else if (d > 0.03) { const m = Math.min(1, d / 0.2); r += (0.55 - r) * m; g += (0.42 - g) * m; b += (0.28 - b) * m; }
+    col.array[k * 3] = r; col.array[k * 3 + 1] = g; col.array[k * 3 + 2] = b;
+  }
+  col.needsUpdate = true;
+}
 /* Normaler ur höjderna (centraldifferens) för de rutor som ändrats. */
 function l3digNormals(i0, j0, i1, j1) {
   const hf = l3dig.hf, nor = l3dig.mesh.geometry.getAttribute("normal"), { nx, ny, H, cell } = hf, h = (i, j) => { const v = H[Math.max(0, Math.min(ny - 1, j)) * nx + Math.max(0, Math.min(nx - 1, i))]; return v === v ? v : hf.base; };
@@ -63,7 +74,7 @@ function l3digSkirt(build) {
     const ring = []; for (let i = 0; i < nx; i++) ring.push([i, 0]); for (let j = 1; j < ny; j++) ring.push([nx - 1, j]); for (let i = nx - 2; i >= 0; i--) ring.push([i, ny - 1]); for (let j = ny - 2; j > 0; j--) ring.push([0, j]);
     const n = ring.length, pos = new Float32Array(n * 2 * 3), idx = []; for (let q = 0; q < n; q++) { const nq = (q + 1) % n; idx.push(q * 2, nq * 2, nq * 2 + 1, q * 2, nq * 2 + 1, q * 2 + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setIndex(idx.length > 65535 * 3 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x7a5c3d, side: THREE.DoubleSide })); m.userData.noHit = true; m.raycast = () => {}; m.frustumCulled = false; m.userData.ring = ring; l3dig.group.add(m); l3dig.skirt = m;
+    const cl = new Float32Array(n * 2 * 3); for (let q = 0; q < n; q++) { cl.set([0.55, 0.42, 0.28], q * 6); cl.set([0.28, 0.2, 0.14], q * 6 + 3); } g.setAttribute("color", new THREE.BufferAttribute(cl, 3)); const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); m.userData.noHit = true; m.raycast = () => {}; m.frustumCulled = false; m.userData.ring = ring; l3dig.group.add(m); l3dig.skirt = m;
   }
   const ring = l3dig.skirt.userData.ring, P = l3dig.skirt.geometry.getAttribute("position");
   ring.forEach(([i, j], q) => { const k = j * nx + i, z = hf.H[k] === hf.H[k] ? hf.H[k] : hf.base, x = hf.x0 + i * hf.cell, y = hf.y0 + j * hf.cell; P.array.set([x, y, z, x, y, hf.base], q * 6); });
@@ -86,7 +97,7 @@ function l3digCarve(x, y, zt, rad) {
 function l3digApply(i0, j0, i1, j1) {
   const hf = l3dig.hf, pos = l3dig.mesh.geometry.getAttribute("position");
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const k = j * hf.nx + i; if (hf.H[k] === hf.H[k]) pos.array[k * 3 + 2] = hf.H[k]; }
-  pos.needsUpdate = true; l3digNormals(i0, j0, i1, j1); l3digDirty(i0, j0, i1, j1); if (i0 === 0 || j0 === 0 || i1 >= hf.nx - 1 || j1 >= hf.ny - 1) l3digSkirt(false);
+  pos.needsUpdate = true; l3digColors(i0, j0, i1, j1); l3digNormals(i0, j0, i1, j1); l3digDirty(i0, j0, i1, j1); if (i0 === 0 || j0 === 0 || i1 >= hf.nx - 1 || j1 >= hf.ny - 1) l3digSkirt(false);
 }
 /* Häller ut vol (löst mått, m³) som en hög kring (x, y). */
 function l3digPile(x, y, vol) {
@@ -98,31 +109,30 @@ function l3digPile(x, y, vol) {
 /* Anropas varje bildruta för en grävmaskin: tip = skopspetsen, c = reglagen (c.bucket = skopans vinkel; liten = öppen). */
 function l3digTick(g, tip, c) {
   if (!l3dig.on || !l3dig.hf || !tip) return;
-  l3digSettle();
   const p = tip.getWorldPosition(new THREE.Vector3()), prev = l3dig.prev.get(g); l3dig.prev.set(g, p.clone());
   const zs = l3digZ(p.x, p.y); if (zs == null) return;
   const open = c && c.bucket != null && c.bucket < 0.35;
-  if (open && l3dig.load > 0 && p.z > zs + 0.25) { const rate = Math.max(0.05, l3dig.load * 0.06); const q = Math.min(l3dig.load, rate); l3dig.load -= q; l3dig.piled += q; l3digPile(p.x, p.y, q); l3digFxEmit(p, 3, 1.2, 1.5, false); l3digFxEmit(p, 1, 0.8, 1.0, true); l3digUi(); return; }
+  if (open && l3dig.load > 0 && p.z > zs + 0.25) { const rate = Math.max(0.05, l3dig.load * 0.06); const q = Math.min(l3dig.load, rate); l3dig.load -= q; l3dig.piled += q; l3digPile(p.x, p.y, q); l3digFxEmit(p, 3, 1.2, 1.5, false); l3digFxEmit(p, 1, 0.8, 1.0, true); l3digSound("dump", q); l3digUi(); return; }
   if (!prev || p.z > zs + 0.05) return;   // bara när spetsen är i marken och rör sig
   const L = p.distanceTo(prev); if (L < 1e-3 || L > 3) return;
   const n = Math.max(1, Math.ceil(L / (l3dig.hf.cell * 0.5))); let got = 0;
   for (let s = 1; s <= n; s++) { const q = prev.clone().lerp(p, s / n); got += l3digCarve(q.x, q.y, q.z, 0.55); }
-  if (got > 0) { l3dig.removed += got; l3dig.load += got * l3dig.swell; l3digFxEmit(p, Math.min(8, 1 + Math.round(got * 40)), 1.3, 1.8, false); l3digFxEmit(p, 1, 0.5, 0.6, true); l3digUi(); }
+  if (got > 0) { l3dig.removed += got; l3dig.load += got * l3dig.swell; l3digFxEmit(p, Math.min(8, 1 + Math.round(got * 40)), 1.3, 1.8, false); l3digFxEmit(p, 1, 0.5, 0.6, true); l3digSound("dig", got); l3digUi(); }
 }
 /* Töm skopan nu (knapp/mellanslag): hög framför spetsen. */
 function l3digDumpNow() { const g = l3dig.lastG, t = l3dig.lastTip; if (!g || !t || !l3dig.load) return; const p = t.getWorldPosition(new THREE.Vector3()); l3digPile(p.x, p.y, l3dig.load); l3dig.piled += l3dig.load; l3dig.load = 0; l3digUi(); l3Render(); }
-function l3digReset() { const hf = l3dig.hf; if (!hf) return; hf.H.set(hf.H0); const pos = l3dig.mesh.geometry.getAttribute("position"); for (let k = 0; k < hf.H.length; k++) pos.array[k * 3 + 2] = hf.H[k] === hf.H[k] ? hf.H[k] : hf.base; pos.needsUpdate = true; l3digNormals(0, 0, hf.nx - 1, hf.ny - 1); l3digSkirt(false); l3dig.removed = l3dig.piled = l3dig.load = 0; l3digUi(); l3Render(); }
+function l3digReset() { const hf = l3dig.hf; if (!hf) return; hf.H.set(hf.H0); const pos = l3dig.mesh.geometry.getAttribute("position"); for (let k = 0; k < hf.H.length; k++) pos.array[k * 3 + 2] = hf.H[k] === hf.H[k] ? hf.H[k] : hf.base; pos.needsUpdate = true; l3digColors(0, 0, hf.nx - 1, hf.ny - 1); l3digNormals(0, 0, hf.nx - 1, hf.ny - 1); l3digSkirt(false); l3dig.removed = l3dig.piled = l3dig.load = 0; l3digUi(); l3Render(); }
 /* Verklig volym kvar mot ursprungsytan: netto-schakt (positivt = bortgrävt). */
 function l3digNet() { const hf = l3dig.hf; if (!hf) return 0; let s = 0; for (let k = 0; k < hf.H.length; k++) if (hf.H[k] === hf.H[k]) s += hf.H0[k] - hf.H[k]; return s * hf.cell * hf.cell; }
 
 
 /* ---- Ras: material glider ner där lutningen är brantare än rasvinkeln (volymen bevaras). Bara i området som rörts, och det växer några rutor per bildruta. ---- */
-function l3digDirty(i0, j0, i1, j1) { const d = l3dig.dirty; l3dig.dirty = d ? { i0: Math.min(d.i0, i0), j0: Math.min(d.j0, j0), i1: Math.max(d.i1, i1), j1: Math.max(d.j1, j1), age: 0 } : { i0, j0, i1, j1, age: 0 }; }
+function l3digDirty(i0, j0, i1, j1) { l3digFxRun(); const d = l3dig.dirty; l3dig.dirty = d ? { i0: Math.min(d.i0, i0), j0: Math.min(d.j0, j0), i1: Math.max(d.i1, i1), j1: Math.max(d.j1, j1), age: 0 } : { i0, j0, i1, j1, age: 0 }; }
 function l3digSettle() {
   const D = l3dig.dirty, hf = l3dig.hf; if (!D || !hf || !l3dig.repose) { l3dig.dirty = null; return; }
   const { nx, ny, cell, H } = hf, md = Math.tan(Math.max(10, Math.min(70, l3dig.angle)) * Math.PI / 180) * cell, pad = 2 + Math.min(6, D.age);
   const i0 = Math.max(0, D.i0 - pad), i1 = Math.min(nx - 1, D.i1 + pad), j0 = Math.max(0, D.j0 - pad), j1 = Math.min(ny - 1, D.j1 + pad); let moved = 0, ci0 = i1, ci1 = i0, cj0 = j1, cj1 = j0;
-  for (let pass = 0; pass < 3; pass++) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+  const passes = (i1 - i0 + 1) * (j1 - j0 + 1) > 30000 ? 1 : 3; for (let pass = 0; pass < passes; pass++) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
     const k = j * nx + i, h = H[k]; if (!(h === h)) continue;
     for (let q = 0; q < 4; q++) { const ni = i + (q === 0 ? 1 : q === 1 ? -1 : 0), nj = j + (q === 2 ? 1 : q === 3 ? -1 : 0); if (ni < 0 || nj < 0 || ni >= nx || nj >= ny) continue; const kn = nj * nx + ni, hn = H[kn]; if (!(hn === hn)) continue; const ex = h - hn - md; if (ex > 0.003) { const t = ex * 0.25; H[k] -= t; H[kn] += t; moved += t; if (i < ci0) ci0 = i; if (i > ci1) ci1 = i; if (j < cj0) cj0 = j; if (j > cj1) cj1 = j; if (ni < ci0) ci0 = ni; if (ni > ci1) ci1 = ni; if (nj < cj0) cj0 = nj; if (nj > cj1) cj1 = nj; } }
   }
@@ -130,20 +140,46 @@ function l3digSettle() {
   if (moved > 0) { const pos = l3dig.mesh.geometry.getAttribute("position"); for (let j = cj0; j <= cj1; j++) for (let i = ci0; i <= ci1; i++) { const k = j * nx + i; if (H[k] === H[k]) pos.array[k * 3 + 2] = H[k]; } pos.needsUpdate = true; l3digNormals(ci0, cj0, ci1, cj1); if (ci0 === 0 || cj0 === 0 || ci1 >= nx - 1 || cj1 >= ny - 1) l3digSkirt(false); D.i0 = Math.min(D.i0, ci0); D.j0 = Math.min(D.j0, cj0); D.i1 = Math.max(D.i1, ci1); D.j1 = Math.max(D.j1, cj1); l3dig.settled = (l3dig.settled || 0) + moved; }
   else if (D.age > 4) l3dig.dirty = null;
 }
+
+/* ---- Ljud: syntetiserat (filtrerat brus), skrap vid grävning och duns vid tömning. Slås på i panelen (kräver ett tryck i webbläsaren). ---- */
+function l3digSound(kind, amt) {
+  if (!l3dig.snd) return; const now = performance.now(); if (now - l3dig.sndT < 110) return; l3dig.sndT = now;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return; const ac = l3dig.ac || (l3dig.ac = new AC()); if (ac.state === "suspended") ac.resume();
+    const len = Math.floor(ac.sampleRate * (kind === "dump" ? 0.35 : 0.2)), buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, kind === "dump" ? 1.6 : 2.2);
+    const src = ac.createBufferSource(); src.buffer = buf; const f = ac.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = kind === "dump" ? 500 : 900; const gn = ac.createGain(); gn.gain.value = Math.min(0.5, 0.08 + (amt || 0.2) * 0.5);
+    src.connect(f); f.connect(gn); gn.connect(ac.destination); src.start();
+  } catch (e) { /* inget ljud */ }
+}
 /* ---- Damm och jordklumpar ---- */
+const L3DIG_VS = "attribute float alpha; attribute float size; varying float vA; varying vec3 vC; attribute vec3 color; void main(){ vA = alpha; vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * 300.0 / max(0.5, -mv.z); gl_Position = projectionMatrix * mv; }";
+const L3DIG_FS = "varying float vA; varying vec3 vC; void main(){ vec2 c = gl_PointCoord - 0.5; float d = length(c); if (d > 0.5) discard; float soft = smoothstep(0.5, 0.05, d); gl_FragColor = vec4(vC, vA * soft); }";
 function l3digFxEmit(p, n, spread, up, dust) {
-  if (!l3dig.fx) return; const N = 260;
-  if (!l3dig.pts) { const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(col, 3)); const m = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.16, vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false })); m.frustumCulled = false; m.userData.noHit = true; m.raycast = () => {}; l3dig.group.add(m); l3dig.pts = { m, v: new Float32Array(N * 3), life: new Float32Array(N), kind: new Uint8Array(N), next: 0, N }; }
-  const P = l3dig.pts, pos = P.m.geometry.getAttribute("position"), col = P.m.geometry.getAttribute("color");
-  for (let q = 0; q < n; q++) { const i = P.next++ % P.N, a = Math.random() * Math.PI * 2, s = Math.random() * spread; pos.array.set([p.x + (Math.random() - 0.5) * 0.3, p.y + (Math.random() - 0.5) * 0.3, p.z], i * 3); P.v.set([Math.cos(a) * s, Math.sin(a) * s, up * (0.4 + Math.random() * 0.8)], i * 3); P.life[i] = 0.6 + Math.random() * 0.9; P.kind[i] = dust ? 1 : 0; const c = dust ? [0.78, 0.74, 0.68] : [0.42, 0.31, 0.2]; col.array.set(c, i * 3); }
-  pos.needsUpdate = col.needsUpdate = true; l3digFxRun();
+  if (!l3dig.fx || !l3dig.group) return; const N = 320;
+  if (!l3dig.pts) {
+    const g = new THREE.BufferGeometry(); ["position", "color"].forEach(k => g.setAttribute(k, new THREE.BufferAttribute(new Float32Array(N * 3), 3))); g.setAttribute("alpha", new THREE.BufferAttribute(new Float32Array(N), 1)); g.setAttribute("size", new THREE.BufferAttribute(new Float32Array(N), 1));
+    const m = new THREE.Points(g, new THREE.ShaderMaterial({ vertexShader: L3DIG_VS, fragmentShader: L3DIG_FS, transparent: true, depthWrite: false })); m.frustumCulled = false; m.userData.noHit = true; m.raycast = () => {}; l3dig.group.add(m);
+    const pos = g.getAttribute("position"); for (let i = 0; i < N; i++) pos.array[i * 3 + 2] = -1e5; l3dig.pts = { m, v: new Float32Array(N * 3), life: new Float32Array(N), life0: new Float32Array(N), kind: new Uint8Array(N), next: 0, N };
+  }
+  const P = l3dig.pts, g = P.m.geometry, pos = g.getAttribute("position"), col = g.getAttribute("color"), al = g.getAttribute("alpha"), sz = g.getAttribute("size");
+  for (let q = 0; q < n; q++) {
+    const i = P.next++ % P.N, a = Math.random() * Math.PI * 2, sp = Math.random() * spread; pos.array.set([p.x + (Math.random() - 0.5) * 0.4, p.y + (Math.random() - 0.5) * 0.4, p.z + Math.random() * 0.1], i * 3);
+    P.v.set([Math.cos(a) * sp, Math.sin(a) * sp, up * (0.4 + Math.random() * 0.8)], i * 3); P.life[i] = P.life0[i] = dust ? 1.4 + Math.random() * 1.2 : 0.7 + Math.random() * 0.8; P.kind[i] = dust ? 1 : 0;
+    const tone = 0.85 + Math.random() * 0.15; col.array.set(dust ? [0.72 * tone, 0.67 * tone, 0.6 * tone] : [0.4 * tone, 0.29 * tone, 0.19 * tone], i * 3); sz.array[i] = dust ? 0.5 : 0.1 + Math.random() * 0.08; al.array[i] = dust ? 0.4 : 1;
+  }
+  pos.needsUpdate = col.needsUpdate = al.needsUpdate = sz.needsUpdate = true; l3digFxRun();
 }
 function l3digFxStep(dt) {
-  const P = l3dig.pts; if (!P) return false; const pos = P.m.geometry.getAttribute("position"), col = P.m.geometry.getAttribute("color"); let alive = false;
-  for (let i = 0; i < P.N; i++) { if (P.life[i] <= 0) { pos.array[i * 3 + 2] = -1e5; continue; } alive = true; P.life[i] -= dt; const dust = P.kind[i] === 1; P.v[i * 3 + 2] -= (dust ? 0.6 : 9.8) * dt; if (dust) { P.v[i * 3] *= 0.97; P.v[i * 3 + 1] *= 0.97; } pos.array[i * 3] += P.v[i * 3] * dt; pos.array[i * 3 + 1] += P.v[i * 3 + 1] * dt; pos.array[i * 3 + 2] += P.v[i * 3 + 2] * dt; if (!dust) { const zs = l3digZ(pos.array[i * 3], pos.array[i * 3 + 1]); if (zs != null && pos.array[i * 3 + 2] < zs) { pos.array[i * 3 + 2] = zs; P.v.fill(0, i * 3, i * 3 + 3); } } }
-  pos.needsUpdate = true; return alive;
+  const P = l3dig.pts; if (!P) return false; const g = P.m.geometry, pos = g.getAttribute("position"), al = g.getAttribute("alpha"), sz = g.getAttribute("size"); let alive = false;
+  for (let i = 0; i < P.N; i++) {
+    if (P.life[i] <= 0) { if (pos.array[i * 3 + 2] > -1e4) pos.array[i * 3 + 2] = -1e5; continue; } alive = true; P.life[i] -= dt; const dust = P.kind[i] === 1, f = P.life[i] / P.life0[i];
+    P.v[i * 3 + 2] += (dust ? 0.5 : -9.8) * dt; if (dust) { P.v[i * 3] *= 0.96; P.v[i * 3 + 1] *= 0.96; P.v[i * 3 + 2] *= 0.98; sz.array[i] += dt * 0.9; al.array[i] = 0.4 * Math.min(1, f * 2); }
+    pos.array[i * 3] += P.v[i * 3] * dt; pos.array[i * 3 + 1] += P.v[i * 3 + 1] * dt; pos.array[i * 3 + 2] += P.v[i * 3 + 2] * dt;
+    if (!dust) { const zs = l3digZ(pos.array[i * 3], pos.array[i * 3 + 1]); if (zs != null && pos.array[i * 3 + 2] < zs) { pos.array[i * 3 + 2] = zs + 0.01; P.v[i * 3] *= 0.2; P.v[i * 3 + 1] *= 0.2; P.v[i * 3 + 2] = 0; if (P.life[i] > 0.15) P.life[i] = 0.15; } }
+  }
+  pos.needsUpdate = al.needsUpdate = sz.needsUpdate = true; return alive;
 }
-function l3digFxRun() { if (l3dig.fxRaf) return; let t = performance.now(); const loop = () => { l3dig.fxRaf = 0; const n = performance.now(), dt = Math.min(0.05, (n - t) / 1000); t = n; if (l3dig.on && l3digFxStep(dt)) { l3Render(); l3dig.fxRaf = requestAnimationFrame(loop); } }; l3dig.fxRaf = requestAnimationFrame(loop); }
+function l3digFxRun() { if (l3dig.fxRaf) return; let t = performance.now(); const loop = () => { l3dig.fxRaf = 0; const n = performance.now(), dt = Math.min(0.05, (n - t) / 1000); t = n; if (!l3dig.on) return; const al = l3digFxStep(dt); if (l3dig.dirty) l3digSettle(); if (al || l3dig.dirty) { l3Render(); l3dig.fxRaf = requestAnimationFrame(loop); } }; l3dig.fxRaf = requestAnimationFrame(loop); }
 
 /* ---- Panel ---- */
 function l3digUi() {
@@ -162,6 +198,7 @@ function l3digPanel() {
     <div class="v3-bp-chips"><button type="button" data-dga="dump">Töm skopan</button><button type="button" data-dga="reset">Återställ marken</button><button type="button" data-dga="off">Ta bort</button></div>
     <label class="v3-chk" title="Jorden rasar där lutningen är brantare än rasvinkeln"><input type="checkbox" id="v3DigRep" ${l3dig.repose ? "checked" : ""}> Ras, vinkel <input type="number" id="v3DigAng" min="15" max="60" step="1" value="${l3dig.angle}" style="width:52px">°</label>
     <label class="v3-chk"><input type="checkbox" id="v3DigFx" ${l3dig.fx ? "checked" : ""}> Damm och jordklumpar</label>
+    <label class="v3-chk"><input type="checkbox" id="v3DigSnd" ${l3dig.snd ? "checked" : ""}> Ljud</label>
     <label class="v3-chk"><input type="checkbox" id="v3DigPc"> Dölj punktmolnet</label>
     <label class="v3-chk" title="Skopans storlek (löst mått)">Skopa <input type="number" id="v3DigCap" min="0.2" max="6" step="0.1" value="${l3dig.cap}" style="width:60px"> m³</label>
     <label class="v3-chk" title="Hur mycket jorden växer när den grävs upp">Uppluckring <input type="number" id="v3DigSw" min="1" max="2" step="0.05" value="${l3dig.swell}" style="width:60px"></label>`, () => {});
@@ -169,6 +206,7 @@ function l3digPanel() {
   d.querySelector("[data-dga=dump]").onclick = l3digDumpNow; d.querySelector("[data-dga=reset]").onclick = l3digReset; d.querySelector("[data-dga=off]").onclick = () => { l3digClear(); l3bfPanelClose("v3Dig"); l3Render(); };
   d.querySelector("#v3DigCap").onchange = e => { l3dig.cap = Math.max(0.2, Number(e.target.value) || 1.2); l3digUi(); }; d.querySelector("#v3DigSw").onchange = e => { l3dig.swell = Math.max(1, Number(e.target.value) || 1.3); l3digUi(); };
   d.querySelector('#v3DigRep').onchange = e => { l3dig.repose = e.target.checked; }; d.querySelector('#v3DigAng').onchange = e => { l3dig.angle = Math.max(15, Math.min(60, Number(e.target.value) || 38)); }; d.querySelector('#v3DigFx').onchange = e => { l3dig.fx = e.target.checked; };
+  d.querySelector('#v3DigSnd').onchange = e => { l3dig.snd = e.target.checked; if (l3dig.snd) l3digSound('dig', 0.3); };
   d.querySelector('#v3DigPc').onchange = e => { (typeof l3pc !== 'undefined' && l3pc.clouds || []).forEach(c => { if (c.group) c.group.visible = !e.target.checked; }); l3Render(); };
   l3digUi();
 }
