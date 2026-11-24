@@ -43,7 +43,7 @@ function stallningFriBuild(p, c) {
       if (z > gO + 0.25) { rod([a.ox, a.oy, z], [b.ox, b.oy, z], 0.02); nLed++; }
       if (j === nb - 1 && z > b.zi + 0.25 && z > b.zo + 0.25) rod([b.x, b.y, z], [b.ox, b.oy, z], 0.02, STE2);
       if (j === 0 && z > a.zi + 0.25 && z > a.zo + 0.25) rod([a.x, a.y, z], [a.ox, a.oy, z], 0.02, STE2);
-      if (z >= gA + 0.1) {   // plattformen ligger över marken i hela facket
+      if (z >= Math.min(gI, gO) + 0.1) {   // plattformen ligger över marken i facket (även när bergets kant går snett genom facket – annars saknades plattformar där slänten är brant)
         nDeck++; c.box(DECK, mx, my, z + 0.045, len - 0.04, Math.max(0.3, wy - 0.1), 0.03, [ang, 0, 0], 0, { metal: 0.7, rough: 0.45 });
         c.box(EDGE, (a.x + b.x) / 2, (a.y + b.y) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0, SMM); c.box(EDGE, (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0, SMM);
         if (spark) c.box("#c9a15f", (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.16, len - 0.04, 0.025, 0.15, [ang, 0, 0], 0, { rough: 0.9 });
@@ -52,7 +52,8 @@ function stallningFriBuild(p, c) {
     });
     // översta räcket (även över sista plattformen) på båda raderna
     [0.5, 1.0].forEach((h, hi) => { rod([a.x, a.y, top + h], [b.x, b.y, top + h], 0.02, hi ? acc : STE); rod([a.ox, a.oy, top + h], [b.ox, b.oy, top + h], 0.02, hi ? acc : STE); });
-    if (diag && j % 2 === 0) { const zb0 = Math.max(Math.min(a.zo, b.zo) + 0.3, top - nl * vh); rod([j % 4 === 0 ? a.ox : b.ox, j % 4 === 0 ? a.oy : b.oy, zb0], [j % 4 === 0 ? b.ox : a.ox, j % 4 === 0 ? b.oy : a.oy, top], 0.014, STE2); }
+    // Diagonalstag: ett per våning (mellan två plattformsnivåer) i vartannat fack, växelvis åt höger och vänster – bara där nivån ligger över marken, så att inga stag går ut i luften.
+    if (diag && j % 2 === 0) for (let k = 0; k + 1 < lev.length; k++) { const zu = lev[k], zl = lev[k + 1]; if (zl < Math.min(a.zo, b.zo) + 0.3) continue; const flip = ((j / 2) + k) % 2 === 0; rod([flip ? a.ox : b.ox, flip ? a.oy : b.oy, zl], [flip ? b.ox : a.ox, flip ? b.oy : a.oy, zu], 0.014, STE2); }
     if (skydd === "Nät") { const g0 = Math.min(a.zo, b.zo), h = topRail - g0; c.beam("#16a34a", [(a.ox + (a.ox - a.x) * 0.07), (a.oy + (a.oy - a.y) * 0.07), g0 + h / 2], [(b.ox + (b.ox - b.x) * 0.07), (b.oy + (b.oy - b.y) * 0.07), g0 + h / 2], 0.01, h, { transp: 0.55, rough: 1 }); }
   }
   // tillträde: stege (varje nivå mellan plattformarna) vid första stationen, på insidan
