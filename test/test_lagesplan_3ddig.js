@@ -69,6 +69,25 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(res.capped, 'Skopan fylls bara till sin storlek');
   ok(res.dumped > 0.3 && res.pile > 5.05, 'Lasten tömdes i en hög: ' + res.dumped + ' / ' + res.pile);
   ok(res.balance < 0.05, 'Volymen stämmer (bortgrävt − utlagt i hög = netto): ' + res.balance);
+
+  // Ras: en lodrät kant mot en grop rasar ner och volymen bevaras; damm/klumpar skapas.
+  const ras = await page.evaluate(async () => {
+    l3digReset(); l3dig.repose = true; l3dig.angle = 35; const hf = l3dig.hf, cx = hf.x0 + 10, cy = hf.y0 + 10;
+    // gräv en grop 1,5 m djup (hela volymen direkt i rutorna) med lodräta kanter
+    let before = 0; for (let k = 0; k < hf.H.length; k++) before += hf.H[k];
+    for (let j = 0; j < hf.ny; j++) for (let i = 0; i < hf.nx; i++) { const x = hf.x0 + i * hf.cell, y = hf.y0 + j * hf.cell; if (Math.abs(x - cx) < 1 && Math.abs(y - cy) < 1) hf.H[j * hf.nx + i] -= 1.5; }
+    let mid = 0; for (let k = 0; k < hf.H.length; k++) mid += hf.H[k]; l3digApply(0, 0, hf.nx - 1, hf.ny - 1);
+    const z0 = l3digZ(cx + 1.3, cy), slope0 = l3digZ(cx + 1.3, cy) - l3digZ(cx, cy);
+    const g = new THREE.Object3D(), tip = new THREE.Object3D(); tip.position.set(cx - 7, cy - 7, 20); l3.scene.add(tip); l3.scene.add(g);
+    for (let s = 0; s < 120; s++) l3digTick(g, tip, { bucket: 1 });
+    let after = 0; for (let k = 0; k < hf.H.length; k++) after += hf.H[k];
+    const z1 = l3digZ(cx + 1.3, cy), depth1 = l3digZ(cx + 2.5, cy) - l3digZ(cx, cy);
+    l3dig.on = true; l3digFxEmit(new THREE.Vector3(cx, cy, 5), 5, 1, 1, false); const fx = !!l3dig.pts; return { slope0, depth1, z0, z1, dv: Math.abs(after - mid) * hf.cell * hf.cell, settled: l3dig.settled, fx };
+  });
+  console.log(JSON.stringify(ras));
+  ok(ras.settled > 0.1, 'Kanten rasar: ' + JSON.stringify(ras));
+  ok(ras.dv < 0.05, 'Rasets volym bevaras: ' + ras.dv);
+  ok(ras.fx, 'Damm/klumpar skapas');
   ok(!errors.length, 'JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3ddig');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
