@@ -141,17 +141,18 @@ function l3mxFrame(h) {
 function l3mxLaserAt(e) {
   const h = l3mxHit(e); if (!h) return null; const F = l3mxFrame(h); if (!F) return null;
   let R0 = null; try { // måtten gäller den sammanhängande plana ytan man pekar på (inte andra delar som råkar ligga i samma plan)
-    const R = R0 = l3mxRegion(F); if (R && R.outer.length >= 3) {
+    const R = R0 = l3mxRegion(F), PT = R ? (R.outer.length >= 3 ? R.outer : (R.bndPts || [])) : []; if (R && PT.length >= 3) {
       { // axlarna = ytans egna kanter (minsta omslutande rektangel i planet), den mest vågräta först
         const nn = F.n, e1 = Math.abs(nn.z) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1).cross(nn).normalize(), e2 = new THREE.Vector3().crossVectors(nn, e1).normalize();
-        let best = null; for (let a = 0; a < 180; a += 1) { const c = Math.cos(a * Math.PI / 180), s2 = Math.sin(a * Math.PI / 180); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; R.outer.forEach(q => { const X = q.dot(e1) * c + q.dot(e2) * s2, Y = -q.dot(e1) * s2 + q.dot(e2) * c; if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); const ar = (x1 - x0) * (y1 - y0); if (!best || ar < best.ar - 1e-9) best = { ar, c, s: s2 }; }
-        if (!F.horiz) { const c0 = 1, s0 = 0; let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; R.outer.forEach(q => { const X = q.dot(e1), Y = q.dot(e2); if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); if ((x1 - x0) * (y1 - y0) <= best.ar * 1.6) best = { ar: 0, c: c0, s: s0 }; } // lodräta ytor: vågrätt/lodrätt om det inte är mycket sämre passform
+        let best = null; for (let a = 0; a < 180; a += 1) { const c = Math.cos(a * Math.PI / 180), s2 = Math.sin(a * Math.PI / 180); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; PT.forEach(q => { const X = q.dot(e1) * c + q.dot(e2) * s2, Y = -q.dot(e1) * s2 + q.dot(e2) * c; if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); const ar = (x1 - x0) * (y1 - y0); if (!best || ar < best.ar - 1e-9) best = { ar, c, s: s2 }; }
+        if (!F.horiz) { const c0 = 1, s0 = 0; let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; PT.forEach(q => { const X = q.dot(e1), Y = q.dot(e2); if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); if ((x1 - x0) * (y1 - y0) <= best.ar * 1.6) best = { ar: 0, c: c0, s: s0 }; } // lodräta ytor: vågrätt/lodrätt om det inte är mycket sämre passform
         let u2 = e1.clone().multiplyScalar(best.c).addScaledVector(e2, best.s), v2 = e1.clone().multiplyScalar(-best.s).addScaledVector(e2, best.c);
         if (!F.horiz && Math.abs(v2.z) < Math.abs(u2.z)) { const t = u2; u2 = v2; v2 = t; } // lodräta/sneda ytor: v = mest uppåt
         if (!F.horiz && v2.z < 0) v2.negate();
         F.u = u2; F.v = v2;
       }
-      const ex = ax => { let lo = 1e9, hi = -1e9; R.outer.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
+      const ex = ax => { let lo = 1e9, hi = -1e9; PT.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
+    if (R && R.outer.length < 3 && PT.length >= 3) { const Q0 = (a, b) => F.P.clone().addScaledVector(F.u, a - F.P.dot(F.u)).addScaledVector(F.v, b - F.P.dot(F.v)); R.outer = [Q0(F.u0, F.v0), Q0(F.u1, F.v0), Q0(F.u1, F.v1), Q0(F.u0, F.v1)]; R.holes = []; } // ytans form kunde inte kedjas ihop: rektangel längs objektets kanter
   } catch (_) {}
   let corner = false; try { // snappa mot hörn (ytans egna hörn): punkten flyttas till närmaste hörn (inom 14 px)
     const r = l3.renderer.domElement.getBoundingClientRect(); let bd = 20, bv = null;
@@ -228,7 +229,7 @@ function l3mxRegion(F) {
   bnd.forEach(r0 => { if (used.has(r0)) return; const pts = []; let r = r0, guard = 0; while (r && !used.has(r) && guard++ < 100000) { used.add(r); pts.push(r.pa); r = (next.get(r.b) || []).find(x => !used.has(x)); } if (pts.length >= 3) loops.push(pts); });
   const la = pts => { let s2 = 0; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; s2 += (a.dot(u) * b.dot(v) - b.dot(u) * a.dot(v)); } return Math.abs(s2) / 2; };
   const areas = loops.map(la), oi = areas.indexOf(Math.max(...areas)), gross = areas[oi] || net, holes = loops.filter((_, i) => i !== oi), holeA = holes.reduce((s2, h2) => s2 + la(h2), 0);
-  return { net, gross, outer: loops[oi] || [], holes, holeA, tris: region.length };
+  return { net, gross, outer: loops[oi] || [], holes, holeA, tris: region.length, bndPts: bnd.flatMap(r => [r.pa, r.pb]) };
 }
 function l3mxSurfVolClick(e, keep) {
   const h = l3mxHit(e); if (!h) { l3Status("Yta & volym: tryck på en yta i modellen.", true); return; }
