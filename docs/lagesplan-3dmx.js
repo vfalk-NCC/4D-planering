@@ -146,7 +146,16 @@ function l3mxLaserAt(e) {
     if (bv) { F.P.copy(bv); corner = true; }
   } catch (_) {}
   let R0 = null; try { // måtten gäller den sammanhängande plana ytan man pekar på (inte andra delar som råkar ligga i samma plan)
-    const R = R0 = l3mxRegion(F); if (R && R.outer.length >= 3) { const ex = ax => { let lo = 1e9, hi = -1e9; R.outer.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
+    const R = R0 = l3mxRegion(F); if (R && R.outer.length >= 3) {
+      { // axlarna = ytans egna kanter (minsta omslutande rektangel i planet), den mest vågräta först
+        const nn = F.n, e1 = Math.abs(nn.z) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1).cross(nn).normalize(), e2 = new THREE.Vector3().crossVectors(nn, e1).normalize();
+        let best = null; for (let a = 0; a < 180; a += 1) { const c = Math.cos(a * Math.PI / 180), s2 = Math.sin(a * Math.PI / 180); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; R.outer.forEach(q => { const X = q.dot(e1) * c + q.dot(e2) * s2, Y = -q.dot(e1) * s2 + q.dot(e2) * c; if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); const ar = (x1 - x0) * (y1 - y0); if (!best || ar < best.ar - 1e-9) best = { ar, c, s: s2 }; }
+        let u2 = e1.clone().multiplyScalar(best.c).addScaledVector(e2, best.s), v2 = e1.clone().multiplyScalar(-best.s).addScaledVector(e2, best.c);
+        if (!F.horiz && Math.abs(v2.z) < Math.abs(u2.z)) { const t = u2; u2 = v2; v2 = t; } // lodräta/sneda ytor: v = mest uppåt
+        if (!F.horiz && v2.z < 0) v2.negate();
+        F.u = u2; F.v = v2;
+      }
+      const ex = ax => { let lo = 1e9, hi = -1e9; R.outer.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
   } catch (_) {}
   const C = l3mxCfg().laser, out = [], { P, n, u, v } = F, pu = P.dot(u), pv = P.dot(v), pn = P.dot(n);
   const add = (lbl, dir, d, col) => { if (d > 0.005) out.push({ lbl, pt: P.clone().addScaledVector(dir, d), d, dir: dir.clone(), from: P.clone() }); };
@@ -170,7 +179,17 @@ function l3mxLaserHover(e) {
   const L = l3mxLaserAt(e); l3mx.lastLaser = L; if (!L) { l3ShowMarker(null); return; }
   const host = l3.renderer.domElement.parentElement; l3Dot(L.P, 0xfde047);
   L.hits.forEach((h, i) => { l3TmpLine(h.from || L.P, h.pt, h.nbr ? 0x38bdf8 : 0xfde047, h.nbr); l3Dot(h.pt, h.nbr ? 0x38bdf8 : 0xfde047); const el = document.createElement("div"); el.className = "v3-meas v3-mx-lab"; el.textContent = `${l3mxF(h.d)} m`; host.appendChild(el); el._at = (h.from || L.P).clone().lerp(h.pt, 0.5); l3m.labels.set(`mx:live:${i}`, el); });
+  try { const T = l3mxSVText(L.F); if (T) { const el = document.createElement("div"); el.className = "v3-meas v3-mx-lab"; el.textContent = T; host.appendChild(el); el._at = L.P.clone(); l3m.labels.set("mx:live:sv", el); } } catch (_) {}
   if (typeof l3mPlaceLabels === "function") l3mPlaceLabels();
+}
+/* Yta och verklig volym som text (cachas per yta så att förhandsvisningen går snabbt). */
+const l3mxSVCache = new Map();
+function l3mxSVText(F) {
+  const g = F.g, key = (g.mesh && g.mesh.uuid) + ":" + g.lo + ":" + F.P.toArray().map(x => Math.round(x * 100)).join(",") + (l3mxCfg().ytvol.area ? "a" : "") + (l3mxCfg().ytvol.vol ? "v" : ""); if (l3mxSVCache.has(key)) return l3mxSVCache.get(key);
+  const C = l3mxCfg().ytvol, f = x => l3Fmt(x, 2), parts = []; let R = null; try { R = l3mxRegion(F); } catch (_) {}
+  if (C.area && R) parts.push(`Yta ${f(R.net)} m²`);
+  if (C.vol) { let vol = 0; g.tris.forEach(([a, b, c]) => { const A = g.V[a].clone().sub(F.P), B = g.V[b].clone().sub(F.P), Cc = g.V[c].clone().sub(F.P); vol += A.dot(B.clone().cross(Cc)) / 6; }); vol = Math.abs(vol); if (vol > 1e-6) parts.push(`Volym ${l3Fmt(vol, 3)} m³`); }
+  const t = parts.join(" · "); if (l3mxSVCache.size > 200) l3mxSVCache.clear(); l3mxSVCache.set(key, t); return t;
 }
 function l3mxLaserClick(e) {
   const L = l3mxLaserAt(e) || l3mx.lastLaser; if (!L || !L.hits.length) { l3Status("Smartmått: håll över en yta i modellen.", true); return; }
