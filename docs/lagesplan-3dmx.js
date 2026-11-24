@@ -145,8 +145,8 @@ function l3mxLaserAt(e) {
     F.side.forEach(q => { const w = q.clone().project(l3.camera), sx = (w.x * 0.5 + 0.5) * r.width + r.left, sy = (-w.y * 0.5 + 0.5) * r.height + r.top, d = Math.hypot(sx - e.clientX, sy - e.clientY); if (d < bd) { bd = d; bv = q; } });
     if (bv) { F.P.copy(bv); corner = true; }
   } catch (_) {}
-  try { // måtten gäller den sammanhängande plana ytan man pekar på (inte andra delar som råkar ligga i samma plan)
-    const R = l3mxRegion(F); if (R && R.outer.length >= 3) { const ex = ax => { let lo = 1e9, hi = -1e9; R.outer.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
+  let R0 = null; try { // måtten gäller den sammanhängande plana ytan man pekar på (inte andra delar som råkar ligga i samma plan)
+    const R = R0 = l3mxRegion(F); if (R && R.outer.length >= 3) { const ex = ax => { let lo = 1e9, hi = -1e9; R.outer.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
   } catch (_) {}
   const C = l3mxCfg().laser, out = [], { P, n, u, v } = F, pu = P.dot(u), pv = P.dot(v), pn = P.dot(n);
   const add = (lbl, dir, d, col) => { if (d > 0.005) out.push({ lbl, pt: P.clone().addScaledVector(dir, d), d, dir: dir.clone(), from: P.clone() }); };
@@ -157,6 +157,11 @@ function l3mxLaserAt(e) {
   if (C.nbr) { // avstånd till närmaste andra objekt i samma riktningar
     const o = n.clone().multiplyScalar(0.008), dirs = [["→ granne 1", u], ["← granne 1", u.clone().negate()], ["→ granne 2", v], ["← granne 2", v.clone().negate()], ["Ut", n]];
     dirs.forEach(([lbl, d]) => { const r = l3mxRay(P.clone().add(o), d, C.max); if (r && r.distance > 0.01 && !(F.g.mesh === (r.object.userData.l3bMain || r.object) && r.face && r.face.a >= F.g.lo && r.face.a < F.g.hi)) out.push({ lbl, pt: r.point.clone(), d: r.distance, dir: d.clone(), from: P.clone(), nbr: true }); });
+  }
+  if (corner && R0 && R0.outer.length >= 3) { // hörn: ett mått per sida runt ytan
+    let pts = R0.outer.filter((q, i, A) => q.distanceTo(A[(i + A.length - 1) % A.length]) > 0.01);
+    pts = pts.filter((q, i, A) => { const a = A[(i + A.length - 1) % A.length], b = A[(i + 1) % A.length], d1 = q.clone().sub(a).normalize(), d2 = b.clone().sub(q).normalize(); return d1.cross(d2).length() > 0.01; });
+    if (pts.length >= 3 && pts.length <= 40) { out.length = 0; pts.forEach((q, i) => { const b = pts[(i + 1) % pts.length], d = q.distanceTo(b); if (d > 0.005) out.push({ lbl: "Sida " + (i + 1), from: q.clone(), pt: b.clone(), d, dir: b.clone().sub(q).normalize(), side: true }); }); }
   }
   return { P, n, hits: out, obj: h.object, F, corner };
 }
