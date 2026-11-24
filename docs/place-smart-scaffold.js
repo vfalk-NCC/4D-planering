@@ -41,12 +41,12 @@ function stallningFriBuild(p, c) {
     const A0 = st[j], B0 = st[j + 1], a = A0, b = B0, ang = Math.atan2(b.y - a.y, b.x - a.x), len = Math.hypot(b.x - a.x, b.y - a.y), gA = Math.max(a.zi, b.zi, a.zo, b.zo), gI = Math.min(a.zi, b.zi), gO = Math.min(a.zo, b.zo);
     const mx = (a.x + b.x + a.ox + b.ox) / 4, my = (a.y + b.y + a.oy + b.oy) / 4, wy = Math.hypot((a.ox - a.x + b.ox - b.x) / 2, (a.oy - a.y + b.oy - b.y) / 2);
     lev.forEach((z, k) => {
-      if (z > gI + 0.25) { rodG([a.x, a.y], [b.x, b.y], a.zi, b.zi, z, 0.02); nLed++; }
-      if (z > gO + 0.25) { rodG([a.ox, a.oy], [b.ox, b.oy], a.zo, b.zo, z, 0.02); nLed++; }
+      if (z > Math.max(a.zi, b.zi) + 0.25) { rod([a.x, a.y, z], [b.x, b.y, z], 0.02); nLed++; }   // stänger/plattformar bara mellan två stolpar som står under nivån – inget svävar
+      if (z > Math.max(a.zo, b.zo) + 0.25) { rod([a.ox, a.oy, z], [b.ox, b.oy, z], 0.02); nLed++; }
       if (j === nb - 1 && z > b.zi + 0.25 && z > b.zo + 0.25) rod([b.x, b.y, z], [b.ox, b.oy, z], 0.02, STE2);
       if (j === 0 && z > a.zi + 0.25 && z > a.zo + 0.25) rod([a.x, a.y, z], [a.ox, a.oy, z], 0.02, STE2);
-      const e0 = Math.max(a.zi, a.zo) + 0.1 - z, e1 = Math.max(b.zi, b.zo) + 0.1 - z; let t0 = 0, t1 = 1;   // plattformen ritas bara där marken ligger under nivån (kapas vid markens skärning, annars svävar den utan stolpar)
-      if (e0 >= 0 && e1 >= 0) t1 = t0; else if (e0 >= 0) t0 = e0 / (e0 - e1); else if (e1 >= 0) t1 = e0 / (e0 - e1);
+      const e0 = Math.max(a.zi, a.zo) + 0.25 - z, e1 = Math.max(b.zi, b.zo) + 0.25 - z; let t0 = 0, t1 = 1;   // plattformen ritas bara där marken ligger under nivån (kapas vid markens skärning, annars svävar den utan stolpar)
+      if (e0 >= 0 || e1 >= 0) t1 = t0;
       if ((t1 - t0) * Math.hypot(b.x - a.x, b.y - a.y) > 0.25) {
         const lp = (p0, p1, t) => p0 + (p1 - p0) * t, a = { x: lp(A0.x, B0.x, t0), y: lp(A0.y, B0.y, t0), ox: lp(A0.ox, B0.ox, t0), oy: lp(A0.oy, B0.oy, t0) }, b = { x: lp(A0.x, B0.x, t1), y: lp(A0.y, B0.y, t1), ox: lp(A0.ox, B0.ox, t1), oy: lp(A0.oy, B0.oy, t1) }, len = Math.hypot(b.x - a.x, b.y - a.y), mx = (a.x + b.x + a.ox + b.ox) / 4, my = (a.y + b.y + a.oy + b.oy) / 4;
         nDeck++; c.box(DECK, mx, my, z + 0.045, len - 0.04, Math.max(0.3, wy - 0.1), 0.03, [ang, 0, 0], 0, { metal: 0.7, rough: 0.45 });
@@ -58,7 +58,7 @@ function stallningFriBuild(p, c) {
     // översta räcket (även över sista plattformen) på båda raderna
     [0.5, 1.0].forEach((h, hi) => { rod([a.x, a.y, top + h], [b.x, b.y, top + h], 0.02, hi ? acc : STE); rod([a.ox, a.oy, top + h], [b.ox, b.oy, top + h], 0.02, hi ? acc : STE); });
     // Diagonalstag: ett per våning (mellan två plattformsnivåer) i vartannat fack, växelvis åt höger och vänster – bara där nivån ligger över marken, så att inga stag går ut i luften.
-    if (diag && j % 2 === 0) for (let k = 0; k + 1 < lev.length; k++) { const zu = lev[k], zl = lev[k + 1]; if (zl < Math.min(a.zo, b.zo) + 0.3) continue; const flip = ((j / 2) + k) % 2 === 0; rod([flip ? a.ox : b.ox, flip ? a.oy : b.oy, zl], [flip ? b.ox : a.ox, flip ? b.oy : a.oy, zu], 0.014, STE2); }
+    if (diag && j % 2 === 0) for (let k = 0; k + 1 < lev.length; k++) { const zu = lev[k], zl = lev[k + 1]; if (zl < Math.max(a.zi, a.zo, b.zi, b.zo) + 0.3) continue; const flip = ((j / 2) + k) % 2 === 0; rod([flip ? a.ox : b.ox, flip ? a.oy : b.oy, zl], [flip ? b.ox : a.ox, flip ? b.oy : a.oy, zu], 0.014, STE2); }
     if (skydd === "Nät") { const g0 = Math.min(a.zo, b.zo), h = topRail - g0; c.beam("#16a34a", [(a.ox + (a.ox - a.x) * 0.07), (a.oy + (a.oy - a.y) * 0.07), g0 + h / 2], [(b.ox + (b.ox - b.x) * 0.07), (b.oy + (b.oy - b.y) * 0.07), g0 + h / 2], 0.01, h, { transp: 0.55, rough: 1 }); }
   }
   // tillträde: stege (varje nivå mellan plattformarna) vid första stationen, på insidan
