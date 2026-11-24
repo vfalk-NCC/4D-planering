@@ -145,6 +145,7 @@ function l3mxLaserAt(e) {
       { // axlarna = ytans egna kanter (minsta omslutande rektangel i planet), den mest vågräta först
         const nn = F.n, e1 = Math.abs(nn.z) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1).cross(nn).normalize(), e2 = new THREE.Vector3().crossVectors(nn, e1).normalize();
         let best = null; for (let a = 0; a < 180; a += 1) { const c = Math.cos(a * Math.PI / 180), s2 = Math.sin(a * Math.PI / 180); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; R.outer.forEach(q => { const X = q.dot(e1) * c + q.dot(e2) * s2, Y = -q.dot(e1) * s2 + q.dot(e2) * c; if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); const ar = (x1 - x0) * (y1 - y0); if (!best || ar < best.ar - 1e-9) best = { ar, c, s: s2 }; }
+        if (!F.horiz) { const c0 = 1, s0 = 0; let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; R.outer.forEach(q => { const X = q.dot(e1), Y = q.dot(e2); if (X < x0) x0 = X; if (X > x1) x1 = X; if (Y < y0) y0 = Y; if (Y > y1) y1 = Y; }); if ((x1 - x0) * (y1 - y0) <= best.ar * 1.6) best = { ar: 0, c: c0, s: s0 }; } // lodräta ytor: vågrätt/lodrätt om det inte är mycket sämre passform
         let u2 = e1.clone().multiplyScalar(best.c).addScaledVector(e2, best.s), v2 = e1.clone().multiplyScalar(-best.s).addScaledVector(e2, best.c);
         if (!F.horiz && Math.abs(v2.z) < Math.abs(u2.z)) { const t = u2; u2 = v2; v2 = t; } // lodräta/sneda ytor: v = mest uppåt
         if (!F.horiz && v2.z < 0) v2.negate();
@@ -161,8 +162,10 @@ function l3mxLaserAt(e) {
   const C = l3mxCfg().laser, out = [], { P, n, u, v } = F, pu = P.dot(u), pv = P.dot(v), pn = P.dot(n);
   const add = (lbl, dir, d, col) => { if (d > 0.005) out.push({ lbl, pt: P.clone().addScaledVector(dir, d), d, dir: dir.clone(), from: P.clone() }); };
   const span = (lbl, dir, lo, hi, p0) => { const a = P.clone().addScaledVector(dir, lo - p0), b = P.clone().addScaledVector(dir, hi - p0); if (hi - lo > 0.005) out.push({ lbl, pt: b, from: a, d: hi - lo, dir: dir.clone(), full: true }); }; // hela sträckan, inte från pekaren
-  if (C.u) span("Längd", u, F.u0, F.u1, pu);
-  if (C.v) span(F.horiz ? "Bredd" : "Höjd", v, F.v0, F.v1, pv);   // hela höjden/bredden över ytan
+  // Måttlinjerna går genom punkten och slutar där de skär ytans kontur (inklusive urtag och håltagningar), inte vid omslutande rektangel.
+  const cut = (a, b, lo0, hi0, p0) => { let lo = lo0 - p0, hi = hi0 - p0; if (R0 && R0.outer.length >= 3) { const loops = [R0.outer, ...(R0.holes || [])], xs = []; loops.forEach(L => L.forEach((q, i) => { const r = L[(i + 1) % L.length], x1 = q.clone().sub(P).dot(a), y1 = q.clone().sub(P).dot(b), x2 = r.clone().sub(P).dot(a), y2 = r.clone().sub(P).dot(b); if ((y1 > 0) !== (y2 > 0) && y1 !== y2) xs.push(x1 + (x2 - x1) * (0 - y1) / (y2 - y1)); })); const neg = xs.filter(x => x < -1e-3), pos = xs.filter(x => x > 1e-3); if (neg.length) lo = Math.max(...neg); if (pos.length) hi = Math.min(...pos); } return [p0 + lo, p0 + hi]; };
+  if (C.u) { const [lo, hi] = cut(u, v, F.u0, F.u1, pu); span("Längd", u, lo, hi, pu); }
+  if (C.v) { const [lo, hi] = cut(v, u, F.v0, F.v1, pv); span(F.horiz ? "Bredd" : "Höjd", v, lo, hi, pv); }   // hela höjden/bredden över ytan
   if (C.n) add("Djup", n.clone().negate(), pn - F.n0);
   if (C.nbr) { // avstånd till närmaste andra objekt i samma riktningar
     const o = n.clone().multiplyScalar(0.008), dirs = [["→ granne 1", u], ["← granne 1", u.clone().negate()], ["→ granne 2", v], ["← granne 2", v.clone().negate()], ["Ut", n]];
