@@ -140,11 +140,6 @@ function l3mxFrame(h) {
 /* Smartmått: från punkten längs objektets egna axlar till ytans kanter (±axel 1, ±axel 2) och rakt in genom objektet (djup). */
 function l3mxLaserAt(e) {
   const h = l3mxHit(e); if (!h) return null; const F = l3mxFrame(h); if (!F) return null;
-  let corner = false; try { // snappa mot hörn: punkten flyttas till närmaste hörn (inom 14 px)
-    const r = l3.renderer.domElement.getBoundingClientRect(); let bd = 14, bv = null;
-    F.side.forEach(q => { const w = q.clone().project(l3.camera), sx = (w.x * 0.5 + 0.5) * r.width + r.left, sy = (-w.y * 0.5 + 0.5) * r.height + r.top, d = Math.hypot(sx - e.clientX, sy - e.clientY); if (d < bd) { bd = d; bv = q; } });
-    if (bv) { F.P.copy(bv); corner = true; }
-  } catch (_) {}
   let R0 = null; try { // måtten gäller den sammanhängande plana ytan man pekar på (inte andra delar som råkar ligga i samma plan)
     const R = R0 = l3mxRegion(F); if (R && R.outer.length >= 3) {
       { // axlarna = ytans egna kanter (minsta omslutande rektangel i planet), den mest vågräta först
@@ -156,6 +151,12 @@ function l3mxLaserAt(e) {
         F.u = u2; F.v = v2;
       }
       const ex = ax => { let lo = 1e9, hi = -1e9; R.outer.forEach(q => { const d = q.dot(ax); if (d < lo) lo = d; if (d > hi) hi = d; }); return [lo, hi]; }; [F.u0, F.u1] = ex(F.u); [F.v0, F.v1] = ex(F.v); }
+  } catch (_) {}
+  let corner = false; try { // snappa mot hörn (ytans egna hörn): punkten flyttas till närmaste hörn (inom 14 px)
+    const r = l3.renderer.domElement.getBoundingClientRect(); let bd = 14, bv = null;
+    let cands = F.side; if (R0 && R0.outer.length >= 3) cands = R0.outer.filter((q, i, A) => { const a = A[(i + A.length - 1) % A.length], b = A[(i + 1) % A.length], d1 = q.clone().sub(a), d2 = b.clone().sub(q); return d1.length() > 0.01 && d2.length() > 0.01 && d1.normalize().cross(d2.normalize()).length() > 0.01; });
+    cands.forEach(q => { const w = q.clone().project(l3.camera), sx = (w.x * 0.5 + 0.5) * r.width + r.left, sy = (-w.y * 0.5 + 0.5) * r.height + r.top, d = Math.hypot(sx - e.clientX, sy - e.clientY); if (d < bd) { bd = d; bv = q; } });
+    if (bv) { F.P.copy(bv); corner = true; }
   } catch (_) {}
   const C = l3mxCfg().laser, out = [], { P, n, u, v } = F, pu = P.dot(u), pv = P.dot(v), pn = P.dot(n);
   const add = (lbl, dir, d, col) => { if (d > 0.005) out.push({ lbl, pt: P.clone().addScaledVector(dir, d), d, dir: dir.clone(), from: P.clone() }); };
@@ -203,8 +204,8 @@ function l3mxLaserClick(e) {
 
 /* ---- Yta & volym: ytan man tryckte på (med håltagningar) och objektets volym och kub ---- */
 function l3mxRegion(F) {
-  const { g, P, n, u, v } = F, V = g.V, tol = 0.012, key = q => `${Math.round(q.x * 1000)},${Math.round(q.y * 1000)},${Math.round(q.z * 1000)}`, cand = [];
-  g.tris.forEach((t, i) => { const a = V[t[0]], b = V[t[1]], c = V[t[2]]; if (Math.abs(a.clone().sub(P).dot(n)) > tol || Math.abs(b.clone().sub(P).dot(n)) > tol || Math.abs(c.clone().sub(P).dot(n)) > tol) return; const nn = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)), l = nn.length(); if (l < 1e-12 || Math.abs(nn.dot(n)) / l < 0.999) return; cand.push({ i, t, area: l / 2, k: t.map(j => key(V[j])) }); });
+  const { g, P, n, u, v } = F, V = g.V, tol = 0.15, key = q => `${Math.round(q.x * 1000)},${Math.round(q.y * 1000)},${Math.round(q.z * 1000)}`, cand = [];
+  g.tris.forEach((t, i) => { const a = V[t[0]], b = V[t[1]], c = V[t[2]]; if (Math.abs(a.clone().sub(P).dot(n)) > tol || Math.abs(b.clone().sub(P).dot(n)) > tol || Math.abs(c.clone().sub(P).dot(n)) > tol) return; const nn = new THREE.Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)), l = nn.length(); if (l < 1e-12 || Math.abs(nn.dot(n)) / l < 0.998) return; cand.push({ i, t, area: l / 2, k: t.map(j => key(V[j])) }); });
   if (!cand.length) return null;
   // triangeln under tryckpunkten (annars närmaste)
   const inside = c => { const [a, b, d] = c.t.map(j => V[j]), ab = b.clone().sub(a), ac = d.clone().sub(a), ap = P.clone().sub(a), d00 = ab.dot(ab), d01 = ab.dot(ac), d11 = ac.dot(ac), d20 = ap.dot(ab), d21 = ap.dot(ac), den = d00 * d11 - d01 * d01 || 1e-12, vv = (d11 * d20 - d01 * d21) / den, ww = (d00 * d21 - d01 * d20) / den; return vv >= -1e-6 && ww >= -1e-6 && vv + ww <= 1 + 1e-6; };

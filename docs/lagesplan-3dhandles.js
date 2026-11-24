@@ -170,8 +170,16 @@ function l3HandleApply(e) {
   let label = "";
   if (h.key === "pt") {
     const s = typeof l3Snap === "function" ? l3Snap(e, p.id) : null;
-    let pt;
-    if (s && s.kind !== "ground" && s.kind !== "face" && s.kind !== "grid") pt = s.point.clone();
+    let pt, gzd = null;
+    if (typeof l3gz !== "undefined" && (l3gz.axis === "x" || l3gz.axis === "y" || l3gz.axis === "z")) { // axellåset i flyttinställningen gäller även punkterna: Z = rakt ner/upp, X/Y = längs/tvärs sträckan (Lokal) eller världens axlar
+      if (l3gz.axis === "z") gzd = new THREE.Vector3(0, 0, 1);
+      else if (l3gz.space === "local") { const A = p.pts[h.i], B = p.pts[h.i + 1] || p.pts[h.i - 1], sg = p.pts[h.i + 1] ? 1 : -1; let dx = B ? (B[0] - A[0]) * sg : 1, dy = B ? (B[1] - A[1]) * sg : 0; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l; gzd = l3gz.axis === "x" ? new THREE.Vector3(dx, dy, 0) : new THREE.Vector3(-dy, dx, 0); }
+      else gzd = l3gz.axis === "x" ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+    }
+    if (gzd) {
+      let t = l3AxisParam(e, H.base, gzd); if (t == null) return; if (step) t = Math.round(t / step) * step;
+      pt = H.base.clone().addScaledVector(gzd, t);
+    } else if (s && s.kind !== "ground" && s.kind !== "face" && s.kind !== "grid") pt = s.point.clone();
     else {
       const ray = l3MouseRay(e), pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -H.base.z), q = new THREE.Vector3();
       if (!ray.intersectPlane(pl, q)) return;
