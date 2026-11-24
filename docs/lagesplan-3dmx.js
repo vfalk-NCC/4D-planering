@@ -122,7 +122,7 @@ function l3mxFrame(h) {
   const mesh = h.object.userData && h.object.userData.l3bMain ? h.object.userData.l3bMain : h.object, P = h.point.clone(), n = h.face.normal.clone().transformDirection(mesh.matrixWorld).normalize();
   if (g.placeId && typeof placements !== "undefined") { // flerdelat etableringsobjekt: närmaste egen axel (vridningen)
     const pl = placements.find(x => x.id === g.placeId), rot = ((pl && Number(pl.rot)) || 0) * Math.PI / 180, ax = [new THREE.Vector3(Math.cos(rot), Math.sin(rot), 0), new THREE.Vector3(-Math.sin(rot), Math.cos(rot), 0), new THREE.Vector3(0, 0, 1)];
-    let bd = 0, bn = null; ax.forEach(a => { const d = n.dot(a); if (Math.abs(d) > Math.abs(bd)) { bd = d; bn = a.clone().multiplyScalar(Math.sign(d) || 1); } }); if (bn) n.copy(bn);
+    let bd = 0, bn = null; ax.forEach(a => { const d = n.dot(a); if (Math.abs(d) > Math.abs(bd)) { bd = d; bn = a.clone().multiplyScalar(Math.sign(d) || 1); } }); if (bn && Math.abs(bd) > 0.99) n.copy(bn); // bara när ytan i praktiken ligger längs en egen axel (≤ 8°) – annars (t.ex. en stödmur ritad i valfri riktning där vridningen är 0) gäller ytans verkliga normal
   }
   if (n.dot(l3.camera.position.clone().sub(P)) < 0) n.negate();
   let side = g.V.filter(v => Math.abs(v.clone().sub(P).dot(n)) < 0.015); if (side.length < 3 || g.placeId) side = g.V;
@@ -138,8 +138,8 @@ function l3mxFrame(h) {
   return { g, P, n, u, v, horiz, side, u0, u1, v0, v1, n0, n1, obj: h.object };
 }
 /* Smartmått: från punkten längs objektets egna axlar till ytans kanter (±axel 1, ±axel 2) och rakt in genom objektet (djup). */
-function l3mxLaserAt(e) {
-  const h = l3mxHit(e); if (!h) return null; const F = l3mxFrame(h); if (!F) return null;
+function l3mxLaserAt(e, hOver) {
+  const h = hOver || l3mxHit(e); if (!h) return null; const F = l3mxFrame(h); if (!F) return null;
   let R0 = null; try { // måtten gäller den sammanhängande plana ytan man pekar på (inte andra delar som råkar ligga i samma plan)
     const R = R0 = l3mxRegion(F), PT = R ? (R.outer.length >= 3 ? R.outer : (R.bndPts || [])) : []; if (R && PT.length >= 3) {
       { // axlarna = ytans egna kanter (minsta omslutande rektangel i planet), den mest vågräta först
