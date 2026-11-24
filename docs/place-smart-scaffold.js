@@ -28,6 +28,8 @@ function stallningFriBuild(p, c) {
   const B = Math.max(0.6, Number(p.B) || 0.75), fack = Math.max(0.7, smN(p, "fack", 2.57)), vh = Math.max(1, smN(p, "vh", 2)), Ht = stallningFriH(p), sida = smF(p, "sida", "Vänster") === "Höger" ? -1 : 1, acc = p.color || "#eab308";
   const STE = "#c9d0d8", STE2 = "#aeb7c1", DECK = "#b4bcc6", EDGE = "#6b7684", skydd = smF(p, "skydd", "Nät"), diag = smF(p, "diag", "Ja") !== "Nej", stege = smF(p, "stege", "Ja") !== "Nej", spark = smF(p, "spark", "Ja") !== "Nej";
   const S = stallningFriStations(P, fack, B, sida); if (!S) return; const { st, nb } = S, rod = (a, b, r, col) => c.rod(col || STE, a, b, r, r, r < 0.016 ? 4 : 5, SMM);
+  /* Stång längs ett fack som bara ritas där den ligger över marken (marken interpoleras linjärt mellan stationerna) – annars sticker den ut ur berget där en stolpe saknas. */
+  const rodG = (a, b, ga, gb, z, r, col) => { const e0 = ga + 0.25 - z, e1 = gb + 0.25 - z; let t0 = 0, t1 = 1; if (e0 >= 0 && e1 >= 0) return; if (e0 >= 0) t0 = e0 / (e0 - e1); else if (e1 >= 0) t1 = e0 / (e0 - e1); if (t1 - t0 < 0.02) return; const L = t => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, z]; rod(L(t0), L(t1), r, col); };
   const gmax = Math.max(...st.map(q => Math.max(q.zi, q.zo))), gmin = Math.min(...st.map(q => Math.min(q.zi, q.zo))), top = gmax + Ht, nl = Math.max(1, Math.floor((top - gmin - 0.3) / vh));
   const lev = []; for (let k = 0; k <= nl; k++) lev.push(top - k * vh);   // plattformsnivåer uppifrån och ned
   let nStd = 0, nDeck = 0, nLed = 0, nStd2 = 0;
@@ -39,15 +41,15 @@ function stallningFriBuild(p, c) {
     const a = st[j], b = st[j + 1], ang = Math.atan2(b.y - a.y, b.x - a.x), len = Math.hypot(b.x - a.x, b.y - a.y), gA = Math.max(a.zi, b.zi, a.zo, b.zo), gI = Math.min(a.zi, b.zi), gO = Math.min(a.zo, b.zo);
     const mx = (a.x + b.x + a.ox + b.ox) / 4, my = (a.y + b.y + a.oy + b.oy) / 4, wy = Math.hypot((a.ox - a.x + b.ox - b.x) / 2, (a.oy - a.y + b.oy - b.y) / 2);
     lev.forEach((z, k) => {
-      if (z > gI + 0.25) { rod([a.x, a.y, z], [b.x, b.y, z], 0.02); nLed++; }
-      if (z > gO + 0.25) { rod([a.ox, a.oy, z], [b.ox, b.oy, z], 0.02); nLed++; }
+      if (z > gI + 0.25) { rodG([a.x, a.y], [b.x, b.y], a.zi, b.zi, z, 0.02); nLed++; }
+      if (z > gO + 0.25) { rodG([a.ox, a.oy], [b.ox, b.oy], a.zo, b.zo, z, 0.02); nLed++; }
       if (j === nb - 1 && z > b.zi + 0.25 && z > b.zo + 0.25) rod([b.x, b.y, z], [b.ox, b.oy, z], 0.02, STE2);
       if (j === 0 && z > a.zi + 0.25 && z > a.zo + 0.25) rod([a.x, a.y, z], [a.ox, a.oy, z], 0.02, STE2);
       if (z >= Math.min(gI, gO) + 0.1) {   // plattformen ligger över marken i facket (även när bergets kant går snett genom facket – annars saknades plattformar där slänten är brant)
         nDeck++; c.box(DECK, mx, my, z + 0.045, len - 0.04, Math.max(0.3, wy - 0.1), 0.03, [ang, 0, 0], 0, { metal: 0.7, rough: 0.45 });
         c.box(EDGE, (a.x + b.x) / 2, (a.y + b.y) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0, SMM); c.box(EDGE, (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0, SMM);
         if (spark) c.box("#c9a15f", (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.16, len - 0.04, 0.025, 0.15, [ang, 0, 0], 0, { rough: 0.9 });
-        [0.5, 1.0].forEach((h, hi) => { rod([a.ox, a.oy, z + h], [b.ox, b.oy, z + h], 0.02, hi ? acc : STE); if (j === 0) rod([a.x, a.y, z + h], [a.ox, a.oy, z + h], 0.02, hi ? acc : STE); if (j === nb - 1) rod([b.x, b.y, z + h], [b.ox, b.oy, z + h], 0.02, hi ? acc : STE); });
+        [0.5, 1.0].forEach((h, hi) => { rodG([a.ox, a.oy], [b.ox, b.oy], a.zo, b.zo, z + h, 0.02, hi ? acc : STE); if (j === 0) rod([a.x, a.y, z + h], [a.ox, a.oy, z + h], 0.02, hi ? acc : STE); if (j === nb - 1) rod([b.x, b.y, z + h], [b.ox, b.oy, z + h], 0.02, hi ? acc : STE); });
       }
     });
     // översta räcket (även över sista plattformen) på båda raderna
