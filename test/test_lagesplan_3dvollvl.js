@@ -101,11 +101,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     for (let i = 0; i < S.pos.length; i += 3) { const x = S.pos[i] + G.o[0], y = S.pos[i + 1] + G.o[1]; if (Math.abs(x - (lo[0] + 13)) < 1.5 && Math.abs(y - (lo[1] + 13)) < 1.5) n++; } return { n, tot }; });
   if (inside.n > 0) fail('Soliden har hål där objektet står (inga hörn i fotavtrycket): ' + JSON.stringify(inside));
   if (Math.abs(withBox - 84 * 1.5) > 84 * 1.5 * 0.08) fail('Placerad låda tar bort sin yta: ' + withBox + ' ≠ ' + 84 * 1.5);
-  // TIN på + objekt kvar: räknas i rutnät (samma resultat), och en smal påle (0,2 m) tar bara sin egen yta även med 1 m ruta
+  // Exakt kapning (läget Hål ända upp): utan modellplattan tar lådan (4 × 4 m) exakt sin yta – fyllning (100 − 16) × 2,0 m, inte rutvis, och TIN fungerar
+  await page.evaluate(() => { l3b.models.forEach(m => { m.visible = false; m.meshes.forEach(x => { x.visible = false; }); }); const c = l3vol.cur; c.spec.keepMode = 'up'; c.spec.tin = false; c.spec.cell = 1; l3volSchedule(0); });
+  await page.waitForTimeout(400); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cell === 1 && l3vol.cur.res.keep && l3vol.cur.res.keep.models === 0, null, { timeout: 25000 }); await page.waitForTimeout(300);
+  const ex = await page.evaluate(() => { const r = l3vol.cur.res, G = l3vol.cur.geom, S = G.fill, lo = window.__lo; let inn = 0, onEdge = 0; for (let i = 0; i < S.pos.length; i += 3) { const x = S.pos[i] + G.o[0] - lo[0], y = S.pos[i + 1] + G.o[1] - lo[1]; if (x > 11.2 && x < 14.8 && y > 11.2 && y < 14.8) inn++; if (Math.abs(x - 11) < 0.05 || Math.abs(x - 15) < 0.05) onEdge++; } return { fill: r.fill, keep: r.keep, inn, onEdge }; });
+  console.log('exakt', JSON.stringify(ex));
+  if (Math.abs(ex.fill - 84 * 2) > 84 * 2 * 0.01) fail('Exakt kapning: fyllning ' + ex.fill + ' ≠ ' + 168);
+  if (ex.inn > 0 || ex.onEdge < 8) fail('Soliden har ett exakt hål med kanter på lådans gräns: ' + JSON.stringify(ex));
+  // TIN på + objekt kvar (Hål ända upp): en smal påle (0,2 m) tar bara sin egen yta även med 1 m ruta
   await page.evaluate(() => { const lo = window.__lo, g = placements.find(p => p.type === 'lada'); placements.splice(placements.indexOf(g), 1); l3RebuildOne && l3.placeMeshes.get(g.id) && (l3.groups.places.remove(l3.placeMeshes.get(g.id)), l3.placeMeshes.delete(g.id));
     const q = placeNew('lada', [lo[0] + 13, lo[1] + 13, 0]); q.L = 0.2; q.B = 0.2; q.H = 6; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); const c = l3vol.cur; c.spec.tin = true; c.spec.keep = true; c.spec.cell = 1; l3volSchedule(0); });
   await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cell === 1, null, { timeout: 25000 }); await page.waitForTimeout(300);
   const thin = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, tin: !!l3vol.cur.res.tin })); console.log('thin', JSON.stringify(thin));
-  if (thin.tin || Math.abs(thin.fill - 150) > 150 * 0.03) fail('Smal påle + TIN av: ' + JSON.stringify(thin));
+  if (Math.abs(thin.fill - 200) > 200 * 0.03) fail('Smal påle (0,2 m) + TIN tar bara sin egen yta: ' + JSON.stringify(thin));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dvollvl');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
