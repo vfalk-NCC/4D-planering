@@ -140,5 +140,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const sm = await page.evaluate(() => { const f = 0.08, ring = []; const wob = i => (i % 2 ? f : 0); for (let i = 0; i <= 50; i++) ring.push([i * 0.08, wob(i)]); for (let j = 1; j <= 25; j++) ring.push([4 + wob(j), j * 0.08]); for (let i = 49; i >= 0; i--) ring.push([i * 0.08, 2 + wob(i)]); for (let j = 24; j >= 1; j--) ring.push([wob(j), j * 0.08]); ring.push(ring[0].slice());
     const out = l3volSimplifyRing(ring, f * 1.2), area = r => { let a = 0; for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; return Math.abs(a) / 2; }; return { n0: ring.length, n1: out.length, a0: area(ring), a1: area(out) }; });
   console.log('förenkling', JSON.stringify(sm)); if (sm.n1 > 8 || Math.abs(sm.a1 - sm.a0) / sm.a0 > 0.02) fail('Förenkling av taggiga kanter: ' + JSON.stringify(sm));
+  // Dolda objekt (gruppen osynlig, t.ex. Dölj/Isolera) ska inte kapa något
+  await page.evaluate(() => { const lo = window.__lo, q = placeNew('lada', [lo[0] + 12, lo[1] + 12, 0]); q.L = 3; q.B = 3; q.H = 5; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); window.__hid = q.id; l3.placeMeshes.get(q.id).visible = false; l3vol.cache.clear(); const cu = l3vol.cur; cu.spec.keep = true; cu.spec.keepMode = 'pocket'; cu.spec.cell = 0.5; l3volSchedule(0); });
+  await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.cell === 0.5, null, { timeout: 40000 }); await page.waitForTimeout(400);
+  const hid = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, objs: l3vol.cur.res.keep.objs })); console.log('dolt', JSON.stringify(hid));
+  if (hid.objs !== 0 || Math.abs(hid.fill - 200) > 200 * 0.03) fail('Dolt objekt kapar inget: ' + JSON.stringify(hid));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dvollvl');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

@@ -106,12 +106,12 @@ function l3dfObjOf(key) {
   const i = key.indexOf(":"), kind = key.slice(0, i), id = key.slice(i + 1); if (typeof placements === "undefined") return [];
   return kind === "ob" ? placements.filter(p => p.id === id) : kind === "obs" ? placements.filter(p => l3dfSetOf(p) === id) : kind === "obm" ? placements.filter(p => id.split(",").includes(p.id)) : [];
 }
-function l3dfObjMeshes(p) { const g = l3.placeMeshes && l3.placeMeshes.get(p.id), ms = []; if (g) g.traverse(o => { if (o.isMesh && o.geometry && o.geometry.getAttribute("position") && o.visible !== false && !(o.userData && o.userData.noIfc)) ms.push(o); }); return ms; }
+function l3dfObjMeshes(p) { const g = l3.placeMeshes && l3.placeMeshes.get(p.id), ms = []; if (g) g.traverse(o => { if (o.isMesh && o.geometry && o.geometry.getAttribute("position") && o.visible !== false && (typeof l3VisibleChain !== "function" || l3VisibleChain(o)) && !(o.userData && o.userData.noIfc)) ms.push(o); }); return ms; }   // dolda objekt (även via grupp, mapp eller Isolera) räknas inte
 function l3dfBuild(key, g) {
   const [kind, ...rest] = key.split(":"), id = rest.join(":");
   if (kind === "pc") { const c = l3pc.clouds.find(x => x.id === id); if (!c) return null; l3dfFromCloud(c, g); return l3dfFill(g, 2); }
   if (kind === "ob" || kind === "obs" || kind === "obm") { const ms = l3dfObjOf(key).flatMap(l3dfObjMeshes); if (!ms.length) return null; l3dfMeshes(g, ms); return l3dfFill(g, 1); }
-  if (kind === "md") { const m = l3b.models.find(x => x.id === id); if (!m) return null; l3dfMeshes(g, m.meshes); return l3dfFill(g, 1); }
+  if (kind === "md") { const m = l3b.models.find(x => x.id === id); if (!m) return null; l3dfMeshes(g, m.meshes.filter(x => x.visible !== false && (typeof l3VisibleChain !== "function" || l3VisibleChain(x)))); return l3dfFill(g, 1); }
   if (kind === "cad") { const ms = []; l3s.cad.forEach(o => { if (o.userData.cadId === id && o.isMesh) ms.push(o); }); if (!ms.length) return null; l3dfMeshes(g, ms); return l3dfFill(g, 1); }
   return null;
 }
