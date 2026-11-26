@@ -230,7 +230,7 @@ function l3volDespike(g, levelZ, maxArea, forced, boxes) {
   return { ...g, z, spiked: true, spikeMask: spike };
 }
 /* Områden som ska fyllas igen: egna polygoner (valfritt antal punkter) och äldre rutor (som polygoner). */
-const l3volBoxes = cur => (cur.spec.fillPolys || []).filter(p => p.length >= 3).concat((cur.spec.fillBoxes || []).map(b => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]]));
+const l3volBoxes = cur => (cur.spec.fillPolys || []).filter(p => p.length >= 3).map(p => p.map(q => [q[0], q[1]])).concat((cur.spec.fillBoxes || []).map(b => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]]));
 const l3volFillLevel = (cur, src) => { if (!src || !/^pc:/.test(src.k)) return null; const o = src === cur.spec.a ? cur.spec.b : cur.spec.a; return o && o.k === "level" && Number.isFinite(o.z) ? o.z : null; };
 const l3volSpikeMax = cur => Number(cur.spec.spikeMax) > 0 ? Number(cur.spec.spikeMax) : 40;
 /* Marken som ett komplett rutnät ur punktmolnets TIN (Delaunay mellan punkterna, ritad rutvis): ett fint rutnät direkt av en gles punktmolnsyta får annars hål ("saknar höjd"). */
@@ -602,17 +602,28 @@ function l3volToeHandles() {
   for (let vi = 0; vi + 1 < T.length; vi++) mk("v3-mplus", "+", "Lägg till en punkt här", () => { const a = T[vi], b = T[vi + 1]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]; }, () => { const a = T[vi], b = T[vi + 1]; T.splice(vi + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]); redo(); });
   l3volToePlace();
 }
-function l3volToePlace() { if (!l3volToe.els.length || !l3) return; const O = l3.O; l3volToe.els.forEach(h => { const p = h.pos(); if (!p) { h.el.style.display = "none"; return; } const q = l3ToScreen(new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.15)); h.el.style.display = q.behind ? "none" : "block"; h.el.style.left = q.x + "px"; h.el.style.top = q.y + "px"; }); }
+function l3volBoxScale() { const g = l3 && l3.groups.volBoxes; if (!g || !g.children.length) return; const px = 3.5;
+  g.children.forEach(m => { const u = m.userData; if (u.vseg) { const [a, b] = u.vseg, d = b.clone().sub(a), L = d.length(), mid = a.clone().add(b).multiplyScalar(0.5), w = l3PxSize(mid) * px; m.position.copy(mid); m.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), L > 1e-9 ? d.clone().normalize() : new THREE.Vector3(1, 0, 0)); m.scale.set(Math.max(L, 1e-6), w, w); }
+    else if (u.vdot) { const d = l3PxSize(m.position) * u.vdot; m.scale.set(d, d, d); } }); }
+function l3volToePlace() { l3volBoxScale(); if (!l3volToe.els.length || !l3) return; const O = l3.O; l3volToe.els.forEach(h => { const p = h.pos(); if (!p) { h.el.style.display = "none"; return; } const q = l3ToScreen(new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.15)); h.el.style.display = q.behind ? "none" : "block"; h.el.style.left = q.x + "px"; h.el.style.top = q.y + "px"; }); }
 /* Områdena som ska fyllas igen ritas som blå ramar; pågående område med punkter, linjer och en prick vid varje klick (första punkten större). */
 function l3volBoxDraw() {
   if (!l3.groups.volBoxes) { l3.groups.volBoxes = new THREE.Group(); l3.scene.add(l3.groups.volBoxes); } const g = l3.groups.volBoxes; l3Clear(g);
   const c = l3vol.cur; if (!c) return; const O = l3.O, z = (c.spec.a && c.spec.a.k === "level" && Number.isFinite(c.spec.a.z) ? c.spec.a.z : 0) - O[2] + 0.05, V = ([x, y]) => new THREE.Vector3(x - O[0], y - O[1], z);
-  const line = (pts, col, closed) => { const P = pts.map(V); if (closed) P.push(P[0].clone()); const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: col, depthTest: false })); l.renderOrder = 9; l.raycast = () => {}; g.add(l); };
-  l3volBoxes(c).forEach(poly => line(poly, 0x2563eb, true));
-  { const toe = c.spec.toe && c.spec.toe.on ? c.spec.toe.pts : null, TA = l3vol.toeA || [], zz = p => (Number.isFinite(p[2]) ? p[2] - O[2] : z) + 0.08, V3 = p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], zz(p));
-    const tl = (pts, col) => { if (pts.length < 2) return; const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(V3)), new THREE.LineBasicMaterial({ color: col, depthTest: false })); l.renderOrder = 9; l.raycast = () => {}; g.add(l); };
-    if (toe) tl(toe, 0x16a34a); if (TA.length) { tl(TA, 0x16a34a); TA.forEach((p, i) => { const m = new THREE.Mesh(new THREE.SphereGeometry(i === 0 ? 0.32 : 0.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x16a34a, depthTest: false })); m.position.copy(V3(p)); m.renderOrder = 10; m.raycast = () => {}; g.add(m); }); } }
-  const A = l3vol.polyA || []; if (A.length) { line(A, 0xf59e0b, false); A.forEach((p, i) => { const m = new THREE.Mesh(new THREE.SphereGeometry(i === 0 ? 0.32 : 0.2, 12, 10), new THREE.MeshBasicMaterial({ color: i === 0 ? 0xdc2626 : 0xf59e0b, depthTest: false })); m.position.copy(V(p)); m.renderOrder = 10; m.raycast = () => {}; g.add(m); }); }
+  /* Tjocka linjer och prickar med fast storlek på skärmen (syns tydligt i punktmoln); storleken uppdateras vid varje bild (l3volBoxScale). */
+  const mat = col => new THREE.MeshBasicMaterial({ color: col, depthTest: false, transparent: true, opacity: 0.95 });
+  const seg = (a, b2, col) => { const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), mat(col)); m.userData.vseg = [a, b2]; m.renderOrder = 9; m.raycast = () => {}; g.add(m); };
+  const dot = (p, col, px) => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), mat(col)); m.position.copy(p); m.userData.vdot = px; m.renderOrder = 10; m.raycast = () => {}; g.add(m); };
+  const line = (P, col, closed, dots) => { for (let i = 0; i + 1 < P.length; i++) seg(P[i], P[i + 1], col); if (closed && P.length > 2) seg(P[P.length - 1], P[0], col); if (dots) P.forEach((p, i) => dot(p, i === 0 ? 0xdc2626 : col, i === 0 ? 16 : 12)); };
+  const zz = p => (Number.isFinite(p[2]) ? p[2] - O[2] : z) + 0.08, V3 = p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], zz(p));
+  (c.spec.fillPolys || []).filter(p => p.length >= 3).forEach(poly => line(poly.map(V3), 0x2563eb, true, true));
+  (c.spec.fillBoxes || []).forEach(b => line([[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]].map(V), 0x2563eb, true, false));
+  const toe = c.spec.toe && c.spec.toe.on ? c.spec.toe.pts : null, TA = l3vol.toeA || [];
+  if (toe) line(toe.map(V3), 0x16a34a, false, false);
+  if (TA.length) line(TA.map(V3), 0x16a34a, false, true);
+  const A = l3vol.polyA || []; if (A.length) line(A.map(V3), 0xf59e0b, false, true);
+  (c.spec.fillPts || []).forEach(p => dot(V3(p), 0xf59e0b, 14));
+  l3volBoxScale();
   l3Render();
 }
 function l3volTap(e) {
@@ -622,11 +633,11 @@ function l3volTap(e) {
     const near = (a, r) => a && Math.hypot(a[0] - x, a[1] - y) < r;
     if (A.length >= 3 && near(A[0], 0.6)) { l3volPolyDone(); return true; }   // klick på första punkten stänger området
     if (A.length >= 1 && near(A[A.length - 1], 0.25)) { l3volPolyDone(); return true; }   // dubbelklick avslutar
-    A.push([x, y]); l3Status(`Punkt ${A.length}. Fortsätt klicka runt området – klicka på första punkten, tryck Enter eller dubbelklicka för att stänga. Backsteg tar bort senaste punkten, Esc avbryter.`); l3volBoxDraw(); l3volPanel(); return true; }
+    A.push([x, y, Math.round((s2.point.z + l3.O[2]) * 100) / 100]); l3Status(`Punkt ${A.length}. Fortsätt klicka runt området – klicka på första punkten, tryck Enter eller dubbelklicka för att stänga. Backsteg tar bort senaste punkten, Esc avbryter.`); l3volBoxDraw(); l3volPanel(); return true; }
   if (l3vol.capture === "toe") { const s2 = l3Snap(e); if (!s2) return true; const x = Math.round((s2.point.x + l3.O[0]) * 100) / 100, y = Math.round((s2.point.y + l3.O[1]) * 100) / 100, z = Math.round((s2.point.z + l3.O[2]) * 100) / 100, A = l3vol.toeA = l3vol.toeA || [];
     if (A.length >= 1 && Math.hypot(A[A.length - 1][0] - x, A[A.length - 1][1] - y) < 0.25) { l3volToeDone(); return true; }   // dubbelklick avslutar
     A.push([x, y, z]); l3Status(`Släntfot: punkt ${A.length}. Fortsätt klicka längs linjen där slänten ska möta marken – Enter, dubbelklick eller ✓ Klar avslutar, Backsteg tar bort senaste punkten, Esc avbryter.`); l3volBoxDraw(); l3volPanel(); return true; }
-  if (l3vol.capture === "fill") { const s2 = l3Snap(e); if (!s2) return true; const c = l3vol.cur; c.spec.fillPts = (c.spec.fillPts || []).concat([[Math.round((s2.point.x + l3.O[0]) * 100) / 100, Math.round((s2.point.y + l3.O[1]) * 100) / 100]]); c.saved = false; l3Status(`Fläck ${c.spec.fillPts.length} fylls igen – klicka på fler eller tryck Esc när du är klar.`); l3volPanel(); l3volSchedule(0); return true; }
+  if (l3vol.capture === "fill") { const s2 = l3Snap(e); if (!s2) return true; const c = l3vol.cur; c.spec.fillPts = (c.spec.fillPts || []).concat([[Math.round((s2.point.x + l3.O[0]) * 100) / 100, Math.round((s2.point.y + l3.O[1]) * 100) / 100, Math.round((s2.point.z + l3.O[2]) * 100) / 100]]); c.saved = false; l3volBoxDraw(); l3Status(`Fläck ${c.spec.fillPts.length} fylls igen – klicka på fler eller tryck Esc när du är klar.`); l3volPanel(); l3volSchedule(0); return true; }
   if (l3vol.capture === "surf") return false; // vanlig polygoninsamling
   l3Status("Volympanelen är öppen – spara eller stäng den först (Esc) för att mäta ett nytt område.", true); return true;
 }
@@ -849,3 +860,18 @@ function l3volPanel() {
   const tx = q("input[data-vtext]"); if (tx) tx.onchange = () => l3SetPref("volExpText", tx.checked);
   const op = q("input[data-vop]"); if (op) op.oninput = () => { l3SetPref("volOpacity", Number(op.value)); l3volDraw(); l3mDraw(); };
 }
+
+/* Rita område / Fläck / Släntfot / nivå från punkt: pågår ett sådant val ska trycket alltid gå till volymverktyget – även om Esc har bytt
+   verktyg till Markera medan panelen låg kvar (annars valdes objekt i stället, Victor 2026-11-26). */
+window.addEventListener("load", function () {
+  if (typeof l3Tap !== "function") return; const orig = l3Tap;
+  l3Tap = function (e) {
+    try {
+      if (typeof l3vol !== "undefined" && l3vol.cur && l3vol.capture && l3.tool !== "measure") {
+        l3.tool = "measure"; l3.addType = null; l3SetPref("measure", "volume");
+        document.querySelectorAll("[data-v3tool]").forEach(b => b.classList.toggle("on", b.dataset.v3tool === "measure"));
+      }
+    } catch (err) { /* ignorera */ }
+    return orig.apply(this, arguments);
+  };
+});
