@@ -79,6 +79,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const r = l3mIfcBuild(l3m.list.map((m, i) => ({ m, nr: i + 1 })), false); const txt = typeof r === 'string' ? r : r && (r.text || r.step || JSON.stringify(r)); return { ok: !!r, n: l3m.list.length, len: txt ? txt.length : 0, sq: txt ? /\?\?/.test('') : false };
   });
   ok(ifx && ifx.ok && ifx.n === 2 && ifx.len > 1000, 'IFC-export av mått byggs: ' + JSON.stringify(ifx));
+  // Öga per mått: knappen bredvid måttet döljer/visar just det måttet i 3D
+  const eye = await page.evaluate(async () => {
+    l3m.list.length = 0; l3mx.plain = true;
+    try { l3mAdd('dist', [new THREE.Vector3(0, 0, 3), new THREE.Vector3(3.2, 0, 3)], '3,2 m', [null, null]); l3mAdd('dist', [new THREE.Vector3(0, 2, 3), new THREE.Vector3(5, 2, 3)], '5 m', [null, null]); } finally { l3mx.plain = false; }
+    l3mDraw(); { const tb = document.querySelector('[data-paltab="comments"]'); if (tb) tb.click(); } await new Promise(r => setTimeout(r, 600)); l3kRenderTab && l3kRenderTab(); await new Promise(r => setTimeout(r, 400));
+    const btns = [...document.querySelectorAll('[data-mhid]')], n0 = l3.groups.measKeep.children.length, lab0 = l3m.labels.size;
+    if (!btns.length) return { btns: 0 };
+    btns[0].click(); await new Promise(r => setTimeout(r, 100));
+    const hid1 = l3m.list.filter(m => m.hid).length, n1 = l3.groups.measKeep.children.length, lab1 = l3m.labels.size;
+    [...document.querySelectorAll('[data-mhid]')][0].click(); await new Promise(r => setTimeout(r, 100));
+    return { btns: btns.length, hid1, n0, n1, lab0, lab1, hid2: l3m.list.filter(m => m.hid).length, n2: l3.groups.measKeep.children.length };
+  });
+  ok(eye.btns === 2 && eye.hid1 === 1 && eye.n1 < eye.n0 && eye.lab1 < eye.lab0 && eye.hid2 === 0 && eye.n2 === eye.n0, 'Öga per mått döljer och visar: ' + JSON.stringify(eye));
   // 4b) Yta med håltagning: nettoyta, brutto och hål (syntetiskt nät med ett hål)
   const rg = await page.evaluate(() => { const V = [], tris = [], id = (x, y) => y * 5 + x; for (let y = 0; y <= 3; y++) for (let x = 0; x <= 4; x++) V.push(new THREE.Vector3(x, y, 0)); for (let y = 0; y < 3; y++) for (let x = 0; x < 4; x++) { if (x === 1 && y === 1) continue; tris.push([id(x, y), id(x + 1, y), id(x + 1, y + 1)], [id(x, y), id(x + 1, y + 1), id(x, y + 1)]); }
     const R = l3mxRegion({ g: { V, tris }, P: new THREE.Vector3(0.3, 0.2, 0), n: new THREE.Vector3(0, 0, 1), u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) }); return R && { net: R.net, gross: R.gross, holes: R.holes.length, holeA: R.holeA }; });
