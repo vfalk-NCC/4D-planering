@@ -193,17 +193,27 @@ function l3volMesh(tris, kind, org, tmax) {
    så att fyllningen bara räknas runt och över dem. Objekt som hänger fritt (underkant högre än marken, t.ex. rörbryggor) räknas inte. Gäller punktmoln som yta; är den andra ytan en nivå
    begränsas höjden till nivån (objekt som sticker upp genom fyllningen tar bort hela rutan). */
 async function l3volObstacles(cur, bd, cell) {
-  const skip = new Set([cur.spec.a.k, cur.spec.b.k]), lists = [], info = { models: 0, objs: 0 };
+  const skip = new Set([cur.spec.a.k, cur.spec.b.k]), lists = [], info = { models: 0, objs: 0 }, fine = Math.max(0.05, cell / 3);   // finare ruta än markens så att smala objekt (pålar, stag) bara tar sin verkliga yta
   const models = (typeof l3b !== "undefined" ? l3b.models : []).filter(m => m.visible && m.meshes && m.meshes.length && !skip.has("md:" + m.id));
-  for (const m of models) { const top = await l3volHeights(cur, { k: "md:" + m.id, side: "top" }, bd, cell), bot = await l3volHeights(cur, { k: "md:" + m.id, side: "bottom" }, bd, cell); if (top && bot) { lists.push({ top, bot }); info.models++; } }
+  for (const m of models) { const top = await l3volHeights(cur, { k: "md:" + m.id, side: "top" }, bd, fine), bot = await l3volHeights(cur, { k: "md:" + m.id, side: "bottom" }, bd, fine); if (top && bot) { lists.push({ top, bot }); info.models++; } }
   const ids = (typeof placements !== "undefined" ? placements : []).filter(p => !p.text && !/^sm:(makadam|makadamfri|riskzon)$/.test(String(p.type)) && l3dfObjMeshes(p).length && !skip.has("ob:" + p.id)).map(p => p.id);
-  if (ids.length) { const k = "obm:" + ids.join(","), top = await l3volHeights(cur, { k, side: "top" }, bd, cell), bot = await l3volHeights(cur, { k, side: "bottom" }, bd, cell); if (top && bot) { lists.push({ top, bot }); info.objs = ids.length; } }
+  if (ids.length) { const k = "obm:" + ids.join(","), top = await l3volHeights(cur, { k, side: "top" }, bd, fine), bot = await l3volHeights(cur, { k, side: "bottom" }, bd, fine); if (top && bot) { lists.push({ top, bot }); info.objs = ids.length; } }
   return { lists, info };
 }
-/* Höjden för en markyta (punktmoln) med objekten inräknade; levelZ = nivån (om den andra ytan är en vågrät nivå). */
+/* Höjden för en markyta (punktmoln) med objekten inräknade, ytviktat inom varje ruta (3 × 3 delrutor); levelZ = nivån (om den andra ytan är en vågrät nivå). */
 function l3volWithObstacles(g, obst, levelZ) {
-  const z = Float32Array.from(g.z), tol = 0.5;
-  obst.lists.forEach(({ top, bot }) => { for (let c = 0; c < z.length; c++) { const t = top.z[c], b = bot.z[c]; if (!l3volOk(t) || !l3volOk(b)) continue; const gz = z[c]; if (l3volOk(gz) && b > gz + tol) continue; let v = l3volOk(gz) ? Math.max(gz, t) : t; if (Number.isFinite(levelZ) && v > levelZ) v = levelZ; z[c] = v; } });
+  const z = Float32Array.from(g.z), tol = 0.5, S = 3, cl = Number.isFinite(levelZ);
+  const at = (G, x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.y0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.ny ? NaN : G.z[j * G.nx + i]; };
+  for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
+    const c = j * g.nx + i, gz = z[c]; if (!l3volOk(gz)) continue; let sum = 0;
+    for (let sj = 0; sj < S; sj++) for (let si = 0; si < S; si++) {
+      const x = g.x0 + (i + (si + 0.5) / S) * g.cell, y = g.y0 + (j + (sj + 0.5) / S) * g.cell; let v = gz;
+      for (const { top, bot } of obst.lists) { const t = at(top, x, y), b = at(bot, x, y); if (!l3volOk(t) || !l3volOk(b) || b > gz + tol) continue; if (t > v) v = t; }
+      if (cl && v > levelZ) v = Math.max(gz, levelZ);
+      sum += v;
+    }
+    z[c] = sum / (S * S);
+  }
   return { ...g, z };
 }
 async function l3volCompute(cur, alive) {
@@ -238,7 +248,8 @@ async function l3volCompute(cur, alive) {
   const emit = v => { // v: [x,y,a,b]×3, moturs
     aIn += Math.abs(area2(v));
     for (const sg of [1, -1]) for (const t of l3volSplit(v, sg)) {
-      const ar = area2(t); if (ar < 1e-9) continue; const dm = t.reduce((s, p) => s + Math.abs(p[2] - p[3]), 0) / 3, vol = ar * dm, kd = sg > 0 ? "fill" : "cut";
+      const ar = area2(t); if (ar < 1e-9) continue; if (t.every(p => Math.abs(p[2] - p[3]) < 5e-4)) continue;   // platta utan tjocklek (t.ex. där ett objekt står kvar) blir ett hål i kroppen, inte ett tunt skal
+      const dm = t.reduce((s, p) => s + Math.abs(p[2] - p[3]), 0) / 3, vol = ar * dm, kd = sg > 0 ? "fill" : "cut";
       tot[kd] += vol; const c = cen[kd]; c[0] += vol; c[1] += vol * (t[0][0] + t[1][0] + t[2][0]) / 3; c[2] += vol * (t[0][1] + t[1][1] + t[2][1]) / 3; c[3] += vol * (sg > 0 ? t[0][2] + t[1][2] + t[2][2] : t[0][3] + t[1][3] + t[2][3]) / 3;
       mn = Math.min(mn, ...t.map(p => p[2] - p[3])); mx = Math.max(mx, ...t.map(p => p[2] - p[3]));
       const row = []; t.forEach(p => { row.push(p[0], p[1], Math.max(p[2], p[3]), Math.min(p[2], p[3])); tmax = Math.max(tmax, Math.abs(p[2] - p[3])); }); lists[kd].push(row);
@@ -260,7 +271,7 @@ async function l3volCompute(cur, alive) {
       THREE.ShapeUtils.triangulateShape(outer, holes).forEach(f => { const t = [all[f[0]], all[f[1]], all[f[2]]]; emit(area2(t) < 0 ? [t[0], t[2], t[1]] : t); });
     });
   };
-  const tinA = !!cur.spec.tin && cur.spec.a.k.startsWith("pc:"), tinB = !tinA && !!cur.spec.tin && cur.spec.b.k.startsWith("pc:"), tinMode = tinA || tinB;
+  const useTin = !!cur.spec.tin && !cur.spec.keep, tinA = useTin && cur.spec.a.k.startsWith("pc:"), tinB = !tinA && useTin && cur.spec.b.k.startsWith("pc:"), tinMode = tinA || tinB;   // objekt som står kvar räknas i rutnät (TIN kan inte kapas runt dem)
   let tinInfo = null;
   if (tinMode) {
     const src = tinA ? cur.spec.a : cur.spec.b, sp = Math.max(0.05, Math.sqrt(area / 80000), Number(cur.spec.cell) > 0 ? Number(cur.spec.cell) * 0.5 : 0), pts = l3volTinPoints(cur, src, bd, sp);

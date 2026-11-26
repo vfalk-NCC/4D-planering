@@ -87,10 +87,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   console.log(JSON.stringify({ withKeep, noKeep }));
   if (Math.abs(noKeep - exp) > exp * 0.03) fail('Utan objekt: fyllning ' + noKeep + ' ≠ ' + exp);
   if (!(withKeep.keep && withKeep.keep.models === 1) || Math.abs(withKeep.fill - f.area * 1.5) > f.area * 1.5 * 0.05) fail('Objekt som står kvar räknas bort (plattan: 3,5−2,0 = 1,5 m): ' + JSON.stringify(withKeep));
+  const cf0 = await page.evaluate(() => { l3vol.cur.spec.keep = true; return l3vol.cur.res.cellsFill; });
   // Placerat objekt (4 × 4 m låda som sticker upp över nivån) tar bort sin ruta: fyllning = (100 − 16) × 1,5
   await page.evaluate(() => { const lo = window.__lo, O = l3.O, q = placeNew('lada', [lo[0] + 13, lo[1] + 13, 0]); q.L = 4; q.B = 4; q.H = 4; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); l3vol.cur.spec.keep = true; l3volSchedule(0); });
   await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.keep.objs >= 1, null, { timeout: 20000 }); await page.waitForTimeout(300);
-  const withBox = await page.evaluate(() => l3vol.cur.res.fill); console.log('box', withBox);
+  const withBox = await page.evaluate(() => l3vol.cur.res.fill), cf1 = await page.evaluate(() => l3vol.cur.res.cellsFill); if (!(cf1 < cf0 * 0.95)) fail('Solidens fyllningstrianglar minskar där objektet står: ' + cf0 + ' → ' + cf1); console.log('box', withBox);
   if (Math.abs(withBox - 84 * 1.5) > 84 * 1.5 * 0.08) fail('Placerad låda tar bort sin yta: ' + withBox + ' ≠ ' + 84 * 1.5);
+  // TIN på + objekt kvar: räknas i rutnät (samma resultat), och en smal påle (0,2 m) tar bara sin egen yta även med 1 m ruta
+  await page.evaluate(() => { const lo = window.__lo, g = placements.find(p => p.type === 'lada'); placements.splice(placements.indexOf(g), 1); l3RebuildOne && l3.placeMeshes.get(g.id) && (l3.groups.places.remove(l3.placeMeshes.get(g.id)), l3.placeMeshes.delete(g.id));
+    const q = placeNew('lada', [lo[0] + 13, lo[1] + 13, 0]); q.L = 0.2; q.B = 0.2; q.H = 6; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); const c = l3vol.cur; c.spec.tin = true; c.spec.keep = true; c.spec.cell = 1; l3volSchedule(0); });
+  await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cell === 1, null, { timeout: 25000 }); await page.waitForTimeout(300);
+  const thin = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, tin: !!l3vol.cur.res.tin })); console.log('thin', JSON.stringify(thin));
+  if (thin.tin || Math.abs(thin.fill - 150) > 150 * 0.03) fail('Smal påle + TIN av: ' + JSON.stringify(thin));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dvollvl');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
