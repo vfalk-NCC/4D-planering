@@ -194,7 +194,7 @@ function l3volMesh(tris, kind, org, tmax) {
    begränsas höjden till nivån (objekt som sticker upp genom fyllningen tar bort hela rutan). */
 /* Marken som ett komplett rutnät ur punktmolnets TIN (Delaunay mellan punkterna, ritad rutvis): ett fint rutnät direkt av en gles punktmolnsyta får annars hål ("saknar höjd"). */
 async function l3volGroundGrid(cur, src, bd, cell) {
-  const sp = Math.max(0.05, Math.sqrt(l3volArea(cur.pts) / 80000), cell * 0.5), pts = l3volTinPoints(cur, src, bd, sp); if (!pts) return null;
+  const sp = Math.max(0.15, Math.sqrt(l3volArea(cur.pts) / 60000), cell * 0.5), pts = l3volTinPoints(cur, src, bd, sp); if (!pts) return null;   // marken behöver inte vara tätare än så – fin ruta ger annars hundratusentals punkter
   const X = Float64Array.from(pts.X, v => v - bd.x0), Y = Float64Array.from(pts.Y, v => v - bd.y0), T = l3volDelaunay(X, Y), g = l3dfGrid(bd, cell), lim = Math.max(4 * sp, 3);
   for (let t = 0; t < T.length; t += 3) {
     const a = [pts.X[T[t]], pts.Y[T[t]], pts.Z[T[t]]], b = [pts.X[T[t + 1]], pts.Y[T[t + 1]], pts.Z[T[t + 1]]], c = [pts.X[T[t + 2]], pts.Y[T[t + 2]], pts.Z[T[t + 2]]];
@@ -228,7 +228,8 @@ async function l3volFootprints(cur, bd, cell, gGA, gGB, ob) {
   const mode = arr => { const m = new Map(); arr.forEach(v => { const b = Math.round(v * 50); m.set(b, (m.get(b) || 0) + 1); }); let best = 0, bk = 0; m.forEach((n, b) => { if (n > best) { best = n; bk = b; } }); return bk / 50; };
   const polys = [], idx = new Map(), K = 2;
   for (let c = 0; c < comps.length; c++) {
-    const cells = comps[c], rects = cells.map(k => { const i = k % nx, j = (k - i) / nx, x0 = T.x0 + i * f, y0 = T.y0 + j * f; return [[[x0, y0], [x0 + f, y0], [x0 + f, y0 + f], [x0, y0 + f], [x0, y0]]]; });
+    const cells = comps[c].slice().sort((a, b) => a - b), rects = [];   // sammanhängande rutor i en rad slås ihop till en rektangel (annars blir det tusentals små rektanglar att slå ihop)
+    for (let q = 0; q < cells.length;) { const k = cells[q], i = k % nx, j = (k - i) / nx; let q1 = q; while (q1 + 1 < cells.length && cells[q1 + 1] === cells[q1] + 1 && (cells[q1 + 1] % nx) !== 0) q1++; const x0 = T.x0 + i * f, x1 = T.x0 + (i + (q1 - q) + 1) * f, y0 = T.y0 + j * f, y1 = y0 + f; rects.push([[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]); q = q1 + 1; }
     let U; try { U = polygonClipping.union(...rects); } catch (e) { continue; }
     const bot = mode(cells.map(k => bots[k])), top = mode(cells.map(k => tops[k]));
     U.forEach(pg => { if (!pg.length) return; pg.bot = bot; pg.top = top; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; pg[0].forEach(q => { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); pg.bb = [x0, y0, x1, y1]; const n = polys.length; polys.push(pg);
@@ -274,11 +275,13 @@ async function l3volCompute(cur, alive) {
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
   let gA2 = gA, gB2 = gB, keepInfo = null, FP = null, cutA = 0;
   if (cur.spec.keep) {   // objekt som står kvar räknas som mark / kapas ur
-    const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN, up = cur.spec.keepMode !== "top" && typeof polygonClipping !== "undefined"   /* "pocket" (standard) och "up" klipper exakt */, fine = Math.max(0.05, Math.min(cell / 3, 0.15));
-    const ob = await l3volObstacles(cur, bd, up ? fine * 3 : cell); if (!alive()) return null; keepInfo = ob.info;
+    const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN, up = cur.spec.keepMode !== "top" && typeof polygonClipping !== "undefined"   /* "pocket" (standard) och "up" klipper exakt */, fine = Math.max(0.08, Math.min(cell / 3, 0.15));
+    if (cur.busy !== undefined) cur.busy = "Läser objekten som står kvar…";
+    const ob = await l3volObstacles(cur, bd, up ? fine * 3 : cell); if (!alive()) return null; keepInfo = ob.info; if (cur.busy !== undefined) cur.busy = "Läser marken…";
     let g1 = gA, g2 = gB;
     if (/^pc:/.test(cur.spec.a.k)) g1 = (await l3volGroundGrid(cur, cur.spec.a, bd, cell)) || gA; if (/^pc:/.test(cur.spec.b.k)) g2 = (await l3volGroundGrid(cur, cur.spec.b, bd, cell)) || gB;
     if (!alive()) return null;
+    if (cur.busy !== undefined) cur.busy = "Räknar fotavtryck och fickor…";
     if (up) { FP = await l3volFootprints(cur, bd, cell, g1, g2, ob); gA2 = g1; gB2 = g2; keepInfo.area = FP ? Math.round(FP.area) : 0; }
     else { if (/^pc:/.test(cur.spec.a.k)) gA2 = l3volWithObstacles(g1, ob, lv(cur.spec.b), false); if (/^pc:/.test(cur.spec.b.k)) gB2 = l3volWithObstacles(g2, ob, lv(cur.spec.a), false); keepInfo.area = Math.round(((gA2 !== g1 && gA2.hitArea) || 0) + ((gB2 !== g2 && gB2.hitArea) || 0)); }
     if (!alive()) return null;
