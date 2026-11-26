@@ -207,14 +207,14 @@ function l3volDespike(g, levelZ) {
 }
 /* Marken som ett komplett rutnät ur punktmolnets TIN (Delaunay mellan punkterna, ritad rutvis): ett fint rutnät direkt av en gles punktmolnsyta får annars hål ("saknar höjd"). */
 async function l3volGroundGrid(cur, src, bd, cell) {
-  const sp = Math.max(0.15, Math.sqrt(l3volArea(cur.pts) / 60000), cell * 0.5), pts = l3volTinPoints(cur, src, bd, sp, l3volSpikeLevel(cur, src)); if (!pts) return null;   // marken behöver inte vara tätare än så – fin ruta ger annars hundratusentals punkter
+  const sp = Math.max(0.15, Math.sqrt(l3volArea(cur.pts) / 60000), cell * 0.5), pts = l3volTinPoints(cur, src, bd, sp); if (!pts) return null;   // marken behöver inte vara tätare än så – fin ruta ger annars hundratusentals punkter
   const X = Float64Array.from(pts.X, v => v - bd.x0), Y = Float64Array.from(pts.Y, v => v - bd.y0), T = l3volDelaunay(X, Y), g = l3dfGrid(bd, cell), lim = Math.max(4 * sp, 3);
   for (let t = 0; t < T.length; t += 3) {
     const a = [pts.X[T[t]], pts.Y[T[t]], pts.Z[T[t]]], b = [pts.X[T[t + 1]], pts.Y[T[t + 1]], pts.Z[T[t + 1]]], c = [pts.X[T[t + 2]], pts.Y[T[t + 2]], pts.Z[T[t + 2]]];
     if (Math.hypot(a[0] - b[0], a[1] - b[1]) > lim || Math.hypot(b[0] - c[0], b[1] - c[1]) > lim || Math.hypot(a[0] - c[0], a[1] - c[1]) > lim) continue;
     l3dfTri(g, a, b, c); if (t % 6000 === 0) { await l3volTick(); }
   }
-  return g;
+  const lz = l3volSpikeLevel(cur, src); return lz != null ? l3volDespike(g, lz) : g;   // det som sticker upp över nivån ersätts med marken runt omkring (inte hål)
 }
 /* Fotavtryck för objekt som kapas ur kroppen: rutor där ett objekt överlappar rummet mellan ytorna (eller vilar på det) slås ihop till polygoner (finrutor ≈ 5–15 cm), som sedan klipper trianglarna exakt –
    inte rutvis. Resultat: { polys (polygon-clipping), idx (rutindex för snabb sökning), area }. */

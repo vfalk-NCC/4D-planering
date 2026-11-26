@@ -131,5 +131,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => { l3vol.cur.spec.spike = true; l3volSchedule(0); }); await page.waitForTimeout(400); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.spec.spike === true && l3vol.cur.res.cut < 1, null, { timeout: 25000 }); await page.waitForTimeout(300);
   const sp1 = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut })); console.log('spik', JSON.stringify({ sp0, sp1 }));
   if (!(sp0.cut > 1) || Math.abs(sp1.fill - 200) > 200 * 0.02 || sp1.cut > 1) fail('Punktmolnsgrejor över nivån kapar inte fyllningen: ' + JSON.stringify({ sp0, sp1 }));
+  // Samma med "Objekt står kvar" på och en stor skannad platå (5 × 5 m, över nivån): ingen kapad fläck i fyllningen
+  await page.evaluate(() => { const c = l3pc.clouds.find(x => x.id === 'pcA'), pos = Array.from(c.chunks[0].pos); for (let y = -2.5; y <= 2.5; y += 0.1) for (let x = -2.5; x <= 2.5; x += 0.1) pos.push(x - 6, y - 6, 4.5); c.chunks[0].pos = new Float32Array(pos); c.nTot = pos.length / 3; l3vol.cache.clear(); const cu = l3vol.cur; cu.spec.keep = true; cu.spec.keepMode = 'pocket'; cu.spec.tin = false; cu.spec.cell = 0.5; cu.spec.spike = true; l3volSchedule(0); });
+  await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep, null, { timeout: 40000 }); await page.waitForTimeout(400);
+  const big = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut })); console.log('platå', JSON.stringify(big));
+  if (Math.abs(big.fill - 200) > 200 * 0.03 || big.cut > 1) fail('Stor skannad platå över nivån ger inget hål: ' + JSON.stringify(big));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dvollvl');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
