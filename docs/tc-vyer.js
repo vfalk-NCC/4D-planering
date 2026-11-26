@@ -131,3 +131,68 @@ function tcvyBind() {
   const x = tcvyEl("btnTcvyExport"); if (x) x.onclick = () => tcvyExport();
 }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tcvyBind); else tcvyBind();
+
+/* SketchUp → TC (Victor 2026-11-26: "Kan vi få ut en organizer-fil på vyn i SketchUp som TC kan fatta så att den
+   visar samma?"). Läser JSON från NSV Koppling › TC-vyer › Exportera vy till TC (samma format som exporten ovan):
+   färger per IFC-GUID, dolda GUID:er och kamera. IFC-id → runtime-id i varje laddad modell, sedan setObjectState.
+   Kan sparas som en vanlig TC-vy så att den finns kvar för alla. */
+function tcvyFarg(hex) {
+  const h = String(hex || "").replace("#", "");
+  const a = h.length >= 8 ? parseInt(h.slice(6, 8), 16) : 255;
+  return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16), a };
+}
+
+async function tcvyRuntime(models, guids) {
+  const ut = [];
+  for (const m of models) {
+    const ids = [];
+    for (let i = 0; i < guids.length; i += 5000) {
+      const r = await API.viewer.convertToObjectRuntimeIds(m.id, guids.slice(i, i + 5000));
+      (r || []).forEach(x => { if (typeof x === "number" && x >= 0) ids.push(x); });
+    }
+    if (ids.length) ut.push({ modelId: m.id, objectRuntimeIds: ids });
+  }
+  return ut;
+}
+
+async function tcvyImport(fil) {
+  if (!API || !API.viewer) { tcvyStatus("Trimble Connect är inte anslutet.", true); return; }
+  if (tcvy.busy) return;
+  tcvy.busy = true;
+  try {
+    const d = JSON.parse(await fil.text());
+    const v = (d.vyer || [])[0];
+    if (!v) throw new Error("Filen innehåller ingen vy från SketchUp.");
+    const models = (await API.viewer.getModels("loaded")) || [];
+    if (!models.length) throw new Error("Ladda modellerna i 3D-vyn först.");
+    tcvyStatus(`Lägger på ”${v.name}”…`);
+    await API.viewer.setObjectState(undefined, { color: "reset", visible: "reset" });
+    let nF = 0, nD = 0;
+    for (const f of v.farger || []) {
+      const mo = await tcvyRuntime(models, f.guids || []);
+      if (!mo.length) continue;
+      await API.viewer.setObjectState({ modelObjectIds: mo }, { color: tcvyFarg(f.color) });
+      nF += mo.reduce((s, m) => s + m.objectRuntimeIds.length, 0);
+    }
+    if ((v.dolda || []).length) {
+      const mo = await tcvyRuntime(models, v.dolda);
+      if (mo.length) await API.viewer.setObjectState({ modelObjectIds: mo }, { visible: false });
+      nD = mo.reduce((s, m) => s + m.objectRuntimeIds.length, 0);
+    }
+    if (v.camera && v.camera.position) { try { await API.viewer.setCamera(v.camera, { animationTime: 400 }); } catch (e) { /* kameran lämnas */ } }
+    let sparad = "";
+    if (tcvyEl("tcvySpara") && tcvyEl("tcvySpara").checked && API.view && API.view.createView) {
+      try { await API.view.createView({ name: v.name, description: "Från NSV Koppling (SketchUp) " + (d.skapad || "") }); sparad = " Sparad som vy i TC."; }
+      catch (e) { sparad = " Kunde inte spara som vy: " + e.message; }
+    }
+    const alla = (v.farger || []).reduce((s, f) => s + (f.guids || []).length, 0);
+    tcvyStatus(`”${v.name}”: ${nF} objekt färgade (av ${alla} i filen), ${nD} dolda.${sparad}`);
+  } catch (e) { tcvyStatus("Kunde inte läsa vyn: " + e.message, true); }
+  finally { tcvy.busy = false; }
+}
+
+function tcvyImportBind() {
+  const k = tcvyEl("btnTcvyImport"), f = tcvyEl("tcvyFil");
+  if (k && f) { k.onclick = () => f.click(); f.onchange = () => { if (f.files[0]) tcvyImport(f.files[0]); f.value = ""; }; }
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", tcvyImportBind); else tcvyImportBind();
