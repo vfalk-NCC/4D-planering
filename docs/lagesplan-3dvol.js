@@ -189,16 +189,39 @@ function l3volMesh(tris, kind, org, tmax) {
   return { pos: new Float32Array(pos), col: new Float32Array(col), idx: new Uint32Array(idx), wire: new Float32Array(wire), tris: tris.length, cells: tris.length };
 }
 /* Hela uträkningen för det som står i panelen / det sparade måttet. */
+/* Objekt som står kvar (Victor 2026-11-26: "fundamenten ska stå där när vi fyller"): IFC-modeller och placerade objekt som står på marken räknas som en del av marken – höjden i rutan blir objektets översida –
+   så att fyllningen bara räknas runt och över dem. Objekt som hänger fritt (underkant högre än marken, t.ex. rörbryggor) räknas inte. Gäller punktmoln som yta; är den andra ytan en nivå
+   begränsas höjden till nivån (objekt som sticker upp genom fyllningen tar bort hela rutan). */
+async function l3volObstacles(cur, bd, cell) {
+  const skip = new Set([cur.spec.a.k, cur.spec.b.k]), lists = [], info = { models: 0, objs: 0 };
+  const models = (typeof l3b !== "undefined" ? l3b.models : []).filter(m => m.visible && m.meshes && m.meshes.length && !skip.has("md:" + m.id));
+  for (const m of models) { const top = await l3volHeights(cur, { k: "md:" + m.id, side: "top" }, bd, cell), bot = await l3volHeights(cur, { k: "md:" + m.id, side: "bottom" }, bd, cell); if (top && bot) { lists.push({ top, bot }); info.models++; } }
+  const ids = (typeof placements !== "undefined" ? placements : []).filter(p => !p.text && !/^sm:(makadam|makadamfri|riskzon)$/.test(String(p.type)) && l3dfObjMeshes(p).length && !skip.has("ob:" + p.id)).map(p => p.id);
+  if (ids.length) { const k = "obm:" + ids.join(","), top = await l3volHeights(cur, { k, side: "top" }, bd, cell), bot = await l3volHeights(cur, { k, side: "bottom" }, bd, cell); if (top && bot) { lists.push({ top, bot }); info.objs = ids.length; } }
+  return { lists, info };
+}
+/* Höjden för en markyta (punktmoln) med objekten inräknade; levelZ = nivån (om den andra ytan är en vågrät nivå). */
+function l3volWithObstacles(g, obst, levelZ) {
+  const z = Float32Array.from(g.z), tol = 0.5;
+  obst.lists.forEach(({ top, bot }) => { for (let c = 0; c < z.length; c++) { const t = top.z[c], b = bot.z[c]; if (!l3volOk(t) || !l3volOk(b)) continue; const gz = z[c]; if (l3volOk(gz) && b > gz + tol) continue; let v = l3volOk(gz) ? Math.max(gz, t) : t; if (Number.isFinite(levelZ) && v > levelZ) v = levelZ; z[c] = v; } });
+  return { ...g, z };
+}
 async function l3volCompute(cur, alive) {
   const P = cur.pts, bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
   const gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
   const gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
+  let gA2 = gA, gB2 = gB, keepInfo = null;
+  if (cur.spec.keep) {   // objekt som står kvar räknas som mark
+    const ob = await l3volObstacles(cur, bd, cell); if (!alive()) return null; keepInfo = ob.info;
+    const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN;
+    if (/^pc:/.test(cur.spec.a.k)) gA2 = l3volWithObstacles(gA, ob, lv(cur.spec.b)); if (/^pc:/.test(cur.spec.b.k)) gB2 = l3volWithObstacles(gB, ob, lv(cur.spec.a));
+  }
   const nx = gA.nx, ny = gA.ny, W = nx + 1, NN = W * (ny + 1), eps = 0.002, ca = cell * cell;
   const sA = new Float64Array(NN), sB = new Float64Array(NN), cnt = new Uint8Array(NN), ok = new Uint8Array(nx * ny);
   let aMiss = 0, mn = Infinity, mx = -Infinity;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const c = j * nx + i, a = gA.z[c], b = gB.z[c]; if (!l3volOk(a) || !l3volOk(b)) continue; ok[c] = 1;
+    const c = j * nx + i, a = gA2.z[c], b = gB2.z[c]; if (!l3volOk(a) || !l3volOk(b)) continue; ok[c] = 1;
     [j * W + i, j * W + i + 1, (j + 1) * W + i, (j + 1) * W + i + 1].forEach(k => { sA[k] += a; sB[k] += b; cnt[k]++; });
   }
   const nA = new Float32Array(NN).fill(NaN), nB = new Float32Array(NN).fill(NaN);
@@ -275,7 +298,7 @@ async function l3volCompute(cur, alive) {
   const at = k => { const c = cen[k]; return c[0] > 0 ? [c[1] / c[0], c[2] / c[0], c[3] / c[0]] : null; };
   const cut = tot.cut, fill = tot.fill, tris = (solids.cut ? solids.cut.tris : 0) + (solids.fill ? solids.fill.tris : 0);
   if (tinMode) aMiss = Math.max(0, area - aIn);
-  const res = { fill, cut, net: fill - cut, area, areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b), tin: tinInfo };
+  const res = { keep: keepInfo, fill, cut, net: fill - cut, area, areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b), tin: tinInfo };
   return { res, geom: { o: org, cut: solids.cut || null, fill: solids.fill || null, cutAt: at("cut"), fillAt: at("fill") } };
 }
 const l3volText = res => `Schakt −${l3volM3(res.cut)} · Fyllning +${l3volM3(res.fill)}`;
@@ -334,7 +357,7 @@ function l3volInfoRows(m) {
   const r = v.res, cur = { surf: v.surf };
   return [["Schakt", `−${l3volM3(r.cut)}`], ["Fyllning", `+${l3volM3(r.fill)}`], ["Netto", `${l3volSg(r.net, "+")} (${Math.round(r.net) > 0 ? "överskott" : Math.round(r.net) < 0 ? "underskott" : "balans"})`],
     ["Yta i plan", `${l3Fmt(r.area, 1)} m²`], ["Yta som mäts", l3volLabel(cur, v.spec.a)], ["Mot", l3volLabel(cur, v.spec.b)], ["Rutstorlek", `${String(r.cell).replace(".", ",")} m`],
-    ...(r.areaMiss > 0.5 ? [["Utan data", `${l3Fmt(r.areaMiss, 1)} m² av området saknar höjd och räknas inte`]] : []), ["Största skillnad", `${l3Fmt(r.mx, 2)} m över · ${l3Fmt(-r.mn, 2)} m under`]];
+    ...(r.keep ? [["Objekt som står kvar", `${r.keep.models} modell(er) · ${r.keep.objs} placerade objekt räknas som mark`]] : []), ...(r.areaMiss > 0.5 ? [["Utan data", `${l3Fmt(r.areaMiss, 1)} m² av området saknar höjd och räknas inte`]] : []), ["Största skillnad", `${l3Fmt(r.mx, 2)} m över · ${l3Fmt(-r.mn, 2)} m under`]];
 }
 
 /* ---- Verktyget och panelen ---- */
@@ -489,6 +512,7 @@ function l3volPanel() {
   el.innerHTML = `<div class="v3-vp-h"><button type="button" data-vb="col" class="tg" title="Fäll ihop / fäll ut">${l3Prefs().vpCol ? "▸" : "▾"}</button><b>Volym</b><span>${r && l3Prefs().vpCol ? `Netto ${l3volSg(r.net, "+")}` : `${l3Fmt(area, 1)} m² · ${n} hörn`}</span><button type="button" data-vb="undo" title="Ångra punkt – tar bort områdets sista hörn" ${n > 3 ? "" : "disabled"}>↶</button><button type="button" data-vb="restart" title="Börja om – rita området från början">⟲</button><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
     <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     <div class="v3-vq-lvl" title="Skriv höjden (m ö.h.) som ytan ska fyllas upp till, t.ex. överkant makadam. Volymen räknas från den höjden ner tills det möter punktmolnet (eller vald modell) i det markerade området."><span>Fyll till plushöjd</span><input type="text" inputmode="decimal" data-vlv placeholder="t.ex. 395,40" value="${lvlMode ? String(c.spec.a.z).replace(".", ",") : ""}"><em>m</em><button type="button" data-vb="lvl">Räkna</button></div>
+    <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
     <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
     <div data-vres>${res}</div>
@@ -516,11 +540,12 @@ function l3volPanel() {
   qa("select[data-vk]").forEach(s => { s.onchange = () => { const k = s.dataset.vk, sp = c.spec[k]; sp.k = s.value; l3volPanel(); l3volSchedule(); }; });
   qa("select[data-vs]").forEach(s => { s.onchange = () => { c.spec[s.dataset.vs].side = s.value; l3volSchedule(); }; });
   qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); c.spec[i.dataset.vz].z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
+  { const ki = q("input[data-vkeep]"); if (ki) ki.onchange = () => { c.spec.keep = ki.checked; c.saved = false; l3volSchedule(0); } }
   { const li = q("input[data-vlv]"), go = () => {   // Fyll till plushöjd: nivån som "Yta som mäts", punktmolnet (annars modellen) som "Mot"
       const v = Number(String(li.value).replace(/\s/g, "").replace(",", ".")); if (!Number.isFinite(v)) { l3Status("Skriv plushöjden som ett tal, t.ex. 395,40.", true); li.focus(); return; }
       const cl = l3pc.clouds.find(x => x.visible && x.chunks && x.chunks.length), md = (typeof l3b !== "undefined" ? l3b.models : []).find(m => m.visible && m.meshes && m.meshes.length), keep = /^pc:/.test(c.spec.b.k) ? c.spec.b : /^pc:/.test(c.spec.a.k) ? c.spec.a : null;   // punktmolnet har företräde (marken), annars modellen
       const tgt = keep || (cl ? { k: "pc:" + cl.id, side: "top" } : md ? { k: "md:" + md.id, side: "top" } : null); if (!tgt) { l3Status("Tänd ett punktmoln (Lager) att räkna mot.", true); return; }
-      c.spec.a = { k: "level", side: "top", z: Math.round(v * 1000) / 1000 }; c.spec.b = { k: tgt.k, side: tgt.side || "top" }; c.saved = false; l3volPanel(); l3volSchedule(0); };
+      c.spec.a = { k: "level", side: "top", z: Math.round(v * 1000) / 1000 }; c.spec.b = { k: tgt.k, side: tgt.side || "top" }; if (c.spec.keep == null) c.spec.keep = true; c.saved = false; l3volPanel(); l3volSchedule(0); };
     if (li) { li.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); go(); } }; const b = q('[data-vb="lvl"]'); if (b) b.onclick = go; } }
   qa("[data-vpick]").forEach(b => { b.onclick = () => { l3vol.capture = "level"; l3Status("Tryck på en punkt i modellen – dess höjd blir nivån. Esc avbryter."); }; });
   const cs = q("input[data-vc]"); if (cs) { const lab = q("[data-vcl]"); cs.oninput = () => { const v = L3VOL_STEPS[Number(cs.value) - 1] || 0; lab.textContent = v ? String(v).replace(".", ",") + " m" : "Auto"; c.spec.cell = v; l3volSchedule(220); }; }

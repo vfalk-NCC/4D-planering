@@ -73,9 +73,24 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForFunction(() => l3vol.cur && l3vol.cur.spec.a.k === 'level' && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 20000 }); await page.waitForTimeout(400);
   const f = await page.evaluate(() => ({ a: l3vol.cur.spec.a, b: l3vol.cur.spec.b.k, fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut, area: l3vol.cur.res.area, txt: (document.querySelector('.v3-vq-lvlres') || {}).textContent || '' }));
   console.log(JSON.stringify(f));
-  const exp = f.area * 2.0;   // 3,5 − 1,5 m över hela området
+  const exp = f.area * 2.0;   // (modellplattan ingår i nästa kontroll)   // 3,5 − 1,5 m över hela området
   if (f.b !== 'pc:pcA' || f.a.k !== 'level') fail('Plushöjd: nivå mot punktmolnet: ' + JSON.stringify(f));
-  if (Math.abs(f.fill - exp) > exp * 0.03 || f.cut > 1) fail('Plushöjd: fyllning ' + f.fill + ' ≠ ' + exp);
+  if (f.cut > 1 || f.fill > exp * 1.03 || f.fill < exp * 0.6) fail('Plushöjd: fyllning ' + f.fill + ' ≠ ' + exp);
   if (!/Fyllning/.test(f.txt)) fail('Plushöjd: resultatrad saknas: ' + f.txt);
+  // Objekt som står kvar: modellplattan (0–2 m, står på marken, överkant 0,5 m över molnet) räknas som mark → fyllningen blir 1,5 m i stället för 2,0 m.
+  const k0 = await page.evaluate(() => l3vol.cur.spec.keep);
+  if (k0 !== true) fail('Plushöjd slår på "objekt står kvar": ' + k0);
+  const withKeep = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, keep: l3vol.cur.res.keep }));
+  await page.evaluate(() => { l3vol.cur.spec.keep = false; l3volSchedule(0); });
+  await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && !l3vol.cur.res.keep, null, { timeout: 20000 }); await page.waitForTimeout(300);
+  const noKeep = await page.evaluate(() => l3vol.cur.res.fill);
+  console.log(JSON.stringify({ withKeep, noKeep }));
+  if (Math.abs(noKeep - exp) > exp * 0.03) fail('Utan objekt: fyllning ' + noKeep + ' ≠ ' + exp);
+  if (!(withKeep.keep && withKeep.keep.models === 1) || Math.abs(withKeep.fill - f.area * 1.5) > f.area * 1.5 * 0.05) fail('Objekt som står kvar räknas bort (plattan: 3,5−2,0 = 1,5 m): ' + JSON.stringify(withKeep));
+  // Placerat objekt (4 × 4 m låda som sticker upp över nivån) tar bort sin ruta: fyllning = (100 − 16) × 1,5
+  await page.evaluate(() => { const lo = window.__lo, O = l3.O, q = placeNew('lada', [lo[0] + 13, lo[1] + 13, 0]); q.L = 4; q.B = 4; q.H = 4; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); l3vol.cur.spec.keep = true; l3volSchedule(0); });
+  await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.keep.objs >= 1, null, { timeout: 20000 }); await page.waitForTimeout(300);
+  const withBox = await page.evaluate(() => l3vol.cur.res.fill); console.log('box', withBox);
+  if (Math.abs(withBox - 84 * 1.5) > 84 * 1.5 * 0.08) fail('Placerad låda tar bort sin yta: ' + withBox + ' ≠ ' + 84 * 1.5);
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dvollvl');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
