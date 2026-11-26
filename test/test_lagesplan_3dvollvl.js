@@ -145,6 +145,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.spec.spikeMax === 40 && l3vol.cur.res.cut > 50, null, { timeout: 30000 }); await page.waitForTimeout(300);
   const rock = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut })); console.log('berg', JSON.stringify(rock));
   if (!(rock.cut > 100)) fail('Stor yta över nivån räknas som mark (inte som något som sticker upp): ' + JSON.stringify(rock));
+  // Fyll igen manuellt: ett klick på bergfläcken (64 m², större än automatiska gränsen) fyller igen den; klickposition sparas i spec.fillPts
+  await page.evaluate(() => { const lo = window.__lo, cu = l3vol.cur; cu.spec.fillPts = [[lo[0] + 15, lo[1] + 15]]; l3volSchedule(0); });
+  await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cut < 5, null, { timeout: 30000 }); await page.waitForTimeout(300);
+  const fillm = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut })); console.log('manuell', JSON.stringify(fillm));
+  if (fillm.cut > 5 || Math.abs(fillm.fill - 200) > 200 * 0.03) fail('Manuell ifyllning av fläck: ' + JSON.stringify(fillm));
+  await page.evaluate(() => { l3vol.cur.spec.fillPts = []; l3volSchedule(0); }); await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cut > 50, null, { timeout: 30000 });
   // Dolda objekt (gruppen osynlig, t.ex. Dölj/Isolera) ska inte kapa något
   await page.evaluate(() => { const lo = window.__lo, q = placeNew('lada', [lo[0] + 12, lo[1] + 12, 0]); q.L = 3; q.B = 3; q.H = 5; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); window.__hid = q.id; l3.placeMeshes.get(q.id).visible = false; l3vol.cache.clear(); const cu = l3vol.cur; cu.spec.keep = true; cu.spec.keepMode = 'pocket'; cu.spec.cell = 0.5; l3volSchedule(0); });
   await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.cell === 0.5, null, { timeout: 40000 }); await page.waitForTimeout(400);

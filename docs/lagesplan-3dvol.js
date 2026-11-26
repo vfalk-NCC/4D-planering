@@ -197,7 +197,7 @@ function l3volMesh(tris, kind, org, tmax) {
 /* Det som sticker upp över plushöjden i punktmolnet (maskiner, stenar, material) är inte mark: när den andra ytan är en nivå ignoreras punkter över nivån och marken interpoleras ur omgivningen,
    så fyllningen räknas ända upp till nivån även där något skannats stående. Kan slås av med "Ignorera det som sticker upp". */
 const l3volSpikeLevel = (cur, src) => { if (cur.spec.spike === false || !src || !/^pc:/.test(src.k)) return null; const o = src === cur.spec.a ? cur.spec.b : cur.spec.a; return o && o.k === "level" && Number.isFinite(o.z) ? o.z : null; };
-function l3volDespike(g, levelZ, maxArea) {
+function l3volDespike(g, levelZ, maxArea, forced) {
   const n = g.nx * g.ny, hi = new Uint8Array(n), ca = g.cell * g.cell; let any = 0; for (let k = 0; k < n; k++) if (g.z[k] > levelZ + 0.02) { hi[k] = 1; any++; }
   if (!any) return g;
   // Bara små sammanhängande områden över nivån (maskiner, stenar, material) är "sådant som sticker upp" – större (berg, slänter) är verklig mark över nivån och lämnas orört, liksom allt som sträcker sig till kanten av området.
@@ -206,6 +206,11 @@ function l3volDespike(g, levelZ, maxArea) {
     while (stack.length) { const k = stack.pop(); cells.push(k); const i = k % g.nx, j = (k - i) / g.nx;
       [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].forEach(([a, b]) => { if (a < 0 || b < 0 || a >= g.nx || b >= g.ny) { edge = true; return; } const q = b * g.nx + a; if (!(g.z[q] === g.z[q])) { edge = true; return; } if (hi[q] && !lab[q]) { lab[q] = 1; stack.push(q); } }); }
     if (!edge && cells.length * ca <= maxArea) { cells.forEach(k => { spike[k] = 1; }); nSp += cells.length; } }
+  // Manuellt markerade fläckar ("Fyll igen"): hela det sammanhängande området över nivån som ligger vid klicket, oavsett storlek
+  (forced || []).forEach(([fx, fy]) => { let i0 = Math.floor((fx - g.x0) / g.cell), j0 = Math.floor((fy - g.y0) / g.cell), seed = -1;
+    for (let r = 0; r <= 6 && seed < 0; r++) for (let dj = -r; dj <= r && seed < 0; dj++) for (let di = -r; di <= r; di++) { const a = i0 + di, b = j0 + dj; if (a < 0 || b < 0 || a >= g.nx || b >= g.ny) continue; if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue; const k = b * g.nx + a; if (hi[k]) { seed = k; break; } }
+    if (seed < 0 || spike[seed]) return; const q = [seed]; spike[seed] = 1; nSp++;
+    while (q.length) { const k = q.pop(), i = k % g.nx, j = (k - i) / g.nx; [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].forEach(([a, b]) => { if (a < 0 || b < 0 || a >= g.nx || b >= g.ny) return; const t = b * g.nx + a; if (hi[t] && !spike[t]) { spike[t] = 1; nSp++; q.push(t); } }); } });
   if (!nSp) return { ...g, spikeMask: spike };
   for (let r = 0; r < 2; r++) { const add = []; for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) { const k = j * g.nx + i; if (spike[k]) continue; let near = false; for (let dj = -1; dj <= 1 && !near; dj++) for (let di = -1; di <= 1; di++) { const a = i + di, b = j + dj; if (a >= 0 && b >= 0 && a < g.nx && b < g.ny && spike[b * g.nx + a]) { near = true; break; } } if (near && g.z[k] === g.z[k]) add.push(k); } add.forEach(k => { spike[k] = 1; nSp++; }); }   // kantrutorna (delvis täckta av det som sticker upp) hör också dit
   const z = Float32Array.from(g.z); for (let k = 0; k < n; k++) if (spike[k]) z[k] = NaN;
@@ -217,6 +222,7 @@ function l3volDespike(g, levelZ, maxArea) {
     z.set(nz); bad -= filled; if (!filled) break; }
   return { ...g, z, spiked: true, spikeMask: spike };
 }
+const l3volFillLevel = (cur, src) => { if (!src || !/^pc:/.test(src.k)) return null; const o = src === cur.spec.a ? cur.spec.b : cur.spec.a; return o && o.k === "level" && Number.isFinite(o.z) ? o.z : null; };
 const l3volSpikeMax = cur => Number(cur.spec.spikeMax) > 0 ? Number(cur.spec.spikeMax) : 40;
 /* Marken som ett komplett rutnät ur punktmolnets TIN (Delaunay mellan punkterna, ritad rutvis): ett fint rutnät direkt av en gles punktmolnsyta får annars hål ("saknar höjd"). */
 async function l3volGroundGrid(cur, src, bd, cell) {
@@ -227,7 +233,7 @@ async function l3volGroundGrid(cur, src, bd, cell) {
     if (Math.hypot(a[0] - b[0], a[1] - b[1]) > lim || Math.hypot(b[0] - c[0], b[1] - c[1]) > lim || Math.hypot(a[0] - c[0], a[1] - c[1]) > lim) continue;
     l3dfTri(g, a, b, c); if (t % 6000 === 0) { await l3volTick(); }
   }
-  const lz = l3volSpikeLevel(cur, src); return lz != null ? l3volDespike(g, lz, l3volSpikeMax(cur)) : g;   // det som sticker upp över nivån ersätts med marken runt omkring (inte hål)
+  const lz = l3volFillLevel(cur, src), fp = cur.spec.fillPts || []; return lz != null && (cur.spec.spike !== false || fp.length) ? l3volDespike(g, lz, cur.spec.spike !== false ? l3volSpikeMax(cur) : 0, fp) : g;   // det som sticker upp över nivån ersätts med marken runt omkring (inte hål)
 }
 /* Fotavtryck för objekt som kapas ur kroppen: rutor där ett objekt överlappar rummet mellan ytorna (eller vilar på det) slås ihop till polygoner (finrutor ≈ 5–15 cm), som sedan klipper trianglarna exakt –
    inte rutvis. Resultat: { polys (polygon-clipping), idx (rutindex för snabb sökning), area }. */
@@ -308,7 +314,7 @@ async function l3volCompute(cur, alive) {
   let gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
   let gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
-  { const la = l3volSpikeLevel(cur, cur.spec.a), lb = l3volSpikeLevel(cur, cur.spec.b); if (la != null) gA = l3volDespike(gA, la, l3volSpikeMax(cur)); if (lb != null) gB = l3volDespike(gB, lb, l3volSpikeMax(cur)); }
+  { const la = l3volFillLevel(cur, cur.spec.a), lb = l3volFillLevel(cur, cur.spec.b), fp = cur.spec.fillPts || [], auto = cur.spec.spike !== false, mx = auto ? l3volSpikeMax(cur) : 0; if (la != null && (auto || fp.length)) gA = l3volDespike(gA, la, mx, fp); if (lb != null && (auto || fp.length)) gB = l3volDespike(gB, lb, mx, fp); }
   let gA2 = gA, gB2 = gB, keepInfo = null, FP = null, cutA = 0;
   if (cur.spec.keep) {   // objekt som står kvar räknas som mark / kapas ur
     const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN, up = cur.spec.keepMode !== "top" && typeof polygonClipping !== "undefined"   /* "pocket" (standard) och "up" klipper exakt */, fine = Math.max(0.08, Math.min(cell / 3, 0.15));
@@ -505,9 +511,11 @@ function l3volStart() {
   l3volOpen(cur);
 }
 /* Tryck i 3D medan panelen är öppen: nivå från en punkt, annars ignoreras trycket. */
+window.addEventListener("keydown", e => { if (e.key === "Escape" && typeof l3vol !== "undefined" && l3vol.capture === "fill") { l3vol.capture = null; e.stopPropagation(); if (l3vol.cur) l3volPanel(); } }, true);
 function l3volTap(e) {
   if (!l3vol.cur || l3.tool !== "measure" || l3Prefs().measure !== "volume") return false;
   if (l3vol.capture === "level") { const s = l3Snap(e); if (!s) return true; const z = s.point.z + l3.O[2]; l3vol.capture = null; l3vol.cur.spec.b = { k: "level", side: "top", z: Math.round(z * 1000) / 1000 }; l3Status(`Nivå ${l3Fmt(z, 3)} m.`); l3volPanel(); l3volSchedule(0); return true; }
+  if (l3vol.capture === "fill") { const s2 = l3Snap(e); if (!s2) return true; const c = l3vol.cur; c.spec.fillPts = (c.spec.fillPts || []).concat([[Math.round((s2.point.x + l3.O[0]) * 100) / 100, Math.round((s2.point.y + l3.O[1]) * 100) / 100]]); c.saved = false; l3Status(`Fläck ${c.spec.fillPts.length} fylls igen – klicka på fler eller tryck Esc när du är klar.`); l3volPanel(); l3volSchedule(0); return true; }
   if (l3vol.capture === "surf") return false; // vanlig polygoninsamling
   l3Status("Volympanelen är öppen – spara eller stäng den först (Esc) för att mäta ett nytt område.", true); return true;
 }
@@ -646,6 +654,7 @@ function l3volPanel() {
     <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     <div class="v3-vq-lvl" title="Skriv höjden (m ö.h.) som ytan ska fyllas upp till, t.ex. överkant makadam. Volymen räknas från den höjden ner tills det möter punktmolnet (eller vald modell) i det markerade området."><span>Fyll till plushöjd</span><input type="text" inputmode="decimal" data-vlv placeholder="t.ex. 395,40" value="${lvlMode ? String(c.spec.a.z).replace(".", ",") : ""}"><em>m</em><button type="button" data-vb="lvl">Räkna</button></div>
     ${lvlMode ? `<label class="v3-vq-sw" title="Maskiner, stenar och annat som skannats stående och når över plushöjden är inte mark. Då ignoreras punkterna över nivån och marken interpoleras ur omgivningen, så fyllningen räknas hela vägen upp även där."><span>Ignorera det som sticker upp över nivån</span><input type="checkbox" data-vspike ${c.spec.spike === false ? "" : "checked"}><b></b></label>` : ""}
+    ${lvlMode ? `<div class="v3-vq-fill" title="Fläckar där punktmolnet ligger över nivån och som du vill fylla igen ändå (en sten, en maskin, en hög). Klicka på fläcken så räknas marken där som interpolerad ur omgivningen och fyllningen går hela vägen upp."><span>Fyll igen fläckar</span><button type="button" data-vfill="on" class="${l3vol.capture === "fill" ? "on" : ""}">${l3vol.capture === "fill" ? "Klicka på fläck… (Esc klart)" : "＋ Klicka på fläck"}</button>${(c.spec.fillPts || []).length ? `<em>${c.spec.fillPts.length} st</em><button type="button" data-vfill="undo" title="Ta bort den senaste">↶</button><button type="button" data-vfill="clr" title="Ta bort alla">✕</button>` : ""}</div>` : ""}
     ${lvlMode && c.spec.spike !== false ? `<label class="v3-vq-est" style="padding:0 2px 4px" title="Bara sammanhängande områden över nivån som är mindre än så här räknas som sådant som sticker upp (maskiner, stenar). Större områden, som berg och slänter, är verklig mark över nivån."><span>Ignorera områden upp till</span> <input type="text" inputmode="decimal" data-vspmax value="${String(l3volSpikeMax(c)).replace(".", ",")}" style="width:54px"> m²</label>` : ""}
     <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt · ${r.keep.area || 0} m² kapat</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
     ${c.spec.keep ? `<div class="v3-vq-keepm" title="Exakt: bara delen av fyllningen som objektet verkligen upptar tas bort (fickor, under och över objektet finns kvar). Hål ända upp: fyllningen kapas helt ner genom hela lagret runt objekten. Fyll över: fyllningen läggs ovanpå objekt som slutar under nivån."><button type="button" data-vkm="pocket" class="${(c.spec.keepMode || "pocket") === "pocket" ? "on" : ""}">Exakt</button><button type="button" data-vkm="up" class="${c.spec.keepMode === "up" ? "on" : ""}">Hål ända upp</button><button type="button" data-vkm="top" class="${c.spec.keepMode === "top" ? "on" : ""}">Fyll över</button></div>` : ""}
@@ -677,6 +686,9 @@ function l3volPanel() {
   qa("select[data-vs]").forEach(s => { s.onchange = () => { c.spec[s.dataset.vs].side = s.value; l3volSchedule(); }; });
   qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); c.spec[i.dataset.vz].z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("[data-vkm]").forEach(b => { b.onclick = () => { c.spec.keepMode = b.dataset.vkm; c.saved = false; l3volSchedule(0); l3volPanel(); }; });
+  qa("[data-vfill]").forEach(b => { b.onclick = () => { const k = b.dataset.vfill;
+    if (k === "on") { l3vol.capture = l3vol.capture === "fill" ? null : "fill"; if (l3vol.capture === "fill") l3Status("Klicka på fläcken som ska fyllas igen. Esc när du är klar."); l3volPanel(); return; }
+    c.spec.fillPts = k === "undo" ? (c.spec.fillPts || []).slice(0, -1) : []; c.saved = false; l3volPanel(); l3volSchedule(0); }; });
   { const sm = q("input[data-vspmax]"); if (sm) { sm.onchange = () => { const v = Number(String(sm.value).replace(",", ".")); c.spec.spikeMax = Number.isFinite(v) && v > 0 ? v : 40; c.saved = false; l3volSchedule(0); }; sm.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") sm.blur(); }; } }
   { const si = q("input[data-vspike]"); if (si) si.onchange = () => { c.spec.spike = si.checked; c.saved = false; l3volSchedule(0); } }
   { const ki = q("input[data-vkeep]"); if (ki) ki.onchange = () => { c.spec.keep = ki.checked; c.saved = false; l3volSchedule(0); } }
