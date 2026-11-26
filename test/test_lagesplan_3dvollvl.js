@@ -121,6 +121,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cell === 1, null, { timeout: 25000 }); await page.waitForTimeout(300);
   const thin = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, tin: !!l3vol.cur.res.tin })); console.log('thin', JSON.stringify(thin));
   if (Math.abs(thin.fill - 200) > 200 * 0.03) fail('Smal påle (0,2 m) + TIN tar bara sin egen yta: ' + JSON.stringify(thin));
+  // Släntad kant: fyllningen sluttar 1:2 utanför det markerade området (10 × 10 m, mark 1,5 m, nivå 3,5 m): extra ≈ 4·10·4 + 4 kvartskoner ≈ 193 m³ ovanpå 200 m³
+  await page.evaluate(() => { const cu = l3vol.cur; cu.spec.keep = false; cu.spec.tin = false; cu.spec.cell = 0.5; cu.spec.spike = true; cu.spec.slope = { on: true, n: 2 }; l3volSchedule(0); });
+  await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.slope && l3vol.cur.res.cell === 0.5, null, { timeout: 40000 }); await page.waitForTimeout(300);
+  const slp = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut, area: l3vol.cur.res.area })); console.log('slänt', JSON.stringify(slp));
+  if (Math.abs(slp.fill - 393.5) > 393.5 * 0.07 || slp.cut > 2 || Math.abs(slp.area - 100) > 0.5) fail('Släntad kant: ' + JSON.stringify(slp));
+  await page.evaluate(() => { const cu = l3vol.cur; cu.spec.slope = { on: false, n: 2 }; l3volSchedule(0); }); await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && !l3vol.cur.res.slope, null, { timeout: 30000 }); await page.waitForTimeout(300);
   // Punktmolnsgrejor som sticker upp över nivån (en 2 × 2 m skannad pelare, z 6 m) ska inte kapa fyllningen
   await page.evaluate(() => { const c = l3pc.clouds.find(x => x.id === 'pcA'), pos = Array.from(c.chunks[0].pos); for (let y = -1; y <= 1; y += 0.1) for (let x = -1; x <= 1; x += 0.1) pos.push(x - 3, y - 3, 4.5); c.chunks[0].pos = new Float32Array(pos); c.nTot = pos.length / 3;
     const q = placements.find(p => p.type === 'lada'); if (q) { placements.splice(placements.indexOf(q), 1); const g = l3.placeMeshes.get(q.id); if (g) { l3.groups.places.remove(g); l3.placeMeshes.delete(q.id); } }

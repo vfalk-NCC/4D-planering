@@ -309,8 +309,27 @@ function l3volWithObstacles(g, obst, levelZ, up) {
   }
   return { ...g, z, hitArea: hits / (S * S) * g.cell * g.cell };
 }
+/* Släntad kant (Victor 2026-11-26: "det blir ju en slänt när man fyller runt stödmuren – välj vinkel/förhållande"): fyllningen når plushöjden inne i det markerade området och sjunker utanför det med lutningen 1:n
+   (n m vågrätt per 1 m lodrätt) tills den möter marken. Utanför området räknas bara fyllning, ingen schakt. */
+function l3volSlopeCfg(cur) { const sl = cur.spec.slope; if (!sl || !sl.on || !(sl.n > 0) || !cur.spec.a || cur.spec.a.k !== "level" || !Number.isFinite(cur.spec.a.z) || typeof polygonClipping === "undefined") return null; return { n: Math.max(0.1, Number(sl.n) || 1.5), level: cur.spec.a.z }; }
+function l3volBufferPoly(P, D) {   // utvidgad kontur (polygon-clipping: området + kapsel runt varje kant)
+  const ring = r => [...r.map(p => [p[0], p[1]]), [r[0][0], r[0][1]]], geoms = [[ring(P)]];
+  for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); if (L > 1e-6) { const nx = -dy / L * D, ny = dx / L * D; geoms.push([[[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny], [a[0] + nx, a[1] + ny]]]); }
+    const oct = []; for (let k = 0; k < 16; k++) { const t = k / 16 * Math.PI * 2; oct.push([a[0] + Math.cos(t) * D, a[1] + Math.sin(t) * D]); } oct.push(oct[0].slice()); geoms.push([oct]); }
+  const U = polygonClipping.union(...geoms); let best = null, ba = -1; U.forEach(pg => { const r = pg[0], ar = Math.abs(l3volArea(r.slice(0, -1))); if (ar > ba) { ba = ar; best = r; } });
+  return best ? best.slice(0, -1).map(q => [q[0], q[1], 0]) : null;
+}
+function l3volSlopeDesign(gl, gg, P0, level, n) {
+  const z = new Float32Array(gl.z.length), distTo = (x, y) => { let best = Infinity; for (let i = 0, j = P0.length - 1; i < P0.length; j = i++) { const a = P0[j], b = P0[i], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, t = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L)); best = Math.min(best, Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy)); } return best; };
+  for (let j = 0; j < gl.ny; j++) for (let i = 0; i < gl.nx; i++) { const c = j * gl.nx + i, x = gl.x0 + (i + 0.5) * gl.cell, y = gl.y0 + (j + 0.5) * gl.cell;
+    if (l3volInside(P0, x, y)) { z[c] = level; continue; }
+    let v = level - distTo(x, y) / n; const gz = gg.z[c]; if (l3volOk(gz) && v < gz) v = gz; z[c] = v; }
+  return { ...gl, z };
+}
 async function l3volCompute(cur, alive) {
-  const P = cur.pts, bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
+  const P0 = cur.pts, SL = l3volSlopeCfg(cur); let P = P0;
+  if (SL) { const zl = (l3pc.clouds.filter(c => c.visible && c.info).map(c => c.info.min[2] + (c.dz || 0))); const zmin = zl.length ? Math.min(...zl) : SL.level - 30, D = Math.max(1, Math.min(40, (SL.level - zmin) * SL.n)), ext = l3volBufferPoly(P0, D); if (ext) P = ext; }
+  const bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
   let gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
   let gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
@@ -328,6 +347,7 @@ async function l3volCompute(cur, alive) {
     else { if (/^pc:/.test(cur.spec.a.k)) gA2 = l3volWithObstacles(g1, ob, lv(cur.spec.b), false); if (/^pc:/.test(cur.spec.b.k)) gB2 = l3volWithObstacles(g2, ob, lv(cur.spec.a), false); keepInfo.area = Math.round(((gA2 !== g1 && gA2.hitArea) || 0) + ((gB2 !== g2 && gB2.hitArea) || 0)); }
     if (!alive()) return null;
   }
+  if (SL) { const gg = /^pc:/.test(cur.spec.b.k) ? gB2 : gB; gA2 = l3volSlopeDesign(gA2, gg, P0, SL.level, SL.n); }   // släntad kant utanför det markerade området
   const nx = gA.nx, ny = gA.ny, W = nx + 1, NN = W * (ny + 1), eps = 0.002, ca = cell * cell;
   const sA = new Float64Array(NN), sB = new Float64Array(NN), cnt = new Uint8Array(NN), ok = new Uint8Array(nx * ny);
   let aMiss = 0, mn = Infinity, mx = -Infinity;
@@ -403,7 +423,7 @@ async function l3volCompute(cur, alive) {
     if (!pts) return { err: "Kunde inte bygga triangelnätet – tänd och läs in punktmolnet inom området." };
     await l3volTick(); if (!alive()) return null;
     const X = Float64Array.from(pts.X, v => v - bd.x0), Y = Float64Array.from(pts.Y, v => v - bd.y0), T = l3volDelaunay(X, Y); await l3volTick(); if (!alive()) return null;
-    const gO = tinA ? gB : gA; let used = 0, work2 = 0;
+    const gO = tinA ? gB2 : gA2; let used = 0, work2 = 0;
     const inPoly = (x, y) => l3volInside(P, x, y);
     for (let t = 0; t < T.length; t += 3) {
       const ia = T[t], ib = T[t + 1], ic = T[t + 2], xs = [pts.X[ia], pts.X[ib], pts.X[ic]], ys = [pts.Y[ia], pts.Y[ib], pts.Y[ic]];
@@ -437,7 +457,7 @@ async function l3volCompute(cur, alive) {
   const at = k => { const c = cen[k]; return c[0] > 0 ? [c[1] / c[0], c[2] / c[0], c[3] / c[0]] : null; };
   const cut = tot.cut, fill = tot.fill, tris = (solids.cut ? solids.cut.tris : 0) + (solids.fill ? solids.fill.tris : 0);
   aIn += cutA; if (tinMode) aMiss = Math.max(0, area - aIn);
-  const res = { keep: keepInfo, fill, cut, net: fill - cut, area, areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b), tin: tinInfo };
+  const res = { keep: keepInfo, slope: SL ? { n: SL.n } : null, fill, cut, net: fill - cut, area: l3volArea(P0), areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b), tin: tinInfo };
   return { res, geom: { o: org, cut: solids.cut || null, fill: solids.fill || null, cutAt: at("cut"), fillAt: at("fill") } };
 }
 const l3volText = res => `Schakt −${l3volM3(res.cut)} · Fyllning +${l3volM3(res.fill)}`;
@@ -654,6 +674,7 @@ function l3volPanel() {
     <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     <div class="v3-vq-lvl" title="Skriv höjden (m ö.h.) som ytan ska fyllas upp till, t.ex. överkant makadam. Volymen räknas från den höjden ner tills det möter punktmolnet (eller vald modell) i det markerade området."><span>Fyll till plushöjd</span><input type="text" inputmode="decimal" data-vlv placeholder="t.ex. 395,40" value="${lvlMode ? String(c.spec.a.z).replace(".", ",") : ""}"><em>m</em><button type="button" data-vb="lvl">Räkna</button></div>
     ${lvlMode ? `<label class="v3-vq-sw" title="Maskiner, stenar och annat som skannats stående och når över plushöjden är inte mark. Då ignoreras punkterna över nivån och marken interpoleras ur omgivningen, så fyllningen räknas hela vägen upp även där."><span>Ignorera det som sticker upp över nivån</span><input type="checkbox" data-vspike ${c.spec.spike === false ? "" : "checked"}><b></b></label>` : ""}
+    ${lvlMode ? `<div class="v3-vq-fill" title="Fyllningen når plushöjden inne i det markerade området och sluttar utanför det med vald lutning tills den möter marken – som en fyllningsslänt runt en stödmur. Lutning 1:1,5 betyder 1,5 m vågrätt per 1 m lodrätt."><span>Släntad kant</span><button type="button" data-vslope="on" class="${c.spec.slope && c.spec.slope.on ? "on" : ""}">${c.spec.slope && c.spec.slope.on ? "På" : "Av"}</button><label class="small">1 : <input type="text" inputmode="decimal" data-vslopen value="${String((c.spec.slope && c.spec.slope.n) || 1.5).replace(".", ",")}" style="width:46px"></label><em data-vslopea>${Math.round(Math.atan(1 / ((c.spec.slope && c.spec.slope.n) || 1.5)) * 180 / Math.PI * 10) / 10}°</em></div>` : ""}
     ${lvlMode ? `<div class="v3-vq-fill" title="Fläckar där punktmolnet ligger över nivån och som du vill fylla igen ändå (en sten, en maskin, en hög). Klicka på fläcken så räknas marken där som interpolerad ur omgivningen och fyllningen går hela vägen upp."><span>Fyll igen fläckar</span><button type="button" data-vfill="on" class="${l3vol.capture === "fill" ? "on" : ""}">${l3vol.capture === "fill" ? "Klicka på fläck… (Esc klart)" : "＋ Klicka på fläck"}</button>${(c.spec.fillPts || []).length ? `<em>${c.spec.fillPts.length} st</em><button type="button" data-vfill="undo" title="Ta bort den senaste">↶</button><button type="button" data-vfill="clr" title="Ta bort alla">✕</button>` : ""}</div>` : ""}
     ${lvlMode && c.spec.spike !== false ? `<label class="v3-vq-est" style="padding:0 2px 4px" title="Bara sammanhängande områden över nivån som är mindre än så här räknas som sådant som sticker upp (maskiner, stenar). Större områden, som berg och slänter, är verklig mark över nivån."><span>Ignorera områden upp till</span> <input type="text" inputmode="decimal" data-vspmax value="${String(l3volSpikeMax(c)).replace(".", ",")}" style="width:54px"> m²</label>` : ""}
     <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt · ${r.keep.area || 0} m² kapat</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
@@ -686,6 +707,8 @@ function l3volPanel() {
   qa("select[data-vs]").forEach(s => { s.onchange = () => { c.spec[s.dataset.vs].side = s.value; l3volSchedule(); }; });
   qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); c.spec[i.dataset.vz].z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("[data-vkm]").forEach(b => { b.onclick = () => { c.spec.keepMode = b.dataset.vkm; c.saved = false; l3volSchedule(0); l3volPanel(); }; });
+  { const sb = q("[data-vslope]"), sn = q("input[data-vslopen]"); const apply = () => { c.spec.slope = c.spec.slope || { on: false, n: 1.5 }; const v = Number(String(sn.value).replace(",", ".")); if (Number.isFinite(v) && v > 0.1) c.spec.slope.n = v; c.saved = false; l3volPanel(); l3volSchedule(0); };
+    if (sb) sb.onclick = () => { c.spec.slope = c.spec.slope || { on: false, n: 1.5 }; c.spec.slope.on = !c.spec.slope.on; apply(); }; if (sn) { sn.onchange = apply; sn.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") sn.blur(); }; } }
   qa("[data-vfill]").forEach(b => { b.onclick = () => { const k = b.dataset.vfill;
     if (k === "on") { l3vol.capture = l3vol.capture === "fill" ? null : "fill"; if (l3vol.capture === "fill") l3Status("Klicka på fläcken som ska fyllas igen. Esc när du är klar."); l3volPanel(); return; }
     c.spec.fillPts = k === "undo" ? (c.spec.fillPts || []).slice(0, -1) : []; c.saved = false; l3volPanel(); l3volSchedule(0); }; });
