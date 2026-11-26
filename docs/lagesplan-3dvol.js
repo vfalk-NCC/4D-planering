@@ -218,6 +218,15 @@ async function l3volGroundGrid(cur, src, bd, cell) {
 }
 /* Fotavtryck för objekt som kapas ur kroppen: rutor där ett objekt överlappar rummet mellan ytorna (eller vilar på det) slås ihop till polygoner (finrutor ≈ 5–15 cm), som sedan klipper trianglarna exakt –
    inte rutvis. Resultat: { polys (polygon-clipping), idx (rutindex för snabb sökning), area }. */
+/* Förenklar en ring (Douglas–Peucker, sluten): trappsteg längs raka kanter blir raka linjer, hörn och rundade former finns kvar. */
+function l3volSimplifyRing(r, tol) {
+  const P = r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1] ? r.slice(0, -1) : r.slice(); if (P.length <= 4) return r;
+  const dist = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy; if (L < 1e-12) return Math.hypot(p[0] - a[0], p[1] - a[1]); const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L)); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+  const dp = (pts) => { if (pts.length < 3) return pts; let dm = 0, im = 0; const a = pts[0], b = pts[pts.length - 1]; for (let i = 1; i < pts.length - 1; i++) { const d = dist(pts[i], a, b); if (d > dm) { dm = d; im = i; } } if (dm <= tol) return [a, b]; return dp(pts.slice(0, im + 1)).slice(0, -1).concat(dp(pts.slice(im))); };
+  // dela ringen vid två avlägsna punkter (längst från den första), annars förenklas hörnet vid start fel
+  let far = 0, dmax = -1; for (let i = 1; i < P.length; i++) { const d = Math.hypot(P[i][0] - P[0][0], P[i][1] - P[0][1]); if (d > dmax) { dmax = d; far = i; } }
+  const h1 = dp(P.slice(0, far + 1)), h2 = dp(P.slice(far).concat([P[0]])), out = h1.slice(0, -1).concat(h2.slice(0, -1)); if (out.length < 3) return r; out.push(out[0].slice()); return out;
+}
 async function l3volFootprints(cur, bd, cell, gGA, gGB, ob) {
   const T = ob.lists[0] && ob.lists[0].top; if (!T || typeof polygonClipping === "undefined") return null;
   const nx = T.nx, ny = T.ny, f = T.cell, tol = 0.15, mask = new Uint8Array(nx * ny), bots = new Float32Array(nx * ny).fill(NaN), tops = new Float32Array(nx * ny).fill(NaN), at = (G, x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.y0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.ny ? NaN : G.z[j * G.nx + i]; };
@@ -245,7 +254,7 @@ async function l3volFootprints(cur, bd, cell, gGA, gGB, ob) {
     for (let q = 0; q < cells.length;) { const k = cells[q], i = k % nx, j = (k - i) / nx; let q1 = q; while (q1 + 1 < cells.length && cells[q1 + 1] === cells[q1] + 1 && (cells[q1 + 1] % nx) !== 0) q1++; const x0 = T.x0 + i * f, x1 = T.x0 + (i + (q1 - q) + 1) * f, y0 = T.y0 + j * f, y1 = y0 + f; rects.push([[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]); q = q1 + 1; }
     let U; try { U = polygonClipping.union(...rects); } catch (e) { continue; }
     const bot = mode(cells.map(k => bots[k])), top = mode(cells.map(k => tops[k]));
-    U.forEach(pg => { if (!pg.length) return; pg.bot = bot; pg.top = top; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; pg[0].forEach(q => { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); pg.bb = [x0, y0, x1, y1]; const n = polys.length; polys.push(pg);
+    U.forEach(pg0 => { const pg = pg0.map(r => l3volSimplifyRing(r, f * 1.2)).filter(r => r.length >= 4); if (!pg.length) return; pg.bot = bot; pg.top = top; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; pg[0].forEach(q => { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); pg.bb = [x0, y0, x1, y1]; const n = polys.length; polys.push(pg);
       for (let a = Math.floor(x0 / K); a <= Math.floor(x1 / K); a++) for (let b = Math.floor(y0 / K); b <= Math.floor(y1 / K); b++) { const k = a + "," + b; (idx.get(k) || idx.set(k, []).get(k)).push(n); } });
     if (c % 150 === 0) await l3volTick();
   }
