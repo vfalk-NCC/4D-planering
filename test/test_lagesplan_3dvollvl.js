@@ -97,6 +97,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => { const lo = window.__lo, O = l3.O, q = placeNew('lada', [lo[0] + 13, lo[1] + 13, 0]); q.L = 4; q.B = 4; q.H = 4; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); l3vol.cur.spec.keep = true; l3volSchedule(0); });
   await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.keep.objs >= 1, null, { timeout: 20000 }); await page.waitForTimeout(300);
   const withBox = await page.evaluate(() => l3vol.cur.res.fill), cf1 = await page.evaluate(() => l3vol.cur.res.cellsFill); if (!(cf1 < cf0 * 0.95)) fail('Solidens fyllningstrianglar minskar där objektet står: ' + cf0 + ' → ' + cf1); console.log('box', withBox);
+  const inside = await page.evaluate(() => { const G = l3vol.cur.geom, S = G.fill, lo = window.__lo, O = l3.O; let n = 0, tot = S.pos.length / 3;   // fyllningssolidens hörn inne i lådans fotavtryck (4 × 4 m kring lo+13)
+    for (let i = 0; i < S.pos.length; i += 3) { const x = S.pos[i] + G.o[0], y = S.pos[i + 1] + G.o[1]; if (Math.abs(x - (lo[0] + 13)) < 1.5 && Math.abs(y - (lo[1] + 13)) < 1.5) n++; } return { n, tot }; });
+  if (inside.n > 0) fail('Soliden har hål där objektet står (inga hörn i fotavtrycket): ' + JSON.stringify(inside));
   if (Math.abs(withBox - 84 * 1.5) > 84 * 1.5 * 0.08) fail('Placerad låda tar bort sin yta: ' + withBox + ' ≠ ' + 84 * 1.5);
   // TIN på + objekt kvar: räknas i rutnät (samma resultat), och en smal påle (0,2 m) tar bara sin egen yta även med 1 m ruta
   await page.evaluate(() => { const lo = window.__lo, g = placements.find(p => p.type === 'lada'); placements.splice(placements.indexOf(g), 1); l3RebuildOne && l3.placeMeshes.get(g.id) && (l3.groups.places.remove(l3.placeMeshes.get(g.id)), l3.placeMeshes.delete(g.id));

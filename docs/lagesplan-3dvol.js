@@ -213,20 +213,25 @@ async function l3volObstacles(cur, bd, cell) {
 }
 /* Höjden för en markyta (punktmoln) med objekten inräknade, ytviktat inom varje ruta (3 × 3 delrutor); levelZ = nivån (om den andra ytan är en vågrät nivå). */
 function l3volWithObstacles(g, obst, levelZ, up) {
-  const z = Float32Array.from(g.z), tol = 0.5, S = 3, cl = Number.isFinite(levelZ);
+  const z = Float32Array.from(g.z), tol = 0.5, S = 3, cl = Number.isFinite(levelZ); let hits = 0;
   const at = (G, x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.y0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.ny ? NaN : G.z[j * G.nx + i]; };
   for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
     const c = j * g.nx + i, gz = z[c]; if (!l3volOk(gz)) continue; let sum = 0;
     for (let sj = 0; sj < S; sj++) for (let si = 0; si < S; si++) {
-      const x = g.x0 + (i + (si + 0.5) / S) * g.cell, y = g.y0 + (j + (sj + 0.5) / S) * g.cell; let v = gz;
-      let hit = false; for (const { top, bot } of obst.lists) { const t = at(top, x, y), b = at(bot, x, y); if (!l3volOk(t) || !l3volOk(b) || b > gz + tol) continue; hit = true; if (t > v) v = t; }
-      if (hit && up && cl) v = Math.max(v, levelZ);   // hål ända upp till nivån (objektet fortsätter upp genom fyllningen)
+      const x = g.x0 + (i + (si + 0.5) / S) * g.cell, y = g.y0 + (j + (sj + 0.5) / S) * g.cell; let v = gz, hit = false;
+      for (const { top, bot } of obst.lists) {
+        const t = at(top, x, y), b = at(bot, x, y); if (!l3volOk(t) || !l3volOk(b)) continue;
+        // objektet tar plats i fyllningen om det överlappar rummet mellan marken och nivån (står på marken eller sitter ovanför den, t.ex. fundament på blivande fyllning)
+        const inFill = cl ? (b < levelZ && t > gz) : !(b > gz + tol); if (!inFill) continue;
+        hit = true; if (t > v) v = t;
+      }
+      if (hit) { hits++; if (up && cl) v = Math.max(v, levelZ); }   // hål ända upp till nivån (objektet fortsätter upp genom fyllningen)
       if (cl && v > levelZ) v = Math.max(gz, levelZ);
       sum += v;
     }
     z[c] = sum / (S * S);
   }
-  return { ...g, z };
+  return { ...g, z, hitArea: hits / (S * S) * g.cell * g.cell };
 }
 async function l3volCompute(cur, alive) {
   const P = cur.pts, bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
@@ -240,6 +245,7 @@ async function l3volCompute(cur, alive) {
     const up = cur.spec.keepMode !== "top";
     if (/^pc:/.test(cur.spec.a.k)) { const gg = (await l3volGroundGrid(cur, cur.spec.a, bd, cell)) || gA; gA2 = l3volWithObstacles(gg, ob, lv(cur.spec.b), up); }
     if (/^pc:/.test(cur.spec.b.k)) { const gg = (await l3volGroundGrid(cur, cur.spec.b, bd, cell)) || gB; gB2 = l3volWithObstacles(gg, ob, lv(cur.spec.a), up); }
+    keepInfo.area = Math.round(((gA2 !== gA && gA2.hitArea) || 0) + ((gB2 !== gB && gB2.hitArea) || 0));
     if (!alive()) return null;
   }
   const nx = gA.nx, ny = gA.ny, W = nx + 1, NN = W * (ny + 1), eps = 0.002, ca = cell * cell;
@@ -538,7 +544,7 @@ function l3volPanel() {
   el.innerHTML = `<div class="v3-vp-h"><button type="button" data-vb="col" class="tg" title="Fäll ihop / fäll ut">${l3Prefs().vpCol ? "▸" : "▾"}</button><b>Volym</b><span>${r && l3Prefs().vpCol ? `Netto ${l3volSg(r.net, "+")}` : `${l3Fmt(area, 1)} m² · ${n} hörn`}</span><button type="button" data-vb="undo" title="Ångra punkt – tar bort områdets sista hörn" ${n > 3 ? "" : "disabled"}>↶</button><button type="button" data-vb="restart" title="Börja om – rita området från början">⟲</button><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
     <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     <div class="v3-vq-lvl" title="Skriv höjden (m ö.h.) som ytan ska fyllas upp till, t.ex. överkant makadam. Volymen räknas från den höjden ner tills det möter punktmolnet (eller vald modell) i det markerade området."><span>Fyll till plushöjd</span><input type="text" inputmode="decimal" data-vlv placeholder="t.ex. 395,40" value="${lvlMode ? String(c.spec.a.z).replace(".", ",") : ""}"><em>m</em><button type="button" data-vb="lvl">Räkna</button></div>
-    <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
+    <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt · ${r.keep.area || 0} m² kapat</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
     ${c.spec.keep ? `<div class="v3-vq-keepm" title="Hål ända upp: fyllningen kapas helt runt objekten (de fortsätter upp genom fyllningen). Fyll över: fyllningen läggs ovanpå objekt som slutar under nivån."><button type="button" data-vkm="up" class="${c.spec.keepMode !== "top" ? "on" : ""}">Hål ända upp</button><button type="button" data-vkm="top" class="${c.spec.keepMode === "top" ? "on" : ""}">Fyll över</button></div>` : ""}
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
     <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
