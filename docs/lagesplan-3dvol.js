@@ -335,8 +335,25 @@ function l3volSlopeDesign(gl, gg, P0, level, n) {
     let v = level - distTo(x, y) / n; const gz = gg.z[c]; if (l3volOk(gz) && v < gz) v = gz; z[c] = v; }
   return { ...gl, z };
 }
+/* Släntfot (Victor 2026-11-26): en linje där slänten ska möta marken. Från varje punkt på kanten av det markerade området (kronan, plushöjd) går en stråle vinkelrätt utåt; träffar den släntfoten sjunker ytan rakt från plushöjden
+   till markhöjden vid träffpunkten – lutningen blir det den blir. Bortom släntfoten och där strålen inte träffar den ligger ytan på marken (ingen fyllning). Bara bandet mellan kronan och linjen räknas. */
+function l3volToeCfg(cur) { const t = cur.spec.toe; if (!t || !t.on || !t.pts || t.pts.length < 2 || !cur.spec.a || cur.spec.a.k !== "level" || !Number.isFinite(cur.spec.a.z)) return null; return { pts: t.pts, level: cur.spec.a.z }; }
+function l3volHull(pts) { const P = pts.map(p => [p[0], p[1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (P.length < 3) return P; const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = []; for (const q of P) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); } for (let i = P.length - 1; i >= 0; i--) { const q = P[i]; while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); } return lo.slice(0, -1).concat(up.slice(0, -1)).map(q => [q[0], q[1], 0]); }
+function l3volToeDesign(gl, gg, P0, T, level) {
+  const z = new Float32Array(gl.z.length), ratios = []; let band = 0;
+  const near = (x, y) => { let best = Infinity, bx = 0, by = 0; for (let i = 0, j = P0.length - 1; i < P0.length; j = i++) { const a = P0[j], b = P0[i], dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy, t = L < 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L)), qx = a[0] + t * dx, qy = a[1] + t * dy, d = Math.hypot(x - qx, y - qy); if (d < best) { best = d; bx = qx; by = qy; } } return [best, bx, by]; };
+  const hitToe = (cx, cy, ux, uy) => { let bt = Infinity, hx = 0, hy = 0; for (let i = 0; i + 1 < T.length; i++) { const a = T[i], b = T[i + 1], ex = b[0] - a[0], ey = b[1] - a[1], den = ux * ey - uy * ex; if (Math.abs(den) < 1e-12) continue; const wx = a[0] - cx, wy = a[1] - cy, t = (wx * ey - wy * ex) / den, s2 = (wx * uy - wy * ux) / den; if (t > 1e-6 && s2 >= 0 && s2 <= 1 && t < bt) { bt = t; hx = cx + ux * t; hy = cy + uy * t; } } return bt < Infinity ? [bt, hx, hy] : null; };
+  for (let j = 0; j < gl.ny; j++) for (let i = 0; i < gl.nx; i++) { const c = j * gl.nx + i, x = gl.x0 + (i + 0.5) * gl.cell, y = gl.y0 + (j + 0.5) * gl.cell, gz = gg.z[c];
+    if (l3volInside(P0, x, y)) { z[c] = level; continue; }
+    let v = l3volOk(gz) ? gz : NaN; const [d, bx, by] = near(x, y);
+    if (d > 1e-6) { const h = hitToe(bx, by, (x - bx) / d, (y - by) / d); if (h && d <= h[0]) { const zT = l3volGridZ(gg, h[1], h[2]); if (zT != null) { const sz = level + (zT - level) * (d / h[0]); v = l3volOk(gz) ? Math.max(sz, gz) : sz; band++; if (level - zT > 0.05 && Math.abs(d - 0) < 1e9 && ratios.length < 5000 && (c % 7) === 0) ratios.push(h[0] / (level - zT)); } } }
+    z[c] = v; }
+  ratios.sort((a, b) => a - b); const q = f => ratios.length ? ratios[Math.min(ratios.length - 1, Math.floor(f * ratios.length))] : null;
+  return { grid: { ...gl, z }, stats: { n: q(0.5), lo: q(0.05), hi: q(0.95), cells: band, cell: gl.cell } };
+}
 async function l3volCompute(cur, alive) {
-  const P0 = cur.pts, SL = l3volSlopeCfg(cur); let P = P0;
+  const P0 = cur.pts, TOE = l3volToeCfg(cur), SL = TOE ? null : l3volSlopeCfg(cur); let P = P0;
+  if (TOE) P = l3volHull(P0.concat(TOE.pts));   // området som räknas: konturen kring kronan och släntfoten
   if (SL) { const zl = (l3pc.clouds.filter(c => c.visible && c.info).map(c => c.info.min[2] + (c.dz || 0))); const zmin = zl.length ? Math.min(...zl) : SL.level - 30, D = Math.max(1, Math.min(SL.max, (SL.level - zmin) * SL.n)), ext = l3volBufferPoly(P0, D); if (ext) P = ext; }
   const bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
   let gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
@@ -356,7 +373,8 @@ async function l3volCompute(cur, alive) {
     else { if (/^pc:/.test(cur.spec.a.k)) gA2 = l3volWithObstacles(g1, ob, lv(cur.spec.b), false); if (/^pc:/.test(cur.spec.b.k)) gB2 = l3volWithObstacles(g2, ob, lv(cur.spec.a), false); keepInfo.area = Math.round(((gA2 !== g1 && gA2.hitArea) || 0) + ((gB2 !== g2 && gB2.hitArea) || 0)); }
     if (!alive()) return null;
   }
-  if (SL) { const gg = /^pc:/.test(cur.spec.b.k) ? gB2 : gB; gA2 = l3volSlopeDesign(gA2, gg, P0, SL.level, SL.n); }   // släntad kant utanför det markerade området
+  if (SL) { const gg = /^pc:/.test(cur.spec.b.k) ? gB2 : gB; gA2 = l3volSlopeDesign(gA2, gg, P0, SL.level, SL.n); }
+  let toeStats = null; if (TOE) { const gg = /^pc:/.test(cur.spec.b.k) ? gB2 : gB, r = l3volToeDesign(gA2, gg, P0, TOE.pts, TOE.level); gA2 = r.grid; toeStats = r.stats; }   // släntfot-linjen   // släntad kant utanför det markerade området
   const nx = gA.nx, ny = gA.ny, W = nx + 1, NN = W * (ny + 1), eps = 0.002, ca = cell * cell;
   const sA = new Float64Array(NN), sB = new Float64Array(NN), cnt = new Uint8Array(NN), ok = new Uint8Array(nx * ny);
   let aMiss = 0, mn = Infinity, mx = -Infinity;
@@ -466,7 +484,7 @@ async function l3volCompute(cur, alive) {
   const at = k => { const c = cen[k]; return c[0] > 0 ? [c[1] / c[0], c[2] / c[0], c[3] / c[0]] : null; };
   const cut = tot.cut, fill = tot.fill, tris = (solids.cut ? solids.cut.tris : 0) + (solids.fill ? solids.fill.tris : 0);
   aIn += cutA; if (tinMode) aMiss = Math.max(0, area - aIn);
-  const res = { keep: keepInfo, slope: SL ? { n: SL.n } : null, fill, cut, net: fill - cut, area: l3volArea(P0), areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b), tin: tinInfo };
+  const res = { keep: keepInfo, slope: SL ? { n: SL.n } : null, toe: toeStats, fill, cut, net: fill - cut, area: l3volArea(P0), areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b), tin: tinInfo };
   return { res, geom: { o: org, cut: solids.cut || null, fill: solids.fill || null, cutAt: at("cut"), fillAt: at("fill") } };
 }
 const l3volText = res => `Schakt −${l3volM3(res.cut)} · Fyllning +${l3volM3(res.fill)}`;
@@ -540,8 +558,9 @@ function l3volStart() {
   l3volOpen(cur);
 }
 /* Tryck i 3D medan panelen är öppen: nivå från en punkt, annars ignoreras trycket. */
-window.addEventListener("keydown", e => { if (typeof l3vol === "undefined" || !l3vol.cur || (l3vol.capture !== "fill" && l3vol.capture !== "fillbox") || /INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || "")) return;
-  const A = l3vol.polyA || [];
+window.addEventListener("keydown", e => { if (typeof l3vol === "undefined" || !l3vol.cur || (l3vol.capture !== "fill" && l3vol.capture !== "fillbox" && l3vol.capture !== "toe") || /INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || "")) return;
+  const A = l3vol.capture === "toe" ? (l3vol.toeA || []) : (l3vol.polyA || []);
+  if (l3vol.capture === "toe") { if (e.key === "Escape") { e.stopPropagation(); if (A.length) { l3vol.toeA = []; l3Status("Släntfoten avbröts."); } else l3vol.capture = null; l3volBoxDraw(); l3volPanel(); } else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); l3volToeDone(); } else if ((e.key === "Backspace" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z")) && A.length) { e.preventDefault(); e.stopPropagation(); A.pop(); l3volBoxDraw(); l3volPanel(); } return; }
   if (e.key === "Escape") { e.stopPropagation(); if (l3vol.capture === "fillbox" && A.length) { l3vol.polyA = []; l3Status("Området avbröts."); } else l3vol.capture = null; l3volBoxDraw(); l3volPanel(); }
   else if (e.key === "Enter" && l3vol.capture === "fillbox") { e.preventDefault(); e.stopPropagation(); l3volPolyDone(); }
   else if ((e.key === "Backspace" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z")) && l3vol.capture === "fillbox" && A.length) { e.preventDefault(); e.stopPropagation(); A.pop(); l3volBoxDraw(); l3volPanel(); } }, true);
@@ -551,12 +570,37 @@ function l3volPolyDone() {
   c.spec.fillPolys = (c.spec.fillPolys || []).concat([A.map(p => p.slice())]); l3vol.polyA = []; c.saved = false;
   l3Status(`Område ${c.spec.fillPolys.length} fylls igen och marken interpoleras – rita fler, eller tryck Esc när du är klar.`); l3volBoxDraw(); l3volPanel(); l3volSchedule(0);
 }
+function l3volToeDone() {
+  const c = l3vol.cur, A = l3vol.toeA || []; if (!c) return;
+  if (A.length < 2) { l3Status("Släntfoten behöver minst två punkter.", true); return; }
+  c.spec.toe = { on: true, pts: A.map(p => p.slice()) }; if (c.spec.keep == null) c.spec.keep = true; l3vol.toeA = []; l3vol.capture = null; c.saved = false;   // objekt som står kvar (stödmurar) kapar slänten
+  l3Status("Släntfoten är ritad. Dra i ringarna för att flytta den, + mellan ringarna lägger till en punkt, dubbelklick på en ring tar bort den."); l3volBoxDraw(); l3volPanel(); l3volSchedule(0);
+}
+/* Dragringar och plus på släntfoten (som på volymens hörn): flytta, lägg till och ta bort punkter. */
+const l3volToe = { els: [] };
+function l3volToeClear() { l3volToe.els.forEach(h => h.el.remove()); l3volToe.els = []; }
+function l3volToeHandles() {
+  l3volToeClear(); const c = l3vol.cur; if (!c || !c.spec.toe || !c.spec.toe.on || l3vol.capture === "toe") return;
+  const T = c.spec.toe.pts, host = l3.renderer.domElement.parentElement;
+  const mk = (cls, txt, title, pos, down, dbl) => { const el = document.createElement("button"); el.type = "button"; el.className = cls; if (txt) el.textContent = txt; el.title = title; el.onclick = e => e.stopPropagation(); el.onpointerdown = e => { e.stopPropagation(); e.preventDefault(); down(e, el); }; if (dbl) el.ondblclick = e => { e.stopPropagation(); dbl(); }; host.appendChild(el); l3volToe.els.push({ el, pos }); return el; };
+  const redo = () => { c.saved = false; l3volBoxDraw(); l3volToeHandles(); l3volPanel(); l3volSchedule(300); };
+  T.forEach((pt, vi) => mk("v3-mhandle", "", "Dra för att flytta punkten – dubbelklick tar bort den", () => T[vi], (e, el) => {
+    el.classList.add("drag"); el.setPointerCapture && el.setPointerCapture(e.pointerId);
+    const mv = ev => { const s2 = l3Snap(ev); if (s2) { T[vi] = [Math.round((s2.point.x + l3.O[0]) * 100) / 100, Math.round((s2.point.y + l3.O[1]) * 100) / 100, Math.round((s2.point.z + l3.O[2]) * 100) / 100]; l3volBoxDraw(); l3volToePlace(); } }, up = () => { el.classList.remove("drag"); el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); redo(); };
+    el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); }, () => { if (T.length > 2) { T.splice(vi, 1); redo(); } }));
+  for (let vi = 0; vi + 1 < T.length; vi++) mk("v3-mplus", "+", "Lägg till en punkt här", () => { const a = T[vi], b = T[vi + 1]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]; }, () => { const a = T[vi], b = T[vi + 1]; T.splice(vi + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]); redo(); });
+  l3volToePlace();
+}
+function l3volToePlace() { if (!l3volToe.els.length || !l3) return; const O = l3.O; l3volToe.els.forEach(h => { const p = h.pos(); if (!p) { h.el.style.display = "none"; return; } const q = l3ToScreen(new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.15)); h.el.style.display = q.behind ? "none" : "block"; h.el.style.left = q.x + "px"; h.el.style.top = q.y + "px"; }); }
 /* Områdena som ska fyllas igen ritas som blå ramar; pågående område med punkter, linjer och en prick vid varje klick (första punkten större). */
 function l3volBoxDraw() {
   if (!l3.groups.volBoxes) { l3.groups.volBoxes = new THREE.Group(); l3.scene.add(l3.groups.volBoxes); } const g = l3.groups.volBoxes; l3Clear(g);
   const c = l3vol.cur; if (!c) return; const O = l3.O, z = (c.spec.a && c.spec.a.k === "level" && Number.isFinite(c.spec.a.z) ? c.spec.a.z : 0) - O[2] + 0.05, V = ([x, y]) => new THREE.Vector3(x - O[0], y - O[1], z);
   const line = (pts, col, closed) => { const P = pts.map(V); if (closed) P.push(P[0].clone()); const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: col, depthTest: false })); l.renderOrder = 9; l.raycast = () => {}; g.add(l); };
   l3volBoxes(c).forEach(poly => line(poly, 0x2563eb, true));
+  { const toe = c.spec.toe && c.spec.toe.on ? c.spec.toe.pts : null, TA = l3vol.toeA || [], zz = p => (Number.isFinite(p[2]) ? p[2] - O[2] : z) + 0.08, V3 = p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], zz(p));
+    const tl = (pts, col) => { if (pts.length < 2) return; const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(V3)), new THREE.LineBasicMaterial({ color: col, depthTest: false })); l.renderOrder = 9; l.raycast = () => {}; g.add(l); };
+    if (toe) tl(toe, 0x16a34a); if (TA.length) { tl(TA, 0x16a34a); TA.forEach((p, i) => { const m = new THREE.Mesh(new THREE.SphereGeometry(i === 0 ? 0.32 : 0.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x16a34a, depthTest: false })); m.position.copy(V3(p)); m.renderOrder = 10; m.raycast = () => {}; g.add(m); }); } }
   const A = l3vol.polyA || []; if (A.length) { line(A, 0xf59e0b, false); A.forEach((p, i) => { const m = new THREE.Mesh(new THREE.SphereGeometry(i === 0 ? 0.32 : 0.2, 12, 10), new THREE.MeshBasicMaterial({ color: i === 0 ? 0xdc2626 : 0xf59e0b, depthTest: false })); m.position.copy(V(p)); m.renderOrder = 10; m.raycast = () => {}; g.add(m); }); }
   l3Render();
 }
@@ -568,6 +612,9 @@ function l3volTap(e) {
     if (A.length >= 3 && near(A[0], 0.6)) { l3volPolyDone(); return true; }   // klick på första punkten stänger området
     if (A.length >= 1 && near(A[A.length - 1], 0.25)) { l3volPolyDone(); return true; }   // dubbelklick avslutar
     A.push([x, y]); l3Status(`Punkt ${A.length}. Fortsätt klicka runt området – klicka på första punkten, tryck Enter eller dubbelklicka för att stänga. Backsteg tar bort senaste punkten, Esc avbryter.`); l3volBoxDraw(); l3volPanel(); return true; }
+  if (l3vol.capture === "toe") { const s2 = l3Snap(e); if (!s2) return true; const x = Math.round((s2.point.x + l3.O[0]) * 100) / 100, y = Math.round((s2.point.y + l3.O[1]) * 100) / 100, z = Math.round((s2.point.z + l3.O[2]) * 100) / 100, A = l3vol.toeA = l3vol.toeA || [];
+    if (A.length >= 1 && Math.hypot(A[A.length - 1][0] - x, A[A.length - 1][1] - y) < 0.25) { l3volToeDone(); return true; }   // dubbelklick avslutar
+    A.push([x, y, z]); l3Status(`Släntfot: punkt ${A.length}. Fortsätt klicka längs linjen där slänten ska möta marken – Enter, dubbelklick eller ✓ Klar avslutar, Backsteg tar bort senaste punkten, Esc avbryter.`); l3volBoxDraw(); l3volPanel(); return true; }
   if (l3vol.capture === "fill") { const s2 = l3Snap(e); if (!s2) return true; const c = l3vol.cur; c.spec.fillPts = (c.spec.fillPts || []).concat([[Math.round((s2.point.x + l3.O[0]) * 100) / 100, Math.round((s2.point.y + l3.O[1]) * 100) / 100]]); c.saved = false; l3Status(`Fläck ${c.spec.fillPts.length} fylls igen – klicka på fler eller tryck Esc när du är klar.`); l3volPanel(); l3volSchedule(0); return true; }
   if (l3vol.capture === "surf") return false; // vanlig polygoninsamling
   l3Status("Volympanelen är öppen – spara eller stäng den först (Esc) för att mäta ett nytt område.", true); return true;
@@ -584,7 +631,7 @@ function l3volClose(keep) {
   if (!keep) clearInterval(l3vol.selT);
   const el = document.getElementById("v3VolPanel"); if (el) el.remove();
   const c = l3vol.cur; if (c && c.hidWas) { const m = l3m.list.find(x => x.id === c.id); if (m) m.hid = false; }
-  clearTimeout(l3vol.timer); l3vol.seq++; l3vol.cur = null; l3vol.capture = null; l3vol.polyA = []; if (l3.groups.volBoxes) l3Clear(l3.groups.volBoxes);
+  clearTimeout(l3vol.timer); l3vol.seq++; l3vol.cur = null; l3vol.capture = null; l3vol.polyA = []; l3vol.toeA = []; l3volToeClear(); l3volToe.sig = null; if (l3.groups.volBoxes) l3Clear(l3.groups.volBoxes);
   if (l3.groups.volv) l3Clear(l3.groups.volv);
   l3volLabelsClear();
   if (!keep) { if (l3vol.kbd) { window.removeEventListener("keydown", l3vol.kbd, true); l3vol.kbd = null; } l3mDraw(); }
@@ -675,7 +722,8 @@ function l3volEdit(m) {
   cur.hidWas = true; l3volOpen(cur); if (!cur.geom) l3volSchedule(0);
 }
 function l3volPanel() {
-  const c = l3vol.cur; if (!c) return;
+  const c = l3vol.cur; if (!c) { l3volToeClear(); return; }
+  setTimeout(() => { if (l3vol.cur === c && !l3volToe.drag && l3volToe.sig !== JSON.stringify([c.spec.toe, l3vol.capture])) { l3volToe.sig = JSON.stringify([c.spec.toe, l3vol.capture]); l3volToeHandles(); } }, 0);
   const host = document.getElementById("v3Canvas"); if (!host) return;
   let el = document.getElementById("v3VolPanel");
   if (!el) { el = document.createElement("div"); el.id = "v3VolPanel"; el.className = "v3-vp"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); el.addEventListener("click", e => { const b = e.target.closest("[data-vf]"); if (!b || !l3vol.cur) return; const k = b.dataset.vf; l3vol.focus = l3vol.focus === k ? null : k; l3volPanel(); l3volDraw(); l3Status(l3vol.focus ? (k === "cut" ? "Visar bara schaktet – tryck på Schakt igen för att visa båda." : "Visar bara fyllningen – tryck på Fyllning igen för att visa båda.") : "Visar både schakt och fyllning."); }); }
@@ -707,6 +755,7 @@ function l3volPanel() {
     <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     <div class="v3-vq-lvl" title="Skriv höjden (m ö.h.) som ytan ska fyllas upp till, t.ex. överkant makadam. Volymen räknas från den höjden ner tills det möter punktmolnet (eller vald modell) i det markerade området."><span>Fyll till plushöjd</span><input type="text" inputmode="decimal" data-vlv placeholder="t.ex. 395,40" value="${lvlMode ? String(c.spec.a.z).replace(".", ",") : ""}"><em>m</em><button type="button" data-vb="lvl">Räkna</button></div>
     ${lvlMode ? `<label class="v3-vq-sw" title="Maskiner, stenar och annat som skannats stående och når över plushöjden är inte mark. Då ignoreras punkterna över nivån och marken interpoleras ur omgivningen, så fyllningen räknas hela vägen upp även där."><span>Ignorera det som sticker upp över nivån</span><input type="checkbox" data-vspike ${c.spec.spike === false ? "" : "checked"}><b></b></label>` : ""}
+    ${lvlMode ? `<div class="v3-vq-fill" title="Rita en linje där slänten ska möta marken. Ytan sluttar rakt från plushöjden vid kanten av området ner till marken vid linjen – lutningen blir det den blir och visas här. Flytta linjen med ringarna, + lägger till en punkt. Bortom linjen räknas ingen fyllning."><span>Släntfot</span><button type="button" data-vtoe="draw" class="${l3vol.capture === "toe" ? "on" : ""}">${l3vol.capture === "toe" ? "Rita släntfot… (Esc avbryt)" : (c.spec.toe && c.spec.toe.pts && c.spec.toe.pts.length ? "✎ Rita om" : "✎ Rita släntfot")}</button>${l3vol.capture === "toe" && (l3vol.toeA || []).length ? `<button type="button" data-vtoe="done">✓ Klar (${l3vol.toeA.length})</button><button type="button" data-vtoe="back" title="Ta bort senaste punkten (Backsteg)">⌫</button>` : ""}${c.spec.toe && c.spec.toe.pts && c.spec.toe.pts.length ? `<button type="button" data-vtoe="on" class="${c.spec.toe.on ? "on" : ""}">${c.spec.toe.on ? "På" : "Av"}</button><button type="button" data-vtoe="clr" title="Ta bort släntfoten">✕</button>` : ""}${c.spec.toe && c.spec.toe.on && r && r.toe && r.toe.n ? `<em>≈ 1 : ${String(Math.round(r.toe.n * 10) / 10).replace(".", ",")} (${String(Math.round(r.toe.lo * 10) / 10).replace(".", ",")}–${String(Math.round(r.toe.hi * 10) / 10).replace(".", ",")})</em>` : (c.spec.toe && c.spec.toe.on && r ? `<em>Släntfoten når inte kanten av området – dra den närmare.</em>` : "")}</div>` : ""}
     ${lvlMode ? `<div class="v3-vq-fill" title="Fyllningen når plushöjden inne i det markerade området och sluttar utanför det med vald lutning tills den möter marken – som en fyllningsslänt runt en stödmur. Lutning 1:1,5 betyder 1,5 m vågrätt per 1 m lodrätt."><span>Släntad kant</span><button type="button" data-vslope="on" class="${c.spec.slope && c.spec.slope.on ? "on" : ""}">${c.spec.slope && c.spec.slope.on ? "På" : "Av"}</button><label class="small">1 : <input type="text" inputmode="decimal" data-vslopen value="${String((c.spec.slope && c.spec.slope.n) || 1.5).replace(".", ",")}" style="width:46px"></label><label class="small" title="Längsta avstånd utåt som slänten får gå (m). Möter den inte marken inom det slutar den där. Lägre värde = snabbare beräkning.">max <input type="text" inputmode="decimal" data-vslopemax value="${String((c.spec.slope && c.spec.slope.max) || 15).replace(".", ",")}" style="width:40px"> m</label><em data-vslopea>${Math.round(Math.atan(1 / ((c.spec.slope && c.spec.slope.n) || 1.5)) * 180 / Math.PI * 10) / 10}°</em></div>` : ""}
     ${lvlMode ? `<div class="v3-vq-fill" title="Fläckar där punktmolnet ligger över nivån och som du vill fylla igen ändå (en sten, en maskin, en hög). Klicka på fläcken så räknas marken där som interpolerad ur omgivningen och fyllningen går hela vägen upp."><span>Fyll igen</span><button type="button" data-vfill="box" class="${l3vol.capture === "fillbox" ? "on" : ""}">${l3vol.capture === "fillbox" ? "Rita område… (Esc klart)" : "⬠ Rita område"}</button>${l3vol.capture === "fillbox" && (l3vol.polyA || []).length ? `<button type="button" data-vfill="done" title="Stäng området (Enter)">✓ Klar (${l3vol.polyA.length})</button><button type="button" data-vfill="back" title="Ta bort senaste punkten (Backsteg)">⌫</button>` : ""}<button type="button" data-vfill="on" class="${l3vol.capture === "fill" ? "on" : ""}" title="Klicka på en fläck över nivån">${l3vol.capture === "fill" ? "Klicka på fläck…" : "＋ Fläck"}</button>${l3volBoxes(c).length + (c.spec.fillPts || []).length ? `<em>${l3volBoxes(c).length} områden · ${(c.spec.fillPts || []).length} fläckar</em><button type="button" data-vfill="undo" title="Ta bort den senaste">↶</button><button type="button" data-vfill="clr" title="Ta bort alla">✕</button>` : ""}</div>` : ""}
     ${lvlMode && c.spec.spike !== false ? `<label class="v3-vq-est" style="padding:0 2px 4px" title="Bara sammanhängande områden över nivån som är mindre än så här räknas som sådant som sticker upp (maskiner, stenar). Större områden, som berg och slänter, är verklig mark över nivån."><span>Ignorera områden upp till</span> <input type="text" inputmode="decimal" data-vspmax value="${String(l3volSpikeMax(c)).replace(".", ",")}" style="width:54px"> m²</label>` : ""}
@@ -742,6 +791,12 @@ function l3volPanel() {
   qa("[data-vkm]").forEach(b => { b.onclick = () => { c.spec.keepMode = b.dataset.vkm; c.saved = false; l3volSchedule(0); l3volPanel(); }; });
   { const sb = q("[data-vslope]"), sn = q("input[data-vslopen]"); const apply = () => { c.spec.slope = c.spec.slope || { on: false, n: 1.5 }; const v = Number(String(sn.value).replace(",", ".")); if (Number.isFinite(v) && v > 0.1) c.spec.slope.n = v; const mx = q("input[data-vslopemax]"), mv = mx ? Number(String(mx.value).replace(",", ".")) : NaN; if (Number.isFinite(mv) && mv >= 2) c.spec.slope.max = Math.min(60, mv); c.saved = false; l3volPanel(); l3volSchedule(0); };
     if (sb) sb.onclick = () => { c.spec.slope = c.spec.slope || { on: false, n: 1.5 }; c.spec.slope.on = !c.spec.slope.on; apply(); }; { const mx2 = q("input[data-vslopemax]"); if (mx2) { mx2.onchange = apply; mx2.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") mx2.blur(); }; } } if (sn) { sn.onchange = apply; sn.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") sn.blur(); }; } }
+  qa("[data-vtoe]").forEach(b => { b.onclick = () => { const k = b.dataset.vtoe;
+    if (k === "draw") { l3vol.capture = l3vol.capture === "toe" ? null : "toe"; l3vol.toeA = []; if (l3vol.capture === "toe") { l3volToeClear(); l3Status("Klicka längs linjen där slänten ska möta marken (släntfoten). Enter, dubbelklick eller Klar avslutar. Esc avbryter."); } l3volBoxDraw(); l3volPanel(); if (l3vol.capture !== "toe") l3volToeHandles(); return; }
+    if (k === "done") { l3volToeDone(); return; }
+    if (k === "back") { (l3vol.toeA || []).pop(); l3volBoxDraw(); l3volPanel(); return; }
+    if (k === "on") { c.spec.toe.on = !c.spec.toe.on; } else if (k === "clr") { c.spec.toe = null; }
+    c.saved = false; l3volBoxDraw(); l3volToeHandles(); l3volPanel(); l3volSchedule(0); }; });
   qa("[data-vfill]").forEach(b => { b.onclick = () => { const k = b.dataset.vfill;
     if (k === "on") { l3vol.capture = l3vol.capture === "fill" ? null : "fill"; l3vol.polyA = []; if (l3vol.capture === "fill") l3Status("Klicka på fläcken som ska fyllas igen. Esc när du är klar."); l3volPanel(); return; }
     if (k === "box") { l3vol.capture = l3vol.capture === "fillbox" ? null : "fillbox"; l3vol.polyA = []; if (l3vol.capture === "fillbox") l3Status("Klicka runt området som ska fyllas igen – så många punkter du vill. Klicka på första punkten eller tryck Enter för att stänga. Esc när du är klar."); l3volBoxDraw(); l3volPanel(); return; }
