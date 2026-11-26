@@ -400,13 +400,18 @@
 
     <!-- ===== TC-vyer → SketchUp ===== -->
     <section class="panel" data-panel-id="tcvyer" data-tab="tools">
-      <h2>TC-vyer → SketchUp</h2>
+      <h2>TC-vyer ⇄ SketchUp</h2>
       <p class="hint">Välj sparade vyer. Varje vy aktiveras i tur och ordning och dess färger, dolda objekt och kamera sparas (som IFC-id) – för NSV Koppling i SketchUp. Vyn du har nu återställs efteråt.</p>
       <div class="row">
         <button id="btnTcvyLoad">↻ Hämta vyer</button>
         <button id="btnTcvyExport" class="primary">Exportera valda</button>
       </div>
       <div id="tcvyList" class="tcvy-list" style="max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:2px;margin:6px 0"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnTcvyImport">Läs vy från SketchUp…</button>
+        <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="tcvySpara" checked> Spara som vy i TC</label>
+        <input type="file" id="tcvyFil" accept=".json,application/json" hidden>
+      </div>
       <div id="tcvyStatus" class="hint"></div>
     </section>
 
