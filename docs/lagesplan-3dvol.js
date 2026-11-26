@@ -71,9 +71,11 @@ function l3volCellFor(bd, area, userCell, density) {
   const sparse = density > 0 ? [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10].find(v => v >= 2 / Math.sqrt(density)) || 10 : 0;   // minst ca fyra punkter per ruta
   return Math.max(userCell > 0 ? userCell : Math.max(nice, sparse), floor, 0.05);
 }
+/* Signatur för vilka delar av en IFC-modell som syns just nu (modell, mesh och antal ritade trianglar) – så att Dölj/Visa ger ny höjdkarta vid omräkning. */
+function l3volModelSig(key) { const m = typeof l3b !== "undefined" ? l3b.models.find(x => "md:" + x.id === key) : null; return m ? [m.visible ? 1 : 0, ...(m.meshes || []).map(x => (x.visible !== false && (typeof l3VisibleChain !== "function" || l3VisibleChain(x)) ? 1 : 0) + ":" + (x.geometry && x.geometry.index ? x.geometry.index.count : 0))].join(",") : ""; }
 async function l3volHeights(cur, src, bd, cell) {
   const dz = src.k.startsWith("pc:") ? (l3pc.clouds.find(c => "pc:" + c.id === src.k) || {}).dz || 0 : 0;
-  const key = [src.k, src.side || "", src.z == null ? "" : src.z, src.k === "plane" ? JSON.stringify(cur.pts) : "", src.k === "surf" ? JSON.stringify(cur.surf) : "", bd.x0.toFixed(2), bd.y0.toFixed(2), bd.x1.toFixed(2), bd.y1.toFixed(2), cell, dz, /^ob[sm]?:/.test(src.k) ? l3dfObjOf(src.k).map(p => [p.id, p.m && p.m.rev, p.x, p.y, p.z, p.rot, p.dz].join(",")).join(";") : ""].join("|");
+  const key = [src.k, src.side || "", src.z == null ? "" : src.z, src.k === "plane" ? JSON.stringify(cur.pts) : "", src.k === "surf" ? JSON.stringify(cur.surf) : "", bd.x0.toFixed(2), bd.y0.toFixed(2), bd.x1.toFixed(2), bd.y1.toFixed(2), cell, dz, /^ob[sm]?:/.test(src.k) ? l3dfObjOf(src.k).map(p => [p.id, p.m && p.m.rev, p.x, p.y, p.z, p.rot, p.dz].join(",")).join(";") : "", /^md:/.test(src.k) ? l3volModelSig(src.k) : ""].join("|");   // dolda delar ändrar modellens höjdkarta
   if (l3vol.cache.has(key)) return l3vol.cache.get(key);
   const g = l3dfGrid(bd, cell);
   if (src.k === "plane") { const pl = l3volPlane(cur.pts); for (let iy = 0; iy < g.ny; iy++) for (let ix = 0; ix < g.nx; ix++) g.z[iy * g.nx + ix] = pl.c + pl.a * (g.x0 + (ix + 0.5) * g.cell - pl.cx) + pl.b * (g.y0 + (iy + 0.5) * g.cell - pl.cy); }
