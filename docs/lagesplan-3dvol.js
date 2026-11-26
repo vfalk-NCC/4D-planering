@@ -73,6 +73,10 @@ function l3volCellFor(bd, area, userCell, density) {
 }
 /* Signatur för vilka delar av en IFC-modell som syns just nu (modell, mesh och antal ritade trianglar) – så att Dölj/Visa ger ny höjdkarta vid omräkning. */
 function l3volModelSig(key) { const m = typeof l3b !== "undefined" ? l3b.models.find(x => "md:" + x.id === key) : null; return m ? [m.visible ? 1 : 0, ...(m.meshes || []).map(x => (x.visible !== false && (typeof l3VisibleChain !== "function" || l3VisibleChain(x)) ? 1 : 0) + ":" + (x.geometry && x.geometry.index ? x.geometry.index.count : 0))].join(",") : ""; }
+/* "Mot" kan vara flera ytor i prioritetsordning (Victor 2026-11-26): den översta gäller först, saknar den höjd i en ruta används nästa. spec.b = först, spec.bx = resten. */
+const l3volSp = (c, key) => key[0] === "x" ? (c.spec.bx || [])[Number(key.slice(1))] : c.spec[key];
+const l3volBList = c => [c.spec.b].concat(c.spec.bx || []);
+function l3volBSet(c, list) { c.spec.b = list[0]; c.spec.bx = list.slice(1); }
 async function l3volHeights(cur, src, bd, cell) {
   const dz = src.k.startsWith("pc:") ? (l3pc.clouds.find(c => "pc:" + c.id === src.k) || {}).dz || 0 : 0;
   const key = [src.k, src.side || "", src.z == null ? "" : src.z, src.k === "plane" ? JSON.stringify(cur.pts) : "", src.k === "surf" ? JSON.stringify(cur.surf) : "", bd.x0.toFixed(2), bd.y0.toFixed(2), bd.x1.toFixed(2), bd.y1.toFixed(2), cell, dz, /^ob[sm]?:/.test(src.k) ? l3dfObjOf(src.k).map(p => [p.id, p.m && p.m.rev, p.x, p.y, p.z, p.rot, p.dz].join(",")).join(";") : "", /^md:/.test(src.k) ? l3volModelSig(src.k) : ""].join("|");   // dolda delar ändrar modellens höjdkarta
@@ -289,7 +293,7 @@ async function l3volFootprints(cur, bd, cell, gGA, gGB, ob) {
   return { polys, idx, area: any * f * f, f, K, mode: cur.spec.keepMode || "pocket" };
 }
 async function l3volObstacles(cur, bd, cell) {
-  const skip = new Set([cur.spec.a.k, cur.spec.b.k]), lists = [], info = { models: 0, objs: 0 }, fine = Math.max(0.05, cell / 3);   // finare ruta än markens så att smala objekt (pålar, stag) bara tar sin verkliga yta
+  const skip = new Set([cur.spec.a.k].concat(l3volBList(cur).map(x => x.k))), lists = [], info = { models: 0, objs: 0 }, fine = Math.max(0.05, cell / 3);   // finare ruta än markens så att smala objekt (pålar, stag) bara tar sin verkliga yta
   const models = (typeof l3b !== "undefined" ? l3b.models : []).filter(m => m.visible && m.meshes && m.meshes.length && !skip.has("md:" + m.id));
   for (const m of models) { const top = await l3volHeights(cur, { k: "md:" + m.id, side: "top" }, bd, fine), bot = await l3volHeights(cur, { k: "md:" + m.id, side: "bottom" }, bd, fine); if (top && bot) { lists.push({ top, bot }); info.models++; } }
   const ids = (typeof placements !== "undefined" ? placements : []).filter(p => !p.text && !/^sm:(makadam|makadamfri|riskzon)$/.test(String(p.type)) && l3dfObjMeshes(p).length && !skip.has("ob:" + p.id)).map(p => p.id);
@@ -366,6 +370,8 @@ async function l3volCompute(cur, alive) {
   const bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
   l3volProg(cur, 3, "Läser ytan som mäts…"); let gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
   l3volProg(cur, 10, "Läser ytan det mäts mot…"); let gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
+  if (gB && (cur.spec.bx || []).length) { const zz = Float32Array.from(gB.z); gB = Object.assign({}, gB, { z: zz });
+    for (const x of cur.spec.bx) { const gX = await l3volHeights(cur, x, bd, cell); if (!alive()) return null; if (!gX) continue; for (let i = 0; i < zz.length; i++) if (!Number.isFinite(zz[i]) && Number.isFinite(gX.z[i])) zz[i] = gX.z[i]; } }
   l3volProg(cur, 18, "Jämför ytorna…");
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
   { const la = l3volFillLevel(cur, cur.spec.a), lb = l3volFillLevel(cur, cur.spec.b), fp = cur.spec.fillPts || [], bx = l3volBoxes(cur), auto = cur.spec.spike !== false, mx = auto ? l3volSpikeMax(cur) : 0; if (la != null && (auto || fp.length || bx.length)) gA = l3volDespike(gA, la, mx, fp, bx); if (lb != null && (auto || fp.length || bx.length)) gB = l3volDespike(gB, lb, mx, fp, bx); }
@@ -752,7 +758,7 @@ function l3volPanel() {
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), srcs = l3volSources(c), r = c.res, n = c.pts.length, area = l3volArea(c.pts);
   const opt = (s, v) => `<option value="${esc(s.k)}" ${v === s.k ? "selected" : ""}>${esc(s.label)}</option>`;
   const side = (key, sp) => { const o = srcs.find(x => x.k === sp.k); return o && o.sided ? `<select class="sm" data-vs="${key}" title="Vilken sida av modellen som mäts"><option value="top" ${sp.side !== "bottom" ? "selected" : ""}>Ovansida</option><option value="bottom" ${sp.side === "bottom" ? "selected" : ""}>Undersida</option></select>` : sp.k === "level" ? `<input class="sm" type="text" inputmode="decimal" data-vz="${key}" value="${Number.isFinite(sp.z) ? String(sp.z).replace(".", ",") : ""}" placeholder="medel" title="Höjd (m) – tomt = hörnens medelhöjd"><button type="button" class="ic" data-vpick="${key}" title="Tryck på en punkt i modellen – dess höjd blir nivån">⌖</button>` : ""; };
-  const row = (key, label, sp, hint) => `<div class="v3-vq-r"><div class="v3-vq-l" title="${esc(hint)}"><i class="${key}"></i>${label}</div><div class="v3-vq-in"><select data-vk="${key}">${srcs.map(s => opt(s, sp.k)).join("")}</select>${side(key, sp)}</div></div>`;
+  const row = (key, label, sp, hint) => `<div class="v3-vq-r"><div class="v3-vq-l" title="${esc(hint)}"><i class="${key[0] === "x" ? "b" : key}"></i>${label}</div><div class="v3-vq-in"><select data-vk="${key}">${srcs.map(s => opt(s, sp.k)).join("")}</select>${side(key, sp)}</div></div>`;
   const cellTxt = Number(c.spec.cell) > 0 ? String(c.spec.cell).replace(".", ",") + " m" : "Auto" + (r ? " (" + String(r.cell).replace(".", ",") + " m)" : "");
   const trTxt = r && r.tris ? ` (${r.tris.toLocaleString("sv-SE")} tr.${r.tin ? " · TIN från " + r.tin.points.toLocaleString("sv-SE") + " punkter" : ""})` : "";
   const P = l3Prefs(), dens = Number(P.volDens) > 0 ? Number(P.volDens) : 1.8, swell = Number.isFinite(Number(P.volSwell)) && P.volSwell !== undefined ? Number(P.volSwell) : 25, load = Number(P.volLoad) > 0 ? Number(P.volLoad) : 10;
@@ -784,7 +790,7 @@ function l3volPanel() {
     <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt · ${r.keep.area || 0} m² kapat</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
     ${c.spec.keep ? `<div class="v3-vq-keepm" title="Exakt: bara delen av fyllningen som objektet verkligen upptar tas bort (fickor, under och över objektet finns kvar). Hål ända upp: fyllningen kapas helt ner genom hela lagret runt objekten. Fyll över: fyllningen läggs ovanpå objekt som slutar under nivån."><button type="button" data-vkm="pocket" class="${(c.spec.keepMode || "pocket") === "pocket" ? "on" : ""}">Exakt</button><button type="button" data-vkm="up" class="${c.spec.keepMode === "up" ? "on" : ""}">Hål ända upp</button><button type="button" data-vkm="top" class="${c.spec.keepMode === "top" ? "on" : ""}">Fyll över</button></div>` : ""}
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
-    <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
+    <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", (c.spec.bx || []).length ? "Mot · 1 (först)" : "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut. Lägg till fler under – den översta gäller först, saknar den höjd i en ruta används nästa.")}${(c.spec.bx || []).map((x, i) => `<div class="v3-vq-bx">${row("x" + i, "Mot · " + (i + 2) + " (om saknas)", x, "Används där ytorna ovanför saknar höjd")}<div class="v3-vq-bxb"><button type="button" data-vbx="up" data-i="${i}" title="Flytta upp i prioritet">↑</button><button type="button" data-vbx="del" data-i="${i}" title="Ta bort">✕</button></div></div>`).join("")}<button type="button" class="v3-vq-add" data-vbx="add" title="Lägg till en yta till att räkna mot – den översta i listan gäller först">＋ Lägg till yta att räkna mot</button></div>
     <div class="v3-vq-prog" data-vprog ${c.busy && c.progress != null ? "" : "hidden"}><div><i style="width:${Math.round(c.progress || 0)}%"></i></div><b>${Math.round(c.progress || 0)} %</b><span>${esc(c.busy || "")}</span></div>
     <div data-vres>${res}</div>
     <details class="v3-vq-out v3-vq-setd" ${l3Prefs().vpSet ? "open" : ""}><summary>Inställningar</summary><div class="v3-vq-set">
@@ -808,9 +814,13 @@ function l3volPanel() {
   const tl = el.querySelector("[data-vtri]"); if (tl) tl.textContent = trTxt;
   { const cp = el.querySelector('[data-vb="copy"]'); if (cp && r) cp.disabled = false; }
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s);
-  qa("select[data-vk]").forEach(s => { s.onchange = () => { const k = s.dataset.vk, sp = c.spec[k]; sp.k = s.value; l3volPanel(); l3volSchedule(); }; });
-  qa("select[data-vs]").forEach(s => { s.onchange = () => { c.spec[s.dataset.vs].side = s.value; l3volSchedule(); }; });
-  qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); c.spec[i.dataset.vz].z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
+  qa("select[data-vk]").forEach(s => { s.onchange = () => { const k = s.dataset.vk, sp = l3volSp(c, k); sp.k = s.value; l3volPanel(); l3volSchedule(); }; });
+  qa("[data-vbx]").forEach(b => { b.onclick = () => { const k = b.dataset.vbx, i = Number(b.dataset.i), L = l3volBList(c);
+    if (k === "add") { const used = new Set(L.map(x => x.k)), o = srcs.find(x => !used.has(x.k) && x.k !== c.spec.a.k) || srcs.find(x => !used.has(x.k)) || srcs[0]; L.push({ k: o.k, side: "top" }); }
+    else if (k === "del") L.splice(i + 1, 1); else if (k === "up") { const t = L[i]; L[i] = L[i + 1]; L[i + 1] = t; }
+    l3volBSet(c, L); c.saved = false; l3volPanel(); l3volSchedule(0); }; });
+  qa("select[data-vs]").forEach(s => { s.onchange = () => { l3volSp(c, s.dataset.vs).side = s.value; l3volSchedule(); }; });
+  qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); l3volSp(c, i.dataset.vz).z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("[data-vkm]").forEach(b => { b.onclick = () => { c.spec.keepMode = b.dataset.vkm; c.saved = false; l3volSchedule(0); l3volPanel(); }; });
   { const sb = q("[data-vslope]"), sn = q("input[data-vslopen]"); const apply = () => { c.spec.slope = c.spec.slope || { on: false, n: 1.5 }; const v = Number(String(sn.value).replace(",", ".")); if (Number.isFinite(v) && v > 0.1) c.spec.slope.n = v; const mx = q("input[data-vslopemax]"), mv = mx ? Number(String(mx.value).replace(",", ".")) : NaN; if (Number.isFinite(mv) && mv >= 2) c.spec.slope.max = Math.min(60, mv); c.saved = false; l3volPanel(); l3volSchedule(0); };
     if (sb) sb.onclick = () => { c.spec.slope = c.spec.slope || { on: false, n: 1.5 }; c.spec.slope.on = !c.spec.slope.on; apply(); }; { const mx2 = q("input[data-vslopemax]"); if (mx2) { mx2.onchange = apply; mx2.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") mx2.blur(); }; } } if (sn) { sn.onchange = apply; sn.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") sn.blur(); }; } }
