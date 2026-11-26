@@ -164,9 +164,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (bxr.cut > 5 || Math.abs(bxr.fill - 200) > 200 * 0.03) fail('Markerad ruta fylls igen: ' + JSON.stringify(bxr));
   // Interpolation i lutning: en slänt (z stiger 0,5 m per m i x) med ett markerat hål i mitten ska fortsätta rakt – kontrolleras direkt på rutnätsfunktionen
   const rel = await page.evaluate(() => { const nx = 40, ny = 20, g = { x0: 0, y0: 0, cell: 1, nx, ny, z: new Float32Array(nx * ny) }; for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) g.z[j * nx + i] = 10 + 0.5 * i; for (let j = 5; j < 15; j++) for (let i = 15; i < 25; i++) g.z[j * nx + i] = 99;   // hål med skräp
-    const r = l3volDespike(g, 15, 0, [], [[15, 25, 5, 15]]); let err = 0; for (let j = 5; j < 15; j++) for (let i = 15; i < 25; i++) err = Math.max(err, Math.abs(r.z[j * nx + i] - (10 + 0.5 * i))); return { err }; });
+    const r = l3volDespike(g, 15, 0, [], [[[15, 5], [25, 5], [25, 15], [15, 15]]]); let err = 0; for (let j = 5; j < 15; j++) for (let i = 15; i < 25; i++) err = Math.max(err, Math.abs(r.z[j * nx + i] - (10 + 0.5 * i))); return { err }; });
   console.log('interpolation', JSON.stringify(rel)); if (rel.err > 0.25) fail('Interpolationen följer lutningen: ' + JSON.stringify(rel));
   await page.evaluate(() => { l3vol.cur.spec.fillBoxes = []; l3volSchedule(0); }); await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cut > 50, null, { timeout: 30000 });
+  // Rita område med valfritt antal klick: fem punkter runt bergfläcken via verktygets egen klickväg, sedan Enter/stäng
+  await page.evaluate(() => { const cu = l3vol.cur; cu.spec.fillBoxes = []; cu.spec.fillPolys = []; l3vol.capture = 'fillbox'; l3vol.polyA = []; });
+  const poly = await page.evaluate(() => { const lo = window.__lo, O = l3.O, cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), pts = [[9, 9], [21, 8], [22, 15], [16, 22], [8, 17]], out = [];
+    window.l3pcPick = () => null;   // testmolnet saknar ritgrupp
+    l3.orbit.target.set(lo[0] + 15 - O[0], lo[1] + 15 - O[1], 0); l3.camera.position.set(lo[0] + 15 - O[0], lo[1] + 15 - O[1] - 1, 45); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera);
+    for (const [x, y] of pts) { const q = l3ToScreen(new THREE.Vector3(lo[0] + x - O[0], lo[1] + y - O[1], 1.5 + lo[2] - O[2])); out.push(l3volTap({ clientX: r.left + q.x, clientY: r.top + q.y, preventDefault() {}, stopPropagation() {} })); }
+    return { n: (l3vol.polyA || []).length, handled: out.every(Boolean) }; });
+  console.log('polygon-klick', JSON.stringify(poly)); if (!poly.handled || poly.n !== 5) fail('Fem klick ger fem punkter: ' + JSON.stringify(poly));
+  await page.evaluate(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+  await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && (l3vol.cur.spec.fillPolys || []).length === 1 && l3vol.cur.res.cut < 5, null, { timeout: 30000 }); await page.waitForTimeout(300);
+  const pr = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut, pts: l3vol.cur.spec.fillPolys[0].length, cap: l3vol.capture }));
+  console.log('polygon', JSON.stringify(pr)); if (pr.pts !== 5 || pr.cut > 5 || Math.abs(pr.fill - 200) > 200 * 0.03) fail('Polygon med valfritt antal punkter fyller igen: ' + JSON.stringify(pr));
+  await page.evaluate(() => { const cu = l3vol.cur; cu.spec.fillPolys = []; l3vol.capture = null; l3volBoxDraw(); l3volSchedule(0); }); await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cut > 50, null, { timeout: 30000 });
   // Dolda objekt (gruppen osynlig, t.ex. Dölj/Isolera) ska inte kapa något
   await page.evaluate(() => { const lo = window.__lo, q = placeNew('lada', [lo[0] + 12, lo[1] + 12, 0]); q.L = 3; q.B = 3; q.H = 5; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); window.__hid = q.id; l3.placeMeshes.get(q.id).visible = false; l3vol.cache.clear(); const cu = l3vol.cur; cu.spec.keep = true; cu.spec.keepMode = 'pocket'; cu.spec.cell = 0.5; l3volSchedule(0); });
   await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.cell === 0.5, null, { timeout: 40000 }); await page.waitForTimeout(400);
