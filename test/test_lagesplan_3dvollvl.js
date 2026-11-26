@@ -69,7 +69,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Fyll till plushöjd: skriv en höjd i panelen – nivån blir "Yta som mäts", punktmolnet "Mot"; fyllning = nivån minus molnet (platå 1,5 m över modellens underkant).
   await page.evaluate(() => { l3pc.clouds.find(c => c.id === 'pcA').visible = true; });
   const z0 = await page.evaluate(() => window.__lo[2]);
-  await page.fill('input[data-vlv]', String(z0 + 3.5).replace('.', ',')); await page.click('[data-vb="lvl"]');
+  await page.fill('input[data-vlv]', String(z0 + 3.5).replace('.', ',')); await page.click('[data-vb="lvl"]'); await page.evaluate(() => { l3vol.cur.spec.keepMode = 'top'; l3volSchedule(0); }); await page.waitForTimeout(400);
   await page.waitForFunction(() => l3vol.cur && l3vol.cur.spec.a.k === 'level' && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 20000 }); await page.waitForTimeout(400);
   const f = await page.evaluate(() => ({ a: l3vol.cur.spec.a, b: l3vol.cur.spec.b.k, fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut, area: l3vol.cur.res.area, txt: (document.querySelector('.v3-vq-lvlres') || {}).textContent || '' }));
   console.log(JSON.stringify(f));
@@ -78,6 +78,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (f.cut > 1 || f.fill > exp * 1.03 || f.fill < exp * 0.6) fail('Plushöjd: fyllning ' + f.fill + ' ≠ ' + exp);
   if (!/Fyllning/.test(f.txt)) fail('Plushöjd: resultatrad saknas: ' + f.txt);
   // Objekt som står kvar: modellplattan (0–2 m, står på marken, överkant 0,5 m över molnet) räknas som mark → fyllningen blir 1,5 m i stället för 2,0 m.
+  await page.evaluate(() => { l3vol.cur.spec.keepMode = 'top'; l3volSchedule(0); }); await page.waitForTimeout(300); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep, null, { timeout: 20000 });
   const k0 = await page.evaluate(() => l3vol.cur.spec.keep);
   if (k0 !== true) fail('Plushöjd slår på "objekt står kvar": ' + k0);
   const withKeep = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, keep: l3vol.cur.res.keep }));
@@ -88,6 +89,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (Math.abs(noKeep - exp) > exp * 0.03) fail('Utan objekt: fyllning ' + noKeep + ' ≠ ' + exp);
   if (!(withKeep.keep && withKeep.keep.models === 1) || Math.abs(withKeep.fill - f.area * 1.5) > f.area * 1.5 * 0.05) fail('Objekt som står kvar räknas bort (plattan: 3,5−2,0 = 1,5 m): ' + JSON.stringify(withKeep));
   const cf0 = await page.evaluate(() => { l3vol.cur.spec.keep = true; return l3vol.cur.res.cellsFill; });
+  // Hål ända upp: modellplattan täcker hela området och fortsätter upp genom fyllningen → ingen fyllning kvar
+  await page.evaluate(() => { l3vol.cur.spec.keepMode = 'up'; l3volSchedule(0); }); await page.waitForTimeout(300); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep, null, { timeout: 20000 });
+  const upFill = await page.evaluate(() => l3vol.cur.res.fill); if (upFill > 1) fail('Hål ända upp: plattan tar bort hela fyllningen: ' + upFill);
+  await page.evaluate(() => { l3vol.cur.spec.keepMode = 'top'; l3volSchedule(0); }); await page.waitForTimeout(300); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.fill > 100, null, { timeout: 20000 });
   // Placerat objekt (4 × 4 m låda som sticker upp över nivån) tar bort sin ruta: fyllning = (100 − 16) × 1,5
   await page.evaluate(() => { const lo = window.__lo, O = l3.O, q = placeNew('lada', [lo[0] + 13, lo[1] + 13, 0]); q.L = 4; q.B = 4; q.H = 4; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); l3vol.cur.spec.keep = true; l3volSchedule(0); });
   await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.keep.objs >= 1, null, { timeout: 20000 }); await page.waitForTimeout(300);
