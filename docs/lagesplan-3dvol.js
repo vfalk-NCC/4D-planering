@@ -207,24 +207,35 @@ async function l3volGroundGrid(cur, src, bd, cell) {
    inte rutvis. Resultat: { polys (polygon-clipping), idx (rutindex för snabb sökning), area }. */
 async function l3volFootprints(cur, bd, cell, gGA, gGB, ob) {
   const T = ob.lists[0] && ob.lists[0].top; if (!T || typeof polygonClipping === "undefined") return null;
-  const P = cur.pts, nx = T.nx, ny = T.ny, f = T.cell, tol = 0.15, mask = new Uint8Array(nx * ny), at = (G, x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.y0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.ny ? NaN : G.z[j * G.nx + i]; };
+  const nx = T.nx, ny = T.ny, f = T.cell, tol = 0.15, mask = new Uint8Array(nx * ny), bots = new Float32Array(nx * ny).fill(NaN), tops = new Float32Array(nx * ny).fill(NaN), at = (G, x, y) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((y - G.y0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.ny ? NaN : G.z[j * G.nx + i]; };
   let any = 0;
   for (let j = 0; j < ny; j++) {
     const y = T.y0 + (j + 0.5) * f; if (y < bd.y0 || y > bd.y1) continue;
     for (let i = 0; i < nx; i++) {
       const x = T.x0 + (i + 0.5) * f; if (x < bd.x0 || x > bd.x1) continue;
       const za = l3volGridZ(gGA, x, y), zb = l3volGridZ(gGB, x, y); if (za == null || zb == null) continue; const lo = Math.min(za, zb), hi = Math.max(za, zb);
-      for (const { top, bot } of ob.lists) { const t = at(top, x, y), b = at(bot, x, y); if (!l3volOk(t) || !l3volOk(b)) continue; if (b < hi + tol && t > lo + 0.02) { mask[j * nx + i] = 1; any++; break; } }
+      for (const { top, bot } of ob.lists) { const t = at(top, x, y), b = at(bot, x, y); if (!l3volOk(t) || !l3volOk(b)) continue; if (b < hi + tol && t > lo + 0.02) { const k = j * nx + i; mask[k] = 1; any++; if (!(bots[k] <= b)) bots[k] = b; if (!(tops[k] >= t)) tops[k] = t; } }
     }
     if (j % 200 === 0) await l3volTick();
   }
-  if (!any) return { polys: [], idx: new Map(), area: 0, f };
-  const rects = []; for (let j = 0; j < ny; j++) { let i = 0; while (i < nx) { if (!mask[j * nx + i]) { i++; continue; } let i1 = i; while (i1 < nx && mask[j * nx + i1]) i1++; const x0 = T.x0 + i * f, x1 = T.x0 + i1 * f, y0 = T.y0 + j * f, y1 = y0 + f; rects.push([[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]); i = i1; } }
-  await l3volTick(); let U; try { U = polygonClipping.union(...rects.map(r => r)); } catch (e) { return null; }
-  const polys = U.filter(pg => pg.length), idx = new Map(), K = 2;
-  polys.forEach((pg, n) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; pg[0].forEach(q => { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); pg.bb = [x0, y0, x1, y1];
-    for (let a = Math.floor(x0 / K); a <= Math.floor(x1 / K); a++) for (let b = Math.floor(y0 / K); b <= Math.floor(y1 / K); b++) { const k = a + "," + b; (idx.get(k) || idx.set(k, []).get(k)).push(n); } });
-  return { polys, idx, area: any * f * f, f, K };
+  if (!any) return { polys: [], idx: new Map(), area: 0, f, K: 2, mode: cur.spec.keepMode || "pocket" };
+  // sammanhängande områden (4-grannar): varje objekt/fundament för sig, med sin underkant/överkant (vanligaste värdet, så att smala bultar inte styr)
+  const lab = new Int32Array(nx * ny), comps = [], stack = [];
+  for (let k0 = 0; k0 < mask.length; k0++) { if (!mask[k0] || lab[k0]) continue; const id = comps.length + 1, cells = []; stack.push(k0); lab[k0] = id;
+    while (stack.length) { const k = stack.pop(); cells.push(k); const i = k % nx, j = (k - i) / nx; [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]].forEach(([a, b]) => { if (a < 0 || b < 0 || a >= nx || b >= ny) return; const q = b * nx + a; if (mask[q] && !lab[q]) { lab[q] = id; stack.push(q); } }); }
+    comps.push(cells); }
+  await l3volTick();
+  const mode = arr => { const m = new Map(); arr.forEach(v => { const b = Math.round(v * 50); m.set(b, (m.get(b) || 0) + 1); }); let best = 0, bk = 0; m.forEach((n, b) => { if (n > best) { best = n; bk = b; } }); return bk / 50; };
+  const polys = [], idx = new Map(), K = 2;
+  for (let c = 0; c < comps.length; c++) {
+    const cells = comps[c], rects = cells.map(k => { const i = k % nx, j = (k - i) / nx, x0 = T.x0 + i * f, y0 = T.y0 + j * f; return [[[x0, y0], [x0 + f, y0], [x0 + f, y0 + f], [x0, y0 + f], [x0, y0]]]; });
+    let U; try { U = polygonClipping.union(...rects); } catch (e) { continue; }
+    const bot = mode(cells.map(k => bots[k])), top = mode(cells.map(k => tops[k]));
+    U.forEach(pg => { if (!pg.length) return; pg.bot = bot; pg.top = top; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; pg[0].forEach(q => { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); pg.bb = [x0, y0, x1, y1]; const n = polys.length; polys.push(pg);
+      for (let a = Math.floor(x0 / K); a <= Math.floor(x1 / K); a++) for (let b = Math.floor(y0 / K); b <= Math.floor(y1 / K); b++) { const k = a + "," + b; (idx.get(k) || idx.set(k, []).get(k)).push(n); } });
+    if (c % 150 === 0) await l3volTick();
+  }
+  return { polys, idx, area: any * f * f, f, K, mode: cur.spec.keepMode || "pocket" };
 }
 async function l3volObstacles(cur, bd, cell) {
   const skip = new Set([cur.spec.a.k, cur.spec.b.k]), lists = [], info = { models: 0, objs: 0 }, fine = Math.max(0.05, cell / 3);   // finare ruta än markens så att smala objekt (pålar, stag) bara tar sin verkliga yta
@@ -263,7 +274,7 @@ async function l3volCompute(cur, alive) {
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
   let gA2 = gA, gB2 = gB, keepInfo = null, FP = null, cutA = 0;
   if (cur.spec.keep) {   // objekt som står kvar räknas som mark / kapas ur
-    const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN, up = cur.spec.keepMode !== "top" && typeof polygonClipping !== "undefined", fine = Math.max(0.05, Math.min(cell / 3, 0.15));
+    const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN, up = cur.spec.keepMode !== "top" && typeof polygonClipping !== "undefined"   /* "pocket" (standard) och "up" klipper exakt */, fine = Math.max(0.05, Math.min(cell / 3, 0.15));
     const ob = await l3volObstacles(cur, bd, up ? fine * 3 : cell); if (!alive()) return null; keepInfo = ob.info;
     let g1 = gA, g2 = gB;
     if (/^pc:/.test(cur.spec.a.k)) g1 = (await l3volGroundGrid(cur, cur.spec.a, bd, cell)) || gA; if (/^pc:/.test(cur.spec.b.k)) g2 = (await l3volGroundGrid(cur, cur.spec.b, bd, cell)) || gB;
@@ -287,17 +298,17 @@ async function l3volCompute(cur, alive) {
   for (let e = 0; e < P.length; e++) { const p = P[e], q = P[(e + 1) % P.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]), n = Math.max(1, Math.ceil(L / (cell / 4))); for (let s = 0; s <= n; s++) mark(p[0] + (q[0] - p[0]) * s / n, p[1] + (q[1] - p[1]) * s / n); }
   const inN = new Int8Array(NN).fill(-1), inside = (i, j) => { const k = j * W + i; if (inN[k] < 0) inN[k] = l3volInside(P, gA.x0 + i * cell, gA.y0 + j * cell) ? 1 : 0; return inN[k]; };
   const clipPoly = [[...P.map(p => [p[0], p[1]]), [P[0][0], P[0][1]]]], hasClip = typeof polygonClipping !== "undefined";
-  const lists = { cut: [], fill: [] }, tot = { cut: 0, fill: 0 }, cen = { cut: [0, 0, 0, 0], fill: [0, 0, 0, 0] };
+  const lists = { cut: [], fill: [], cutLo: [], fillLo: [], cutUp: [], fillUp: [] }, tot = { cut: 0, fill: 0 }, cen = { cut: [0, 0, 0, 0], fill: [0, 0, 0, 0] };
   let aIn = 0, tmax = 0.05;
   const area2 = v => ((v[1][0] - v[0][0]) * (v[2][1] - v[0][1]) - (v[2][0] - v[0][0]) * (v[1][1] - v[0][1])) / 2;
-  const emit0 = v => { // v: [x,y,a,b]×3, moturs
-    aIn += Math.abs(area2(v));
+  const emit0 = (v, tag) => { // v: [x,y,a,b]×3, moturs; tag: "" (huvudkropp), "Lo" (under en ficka) eller "Up" (över en ficka)
+    if (!tag) aIn += Math.abs(area2(v)); tag = tag || "";
     for (const sg of [1, -1]) for (const t of l3volSplit(v, sg)) {
       const ar = area2(t); if (ar < 1e-9) continue; if (t.every(p => Math.abs(p[2] - p[3]) < 5e-4)) continue;   // platta utan tjocklek (t.ex. där ett objekt står kvar) blir ett hål i kroppen, inte ett tunt skal
       const dm = t.reduce((s, p) => s + Math.abs(p[2] - p[3]), 0) / 3, vol = ar * dm, kd = sg > 0 ? "fill" : "cut";
       tot[kd] += vol; const c = cen[kd]; c[0] += vol; c[1] += vol * (t[0][0] + t[1][0] + t[2][0]) / 3; c[2] += vol * (t[0][1] + t[1][1] + t[2][1]) / 3; c[3] += vol * (sg > 0 ? t[0][2] + t[1][2] + t[2][2] : t[0][3] + t[1][3] + t[2][3]) / 3;
       mn = Math.min(mn, ...t.map(p => p[2] - p[3])); mx = Math.max(mx, ...t.map(p => p[2] - p[3]));
-      const row = []; t.forEach(p => { row.push(p[0], p[1], Math.max(p[2], p[3]), Math.min(p[2], p[3])); tmax = Math.max(tmax, Math.abs(p[2] - p[3])); }); lists[kd].push(row);
+      const row = []; t.forEach(p => { row.push(p[0], p[1], Math.max(p[2], p[3]), Math.min(p[2], p[3])); tmax = Math.max(tmax, Math.abs(p[2] - p[3])); }); lists[kd + tag].push(row);
     }
   };
   /* Kapar triangeln mot objektens fotavtryck (exakt polygonklippning) – höjderna i de nya hörnen ur triangelns plan. */
@@ -306,12 +317,22 @@ async function l3volCompute(cur, alive) {
     const bx0 = Math.min(v[0][0], v[1][0], v[2][0]), bx1 = Math.max(v[0][0], v[1][0], v[2][0]), by0 = Math.min(v[0][1], v[1][1], v[2][1]), by1 = Math.max(v[0][1], v[1][1], v[2][1]), K = FP.K, cand = new Set();
     for (let a = Math.floor(bx0 / K); a <= Math.floor(bx1 / K); a++) for (let b = Math.floor(by0 / K); b <= Math.floor(by1 / K); b++) (FP.idx.get(a + "," + b) || []).forEach(n => { const q = FP.polys[n].bb; if (q[0] <= bx1 && q[2] >= bx0 && q[1] <= by1 && q[3] >= by0) cand.add(n); });
     if (!cand.size) return emit0(v);
-    let R; try { R = polygonClipping.difference([[[...v.map(p => [p[0], p[1]]), [v[0][0], v[0][1]]]]], ...[...cand].map(n => FP.polys[n])); } catch (e) { return emit0(v); }
+    const tri0 = [[[...v.map(p => [p[0], p[1]]), [v[0][0], v[0][1]]]]], polys = [...cand].map(n => FP.polys[n]);
+    let R; try { R = polygonClipping.difference(tri0, ...polys); } catch (e) { return emit0(v); }
     const d = (v[1][1] - v[2][1]) * (v[0][0] - v[2][0]) + (v[2][0] - v[1][0]) * (v[0][1] - v[2][1]); if (Math.abs(d) < 1e-14) return;
     const H = (x, y) => { const l1 = ((v[1][1] - v[2][1]) * (x - v[2][0]) + (v[2][0] - v[1][0]) * (y - v[2][1])) / d, l2 = ((v[2][1] - v[0][1]) * (x - v[2][0]) + (v[0][0] - v[2][0]) * (y - v[2][1])) / d, l3 = 1 - l1 - l2; return [x, y, l1 * v[0][2] + l2 * v[1][2] + l3 * v[2][2], l1 * v[0][3] + l2 * v[1][3] + l3 * v[2][3]]; };
-    let kept = 0; R.forEach(pg => { const rings = pg.map(r => (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r).filter(r => r.length >= 3); if (!rings.length) return;
-      const all = [].concat(...rings), V2 = q => new THREE.Vector2(q[0], q[1]); let tri; try { tri = THREE.ShapeUtils.triangulateShape(rings[0].map(V2), rings.slice(1).map(r => r.map(V2))); } catch (e) { return; }
-      tri.forEach(t => { let w = [all[t[0]], all[t[1]], all[t[2]]].map(q => H(q[0], q[1])); if (area2(w) < 0) w = [w[0], w[2], w[1]]; kept += Math.abs(area2(w)); emit0(w); }); });
+    const triangles = geo => { const out = []; geo.forEach(pg => { const rings = pg.map(r => (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r).filter(r => r.length >= 3); if (!rings.length) return; const all = [].concat(...rings), V2 = q => new THREE.Vector2(q[0], q[1]); let tri; try { tri = THREE.ShapeUtils.triangulateShape(rings[0].map(V2), rings.slice(1).map(r => r.map(V2))); } catch (e) { return; }
+      tri.forEach(t => { let w = [all[t[0]], all[t[1]], all[t[2]]].map(q => H(q[0], q[1])); if (area2(w) < 0) w = [w[0], w[2], w[1]]; out.push(w); }); }); return out; };
+    let kept = 0; triangles(R).forEach(w => { kept += Math.abs(area2(w)); emit0(w); });
+    if (FP.mode !== "up") polys.forEach(pg => {   // fickor: bara delen av fyllningen som objektet verkligen upptar tas bort – kroppen under (till objektets underkant) och över (från dess överkant) finns kvar
+      let I; try { I = polygonClipping.intersection(tri0, pg); } catch (e) { return; }
+      triangles(I).forEach(w => {
+        const pieceLo = w.map(q => { const hi = Math.max(q[2], q[3]), lo = Math.min(q[2], q[3]), top = Math.max(lo, Math.min(hi, pg.bot)); return [q, hi, lo, top]; });
+        const mk = (hiF, loF) => w.map((q, k) => { const [, hi, lo] = pieceLo[k], a = q[2] >= q[3]; const H2 = hiF(hi, lo), L2 = loF(hi, lo); return [q[0], q[1], a ? H2 : L2, a ? L2 : H2]; });
+        const lower = mk((hi, lo) => Math.max(lo, Math.min(hi, pg.bot)), (hi, lo) => lo), upper = mk((hi, lo) => hi, (hi, lo) => Math.max(lo, Math.min(hi, pg.top)));
+        emit0(lower, "Lo"); emit0(upper, "Up");
+      });
+    });
     cutA += Math.max(0, Math.abs(area2(v)) - kept);
   };
   const tri3 = (i, j, tp) => tp.map(([di, dj]) => { const k = (j + dj) * W + i + di; return [gA.x0 + (i + di) * cell, gA.y0 + (j + dj) * cell, nA[k], nB[k]]; });
@@ -364,7 +385,10 @@ async function l3volCompute(cur, alive) {
     if (++work % 40 === 0) { await l3volTick(); if (!alive()) return null; }
   }
   const org = P[0].slice(), solids = {};
-  ["cut", "fill"].forEach(k => { if (tot[k] > 1e-6) solids[k] = l3volMesh(lists[k], k, org, tmax); });
+  const mergeMesh = ms => { ms = ms.filter(Boolean); if (ms.length <= 1) return ms[0] || null; const cat = (a, F) => { const n = a.reduce((t, m) => t + m[F].length, 0), out = new a[0][F].constructor(n); let o = 0; a.forEach(m => { out.set(m[F], o); o += m[F].length; }); return out; };
+    const idx = []; let off = 0; ms.forEach(m => { for (let i = 0; i < m.idx.length; i++) idx.push(m.idx[i] + off); off += m.pos.length / 3; });
+    return { pos: cat(ms, "pos"), col: cat(ms, "col"), idx: Uint32Array.from(idx), wire: cat(ms, "wire"), tris: ms.reduce((t, m) => t + m.tris, 0), cells: ms.reduce((t, m) => t + m.cells, 0) }; };
+  ["cut", "fill"].forEach(k => { if (tot[k] > 1e-6) solids[k] = mergeMesh([l3volMesh(lists[k], k, org, tmax), l3volMesh(lists[k + "Lo"], k, org, tmax), l3volMesh(lists[k + "Up"], k, org, tmax)]); });
   const at = k => { const c = cen[k]; return c[0] > 0 ? [c[1] / c[0], c[2] / c[0], c[3] / c[0]] : null; };
   const cut = tot.cut, fill = tot.fill, tris = (solids.cut ? solids.cut.tris : 0) + (solids.fill ? solids.fill.tris : 0);
   aIn += cutA; if (tinMode) aMiss = Math.max(0, area - aIn);
@@ -583,7 +607,7 @@ function l3volPanel() {
     <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     <div class="v3-vq-lvl" title="Skriv höjden (m ö.h.) som ytan ska fyllas upp till, t.ex. överkant makadam. Volymen räknas från den höjden ner tills det möter punktmolnet (eller vald modell) i det markerade området."><span>Fyll till plushöjd</span><input type="text" inputmode="decimal" data-vlv placeholder="t.ex. 395,40" value="${lvlMode ? String(c.spec.a.z).replace(".", ",") : ""}"><em>m</em><button type="button" data-vb="lvl">Räkna</button></div>
     <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt · ${r.keep.area || 0} m² kapat</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
-    ${c.spec.keep ? `<div class="v3-vq-keepm" title="Hål ända upp: fyllningen kapas helt runt objekten (de fortsätter upp genom fyllningen). Fyll över: fyllningen läggs ovanpå objekt som slutar under nivån."><button type="button" data-vkm="up" class="${c.spec.keepMode !== "top" ? "on" : ""}">Hål ända upp</button><button type="button" data-vkm="top" class="${c.spec.keepMode === "top" ? "on" : ""}">Fyll över</button></div>` : ""}
+    ${c.spec.keep ? `<div class="v3-vq-keepm" title="Exakt: bara delen av fyllningen som objektet verkligen upptar tas bort (fickor, under och över objektet finns kvar). Hål ända upp: fyllningen kapas helt ner genom hela lagret runt objekten. Fyll över: fyllningen läggs ovanpå objekt som slutar under nivån."><button type="button" data-vkm="pocket" class="${(c.spec.keepMode || "pocket") === "pocket" ? "on" : ""}">Exakt</button><button type="button" data-vkm="up" class="${c.spec.keepMode === "up" ? "on" : ""}">Hål ända upp</button><button type="button" data-vkm="top" class="${c.spec.keepMode === "top" ? "on" : ""}">Fyll över</button></div>` : ""}
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
     <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
     <div data-vres>${res}</div>

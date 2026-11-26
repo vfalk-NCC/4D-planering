@@ -108,6 +108,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   console.log('exakt', JSON.stringify(ex));
   if (Math.abs(ex.fill - 84 * 2) > 84 * 2 * 0.01) fail('Exakt kapning: fyllning ' + ex.fill + ' ≠ ' + 168);
   if (ex.inn > 0 || ex.onEdge < 8) fail('Soliden har ett exakt hål med kanter på lådans gräns: ' + JSON.stringify(ex));
+  // Fickor (läget Exakt): lådans underkant 0,5 m ovanför marken → bara de 1,5 m som lådan fyller (2,0–3,5) tas bort; under den finns 0,5 m fyllning kvar
+  await page.evaluate(() => { const q = placements.find(p => p.type === 'lada'), lo = window.__lo; q.z = lo[2] + 2.0; placeTouch(q); l3RebuildOne(q); const c = l3vol.cur; c.spec.keepMode = 'pocket'; c.spec.tin = false; c.spec.cell = 1; l3volSchedule(0); });
+  await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cell === 1 && l3vol.cur.spec.keepMode === 'pocket', null, { timeout: 25000 }); await page.waitForTimeout(500);
+  const pk = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, tris: l3vol.cur.res.cellsFill, kid: l3vol.cur.geom.fill.pos.length })); console.log('ficka', JSON.stringify(pk));
+  if (Math.abs(pk.fill - (84 * 2 + 16 * 0.5)) > 176 * 0.015) fail('Ficka: fyllning ' + pk.fill + ' ≠ 176 (hålet tar bara lådans 1,5 m, 0,5 m blir kvar under)');
+  await page.evaluate(() => { const c = l3vol.cur; c.spec.keepMode = 'up'; l3volSchedule(0); }); await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.spec.keepMode === 'up' && l3vol.cur.res.keep, null, { timeout: 25000 }); await page.waitForTimeout(500);
+  const upf = await page.evaluate(() => l3vol.cur.res.fill); if (Math.abs(upf - 168) > 168 * 0.015) fail('Hål ända upp: ' + upf + ' ≠ 168');
   // TIN på + objekt kvar (Hål ända upp): en smal påle (0,2 m) tar bara sin egen yta även med 1 m ruta
   await page.evaluate(() => { const lo = window.__lo, g = placements.find(p => p.type === 'lada'); placements.splice(placements.indexOf(g), 1); l3RebuildOne && l3.placeMeshes.get(g.id) && (l3.groups.places.remove(l3.placeMeshes.get(g.id)), l3.placeMeshes.delete(g.id));
     const q = placeNew('lada', [lo[0] + 13, lo[1] + 13, 0]); q.L = 0.2; q.B = 0.2; q.H = 6; q.z = lo[2] + 1.5; placements.push(q); placeTouch(q); l3RebuildOne(q); const c = l3vol.cur; c.spec.tin = true; c.spec.keep = true; c.spec.cell = 1; l3volSchedule(0); });
