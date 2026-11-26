@@ -162,8 +162,21 @@ function gjutBuild(p, c, poly, zb, free) {
 /* ---- Makadam: yta, fraktion och tjocklek; objekt som står "i" gruset (fundament, bodar, IFC-objekt) dras av så att volymen blir verklig (Victor 2026-10-24) ---- */
 const MK_FR = [["0–16", "0–16 mm"], ["0–32", "0–32 mm (bärlager)"], ["0–63", "0–63 mm"], ["4–8", "4–8 mm (dränering)"], ["8–16", "8–16 mm (dränering)"], ["16–32", "16–32 mm (dränering)"], ["32–64", "32–64 mm (dränering)"]];
 const MK_DENS = { "0–16": 2.1, "0–32": 2.15, "0–63": 2.2, "4–8": 1.5, "8–16": 1.55, "16–32": 1.6, "32–64": 1.65 }, MK_COL = { "0–16": "#8f897f", "0–32": "#827c72", "0–63": "#756f66", "4–8": "#9d978c", "8–16": "#8c867b", "16–32": "#7e786e", "32–64": "#6f695f" };
-const MK_FIELDS = (free) => [["H", "Tjocklek", "range", 0.3, { min: 0.05, max: 3, step: 0.05, unit: "m", dim: true }], ["fr", "Fraktion", MK_FR, "0–32"], ["pack", "Packningsmån (lös massa)", "range", 15, { min: 0, max: 30, step: 1, unit: "%" }], ["avdrag", "Dra av objekt i makadamen", ["Ja", "Nej"], "Ja", { seg: true }], ...(free ? [["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }]] : []), ["_calc", "Beräknat", "calc"]];
-const mkBase = p => (p.type === "sm:makadamfri" ? (((p.pts || [])[0] || [])[2] || 0) : (Number(p.z) || 0)) + (Number(p.dz) || 0);
+const MK_FIELDS = (free) => [["H", "Tjocklek", "range", 0.3, { min: 0.05, max: 3, step: 0.05, unit: "m", dim: true }], ["fr", "Fraktion", MK_FR, "0–32"], ["pack", "Packningsmån (lös massa)", "range", 15, { min: 0, max: 30, step: 1, unit: "%" }], ["avdrag", "Dra av objekt i makadamen", ["Ja", "Nej"], "Ja", { seg: true }], ...(free ? [["lage", "Höjdläge", [["första", "Första punktens höjd"], ["medel", "Medelhöjd"], ["lutande", "Lutande plan (följer punkterna)"]], "första"], ["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }]] : []), ["_calc", "Beräknat", "calc"]];
+/* Höjdläge för makadam i fri form: planet som lagret ligger i (z = z0 + gx·x + gy·y, lokalt kring objektets origo). "Första" = vågrätt på första punktens höjd (som förut), "Medel" = vågrätt på medelhöjden,
+   "Lutande" = bäst anpassade plan genom punkterna (minsta kvadrat) – för lager i slänter så att det inte svävar eller gräver sig ned. */
+function mkPlane(p) {
+  const P = p.pts || [], ox = Number(p.x) || 0, oy = Number(p.y) || 0, dz = Number(p.dz) || 0; if (!P.length) return { z0: dz, gx: 0, gy: 0 };
+  const mode = smF(p, "lage", "första"), zs = P.map(q => Number(q[2]) || 0), mean = zs.reduce((a, b) => a + b, 0) / zs.length;
+  if (mode === "första") return { z0: zs[0] + dz, gx: 0, gy: 0 };
+  if (mode !== "lutande" || P.length < 3) return { z0: mean + dz, gx: 0, gy: 0 };
+  const mx = P.reduce((a, q) => a + q[0], 0) / P.length, my = P.reduce((a, q) => a + q[1], 0) / P.length; let sxx = 0, sxy = 0, syy = 0, sxz = 0, syz = 0;
+  P.forEach((q, i) => { const x = q[0] - mx, y = q[1] - my, z = zs[i] - mean; sxx += x * x; sxy += x * y; syy += y * y; sxz += x * z; syz += y * z; });
+  const det = sxx * syy - sxy * sxy; if (Math.abs(det) < 1e-6) return { z0: mean + dz, gx: 0, gy: 0 };
+  const gx = (sxz * syy - syz * sxy) / det, gy = (syz * sxx - sxz * sxy) / det;
+  return { z0: mean + dz + gx * (ox - mx) + gy * (oy - my), gx, gy };
+}
+const mkBase = p => { if (p.type !== "sm:makadamfri") return (Number(p.z) || 0) + (Number(p.dz) || 0); const pl = mkPlane(p), P = p.pts || [], ox = Number(p.x) || 0, oy = Number(p.y) || 0, cx = P.length ? P.reduce((a, q) => a + q[0], 0) / P.length - ox : 0, cy = P.length ? P.reduce((a, q) => a + q[1], 0) / P.length - oy : 0; return pl.z0 + pl.gx * cx + pl.gy * cy; };
 function mkPoly(p) { if (p.type === "sm:makadamfri") { const P = p.pts || [], ox = Number(p.x) || 0, oy = Number(p.y) || 0; return P.length < 3 ? null : smFillet(P.map(q => [q[0] - ox, q[1] - oy, 0]), smN(p, "radie", 0), true).map(q => [q[0], q[1]]); } const L = p.L / 2, B = p.B / 2; return [[-L, -B], [L, -B], [L, B], [-L, B]]; }
 const mkToLocal = p => { if (p.type === "sm:makadamfri") { const ox = Number(p.x) || 0, oy = Number(p.y) || 0; return (X, Y) => [X - ox, Y - oy]; } const t = (Number(p.rot) || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t); return (X, Y) => { const dx = X - p.x, dy = Y - p.y; return [dx * c + dy * s, -dx * s + dy * c]; }; };
 function mkHull(P) { P = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (P.length < 3) return P; const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = []; for (const q of P) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); } for (let i = P.length - 1; i >= 0; i--) { const q = P[i]; while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); } return lo.slice(0, -1).concat(up.slice(0, -1)); }
@@ -191,8 +204,10 @@ function mkCuts(p, poly, base, th) {
 /* Makadamen minus avdragen: { outer/holes via polygon-clipping, area, gross, cuts }. */
 function mkShape(p) {
   const poly = mkPoly(p); if (!poly) return null; const th = Math.max(0.05, Number(p.H) || 0.3), base = mkBase(p), ring = r => r.map(q => [q[0], q[1]]), area = r => { let a = 0; for (let i = 0; i < r.length; i++) { const A = r[i], B = r[(i + 1) % r.length]; a += A[0] * B[1] - B[0] * A[1]; } return Math.abs(a) / 2; };
-  const gross = area(poly), use = smF(p, "avdrag", "Ja") !== "Nej" && typeof polygonClipping !== "undefined", cuts = use ? mkCuts(p.__src || p, poly, p.__src ? mkBase(p.__src) : base, th) : []; let mp = [[ring(poly)]];
-  if (cuts.length) { try { mp = polygonClipping.difference([ring(poly)], ...cuts.map(c => [ring(c.poly)])); } catch (e) { mp = [[ring(poly)]]; } }
+  const pc = typeof polygonClipping !== "undefined", closed0 = r => (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r;
+  let mp0 = [[ring(poly)]], gross = area(poly); if (pc) { try { const u = polygonClipping.union([ring(poly)]); if (u && u.length) { mp0 = u; gross = u.reduce((a, pg) => a + pg.reduce((b, r, i) => b + (i ? -1 : 1) * area(closed0(r)), 0), 0); } } catch (e) { /* behåll ursprungskonturen */ } }   // korsande kanter i den ritade konturen rensas, så att ytan blir giltig
+  const use = smF(p, "avdrag", "Ja") !== "Nej" && pc, cuts = use ? mkCuts(p.__src || p, poly, p.__src ? mkBase(p.__src) : base, th) : []; let mp = mp0;
+  if (cuts.length) { try { mp = polygonClipping.difference(mp0, ...cuts.map(c => [ring(c.poly)])); } catch (e) { mp = mp0; } }
   const closed = r => (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r; let net = 0; mp.forEach(pg => pg.forEach((r, i) => { const rr = closed(r); net += (i ? -1 : 1) * area(rr); }));
   return { poly, th, base, gross, net: Math.max(0, net), mp, cuts, cutArea: Math.max(0, gross - net) };
 }
@@ -201,11 +216,36 @@ const mkCalc = p => { const sh = mkShape(p); if (!sh) return []; const st = mkSt
 function mkBuild(p, c) {
   const sh = mkShape(p); if (!sh) { (p.pts || []).forEach(q => c.cyl("#f59e0b", "z", q[0] - (Number(p.x) || 0), q[1] - (Number(p.y) || 0), 0.5, 0.12, 0.12, 1, 10)); return; }
   const fr = smF(p, "fr", "0–32"), col = MK_COL[fr] || "#aaa49a", zb = p.type === "sm:makadamfri" ? sh.base - c.z : 0, th = sh.th, st = mkStats(p, sh), rings = []; sh.mp.forEach(pg => pg.forEach(r => rings.push((r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r)));
+  const pln = p.type === "sm:makadamfri" ? mkPlane(p) : { z0: 0, gx: 0, gy: 0 }, zAt = (x, y) => (p.type === "sm:makadamfri" ? pln.z0 - c.z + pln.gx * x + pln.gy * y : 0);
+  let meshed = false;
+  if (typeof THREE !== "undefined" && THREE.ShapeUtils && typeof c.mesh === "function") {   // en riktig yta med trianglar (täta kanter, hål för avdragen, lutande plan) i stället för remsor
+    try {
+      const topP = [], topF = [], sideP = [], sideF = [], V2 = q => new THREE.Vector2(q[0], q[1]);
+      sh.mp.forEach(pg => {
+        const rs = pg.map(r => ((r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r)).filter(r => r.length >= 3); if (!rs.length) return;
+        const all = [].concat(...rs), tri = THREE.ShapeUtils.triangulateShape(rs[0].map(V2), rs.slice(1).map(r => r.map(V2))), b0 = topP.length;
+        all.forEach(q => topP.push([q[0], q[1], zAt(q[0], q[1]) + th]));
+        tri.forEach(t => { const A = all[t[0]], B = all[t[1]], C = all[t[2]], cr = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]); topF.push(cr >= 0 ? [b0 + t[0] + 1, b0 + t[1] + 1, b0 + t[2] + 1] : [b0 + t[0] + 1, b0 + t[2] + 1, b0 + t[1] + 1]); });
+        rs.forEach(r => { for (let k = 0; k < r.length; k++) { const a = r[k], b = r[(k + 1) % r.length], n0 = sideP.length; sideP.push([a[0], a[1], zAt(a[0], a[1])], [b[0], b[1], zAt(b[0], b[1])], [b[0], b[1], zAt(b[0], b[1]) + th], [a[0], a[1], zAt(a[0], a[1]) + th]); sideF.push([n0 + 1, n0 + 2, n0 + 3], [n0 + 1, n0 + 3, n0 + 4]); } });
+      });
+      // översidan och undersidan (omvänd) i lagrets färg, sidorna något mörkare så att kanten syns tydligt
+      const nT = topP.length, botP = topP.map(q => [q[0], q[1], q[2] - th]), P = topP.concat(botP), F = topF.concat(topF.map(f => [f[0] + nT, f[2] + nT, f[1] + nT]));
+      // riktningen avgörs på hela kroppen (ovan + under + sidor) så att alla ytor vänder utåt
+      const SPo = sideP.map(q => q), allP = P.concat(SPo), allF = F.concat(sideF.map(f => f.map(i => i + P.length)));
+      const flip = typeof TK !== "undefined" && TK.volume && TK.volume({ pts: allP, faces: allF }) < 0, fl = fs => flip ? fs.map(f => [f[0], f[2], f[1]]) : fs;
+      c.mesh(col, P, fl(F), { rough: 1, keep: true });
+      const dark = col.replace(/^#/, "").match(/../g).map(h => Math.round(parseInt(h, 16) * 0.78).toString(16).padStart(2, "0")).join("");
+      if (sideP.length) c.mesh("#" + dark, sideP, fl(sideF), { rough: 1, keep: true });
+      meshed = true;
+    } catch (e) { meshed = false; }
+  }
+  if (!meshed) {
   const xs = sh.poly.map(q => q[0]), minX = Math.min(...xs), maxX = Math.max(...xs), N = Math.max(8, Math.min(140, Math.ceil((maxX - minX) / 0.15))), dx = (maxX - minX) / N; let prev = null, run = null; const runs = [];
   for (let i = 0; i < N; i++) { const xc = minX + (i + 0.5) * dx, ys = []; rings.forEach(r => { for (let k = 0; k < r.length; k++) { const a = r[k], b = r[(k + 1) % r.length]; if ((a[0] <= xc && b[0] > xc) || (b[0] <= xc && a[0] > xc)) ys.push(a[1] + (xc - a[0]) / (b[0] - a[0]) * (b[1] - a[1])); } }); ys.sort((m, q) => m - q);
     const iv = []; for (let k = 0; k + 1 < ys.length; k += 2) if (ys[k + 1] - ys[k] > 0.01) iv.push([ys[k], ys[k + 1]]); const key = iv.map(q => q[0].toFixed(2) + "," + q[1].toFixed(2)).join("|");
     if (run && key === run.key) run.xb = minX + (i + 1) * dx; else { if (run) runs.push(run); run = { key, iv, xa: minX + i * dx, xb: minX + (i + 1) * dx }; } } if (run) runs.push(run);
   runs.forEach(r => r.iv.forEach(([y0, y1]) => c.prism(col, [[r.xa, y0], [r.xb, y0], [r.xb, y1], [r.xa, y1]], zb, zb + th, { rough: 1 })));
+  }
   // avdragen markeras med en tunn mörk kontur ovanpå (så att man ser vad som sparats ut)
   sh.cuts.forEach(cu => { const pl = cu.poly; for (let i = 0; i < pl.length; i++) { const a = pl[i], b = pl[(i + 1) % pl.length], dxx = b[0] - a[0], dyy = b[1] - a[1], dd = Math.hypot(dxx, dyy); if (dd < 0.05) continue; const ux = -dyy / dd * 0.02, uy = dxx / dd * 0.02; c.prism("#475569", [[a[0] + ux, a[1] + uy], [b[0] + ux, b[1] + uy], [b[0] - ux, b[1] - uy], [a[0] - ux, a[1] - uy]], zb + th, zb + th + 0.012, { unlit: true, deco: true }); } });
   c.card({ title: String(p.name || "Makadam"), icon: "box", color: "#78716c", left: ["m³", smFmt(st.vol, 1)], rows: [["Fraktion", fr + " mm"], ["Tjocklek", smFmt(th * 1000, 0) + " mm"], ["Yta netto", smFmt(sh.net, 1) + " m²" + (sh.cuts.length ? ` (−${sh.cuts.length} objekt)` : "")], ["Beställ / vikt", `${smFmt(st.lose, 1)} m³ lös · ca ${smFmt(st.ton, 0)} ton`]], b0: Math.min(...sh.poly.map(q => q[1])) - 1.2, zb: 2.2 + zb });

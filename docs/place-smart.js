@@ -117,6 +117,7 @@ function smMakeCtx(p, z, col) {
     rod: (color, a, b, r0, r1, seg, o) => TK.add(ctx.T(color, Math.max(r0, r1 == null ? r0 : r1) < 0.02 ? { ...(o || {}), deco: true } : o),   // smala stänger blir linjer i Trimble Connect – de följer inte med i IFC
       TK.rod(a, b, r0, r1 == null ? r0 : r1, seg || 8), 0, 0, 0),
     prism: (color, poly, z0, z1, o) => TK.add(ctx.T(color, o), TK.prism(poly, z0, z1), 0, 0, 0),
+    mesh: (color, pts, faces, o) => { const g = { pts, faces }; if (!(o && o.keep) && TK.volume(g) < 0) g.faces = g.faces.map(f => [f[0], f[2], f[1]]); return TK.add(ctx.T(color, o), g, 0, 0, 0); },   // fri triangelyta (1-baserade hörnnummer)
     /* Rektangulär balk (bredd w sidled, höjd h vinkelrätt) mellan två punkter – för bommar, saxarmar och tvärstag. */
     beam: (color, a, b, w, h, o) => { const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(d[0], d[1], d[2]) || 1e-6, n = d.map(v => v / L); let sd = [-n[1], n[0], 0]; const sl = Math.hypot(sd[0], sd[1]); sd = sl < 1e-6 ? [0, 1, 0] : [sd[0] / sl, sd[1] / sl, 0];
       const u = [n[1] * sd[2] - n[2] * sd[1], n[2] * sd[0] - n[0] * sd[2], n[0] * sd[1] - n[1] * sd[0]], pts = []; [a, b].forEach(P => [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([i, j]) => pts.push([P[0] + sd[0] * i * w / 2 + u[0] * j * h / 2, P[1] + sd[1] * i * w / 2 + u[1] * j * h / 2, P[2] + sd[2] * i * w / 2 + u[2] * j * h / 2])));
