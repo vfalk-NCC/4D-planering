@@ -126,12 +126,12 @@ function l3volDelaunay(X, Y) {   // X,Y: lokala koordinater → Int32Array med t
   return Int32Array.from(out);
 }
 /* Medelpunkt per liten ruta ur punktmolnet inom området (utglesning) → hörnen till nätet. Höjder i m ö.h. */
-function l3volTinPoints(cur, src, bd, sp) {
+function l3volTinPoints(cur, src, bd, sp, zmax) {
   const c = l3pc.clouds.find(x => "pc:" + x.id === src.k); if (!c || !c.chunks) return null;
   const cx = c.info.center[0], cy = c.info.center[1], cz = c.info.center[2] + (c.dz || 0), m = sp * 2, x0 = bd.x0 - m, y0 = bd.y0 - m, x1 = bd.x1 + m, y1 = bd.y1 + m, nx = Math.max(1, Math.ceil((x1 - x0) / sp)), ny = Math.max(1, Math.ceil((y1 - y0) / sp));
   if (nx * ny > 12e6) return null; const sum = new Float64Array(nx * ny * 3), cnt = new Uint32Array(nx * ny), stride = Math.max(1, Math.floor(c.nTot / 2e7));
   c.chunks.forEach(ch => { const p = ch.pos, mm = p.length / 3; for (let i = 0; i < mm; i += stride) { const x = p[i * 3] + cx, y = p[i * 3 + 1] + cy; if (x < x0 || x >= x1 || y < y0 || y >= y1) continue;
-    const k = Math.floor((y - y0) / sp) * nx + Math.floor((x - x0) / sp); sum[k * 3] += x; sum[k * 3 + 1] += y; sum[k * 3 + 2] += p[i * 3 + 2] + cz; cnt[k]++; } });
+    if (zmax != null && p[i * 3 + 2] + cz > zmax) continue; const k = Math.floor((y - y0) / sp) * nx + Math.floor((x - x0) / sp); sum[k * 3] += x; sum[k * 3 + 1] += y; sum[k * 3 + 2] += p[i * 3 + 2] + cz; cnt[k]++; } });
   const X = [], Y = [], Z = []; for (let k = 0; k < cnt.length; k++) if (cnt[k]) { X.push(sum[k * 3] / cnt[k]); Y.push(sum[k * 3 + 1] / cnt[k]); Z.push(sum[k * 3 + 2] / cnt[k]); }
   return X.length >= 3 ? { X: Float64Array.from(X), Y: Float64Array.from(Y), Z: Float64Array.from(Z) } : null;
 }
@@ -192,9 +192,22 @@ function l3volMesh(tris, kind, org, tmax) {
 /* Objekt som står kvar (Victor 2026-11-26: "fundamenten ska stå där när vi fyller"): IFC-modeller och placerade objekt som står på marken räknas som en del av marken – höjden i rutan blir objektets översida –
    så att fyllningen bara räknas runt och över dem. Objekt som hänger fritt (underkant högre än marken, t.ex. rörbryggor) räknas inte. Gäller punktmoln som yta; är den andra ytan en nivå
    begränsas höjden till nivån (objekt som sticker upp genom fyllningen tar bort hela rutan). */
+/* Det som sticker upp över plushöjden i punktmolnet (maskiner, stenar, material) är inte mark: när den andra ytan är en nivå ignoreras punkter över nivån och marken interpoleras ur omgivningen,
+   så fyllningen räknas ända upp till nivån även där något skannats stående. Kan slås av med "Ignorera det som sticker upp". */
+const l3volSpikeLevel = (cur, src) => { if (cur.spec.spike === false || !src || !/^pc:/.test(src.k)) return null; const o = src === cur.spec.a ? cur.spec.b : cur.spec.a; return o && o.k === "level" && Number.isFinite(o.z) ? o.z : null; };
+function l3volDespike(g, levelZ) {
+  const z = Float32Array.from(g.z); let bad = 0; for (let k = 0; k < z.length; k++) if (z[k] > levelZ + 0.02) { z[k] = NaN; bad++; }
+  if (!bad) return g;
+  for (let pass = 0; pass < 400 && bad > 0; pass++) { const nz = Float32Array.from(z); let filled = 0;
+    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) { const k = j * g.nx + i; if (z[k] === z[k] || !(g.z[k] > levelZ + 0.02)) continue; let sum = 0, n = 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const a = i + di, b = j + dj; if (a < 0 || b < 0 || a >= g.nx || b >= g.ny) continue; const v = z[b * g.nx + a]; if (v === v) { sum += v; n++; } }
+      if (n >= 2) { nz[k] = sum / n; filled++; } }
+    z.set(nz); bad -= filled; if (!filled) break; }
+  return { ...g, z, spiked: true };
+}
 /* Marken som ett komplett rutnät ur punktmolnets TIN (Delaunay mellan punkterna, ritad rutvis): ett fint rutnät direkt av en gles punktmolnsyta får annars hål ("saknar höjd"). */
 async function l3volGroundGrid(cur, src, bd, cell) {
-  const sp = Math.max(0.15, Math.sqrt(l3volArea(cur.pts) / 60000), cell * 0.5), pts = l3volTinPoints(cur, src, bd, sp); if (!pts) return null;   // marken behöver inte vara tätare än så – fin ruta ger annars hundratusentals punkter
+  const sp = Math.max(0.15, Math.sqrt(l3volArea(cur.pts) / 60000), cell * 0.5), pts = l3volTinPoints(cur, src, bd, sp, l3volSpikeLevel(cur, src)); if (!pts) return null;   // marken behöver inte vara tätare än så – fin ruta ger annars hundratusentals punkter
   const X = Float64Array.from(pts.X, v => v - bd.x0), Y = Float64Array.from(pts.Y, v => v - bd.y0), T = l3volDelaunay(X, Y), g = l3dfGrid(bd, cell), lim = Math.max(4 * sp, 3);
   for (let t = 0; t < T.length; t += 3) {
     const a = [pts.X[T[t]], pts.Y[T[t]], pts.Z[T[t]]], b = [pts.X[T[t + 1]], pts.Y[T[t + 1]], pts.Z[T[t + 1]]], c = [pts.X[T[t + 2]], pts.Y[T[t + 2]], pts.Z[T[t + 2]]];
@@ -270,9 +283,10 @@ function l3volWithObstacles(g, obst, levelZ, up) {
 }
 async function l3volCompute(cur, alive) {
   const P = cur.pts, bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
-  const gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
-  const gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
+  let gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
+  let gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
+  { const la = l3volSpikeLevel(cur, cur.spec.a), lb = l3volSpikeLevel(cur, cur.spec.b); if (la != null) gA = l3volDespike(gA, la); if (lb != null) gB = l3volDespike(gB, lb); }
   let gA2 = gA, gB2 = gB, keepInfo = null, FP = null, cutA = 0;
   if (cur.spec.keep) {   // objekt som står kvar räknas som mark / kapas ur
     const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN, up = cur.spec.keepMode !== "top" && typeof polygonClipping !== "undefined"   /* "pocket" (standard) och "up" klipper exakt */, fine = Math.max(0.08, Math.min(cell / 3, 0.15));
@@ -357,7 +371,7 @@ async function l3volCompute(cur, alive) {
   const useTin = !!cur.spec.tin && !(cur.spec.keep && cur.spec.keepMode === "top"), tinA = useTin && cur.spec.a.k.startsWith("pc:"), tinB = !tinA && useTin && cur.spec.b.k.startsWith("pc:"), tinMode = tinA || tinB;   // i läget Fyll över räknas objekten rutvis (TIN kan inte höjas runt dem); Hål ända upp klipper trianglarna exakt och fungerar med TIN
   let tinInfo = null;
   if (tinMode) {
-    const src = tinA ? cur.spec.a : cur.spec.b, sp = Math.max(0.05, Math.sqrt(area / 80000), Number(cur.spec.cell) > 0 ? Number(cur.spec.cell) * 0.5 : 0), pts = l3volTinPoints(cur, src, bd, sp);
+    const src = tinA ? cur.spec.a : cur.spec.b, sp = Math.max(0.05, Math.sqrt(area / 80000), Number(cur.spec.cell) > 0 ? Number(cur.spec.cell) * 0.5 : 0), pts = l3volTinPoints(cur, src, bd, sp, l3volSpikeLevel(cur, src));
     if (!pts) return { err: "Kunde inte bygga triangelnätet – tänd och läs in punktmolnet inom området." };
     await l3volTick(); if (!alive()) return null;
     const X = Float64Array.from(pts.X, v => v - bd.x0), Y = Float64Array.from(pts.Y, v => v - bd.y0), T = l3volDelaunay(X, Y); await l3volTick(); if (!alive()) return null;
@@ -609,6 +623,7 @@ function l3volPanel() {
   el.innerHTML = `<div class="v3-vp-h"><button type="button" data-vb="col" class="tg" title="Fäll ihop / fäll ut">${l3Prefs().vpCol ? "▸" : "▾"}</button><b>Volym</b><span>${r && l3Prefs().vpCol ? `Netto ${l3volSg(r.net, "+")}` : `${l3Fmt(area, 1)} m² · ${n} hörn`}</span><button type="button" data-vb="undo" title="Ångra punkt – tar bort områdets sista hörn" ${n > 3 ? "" : "disabled"}>↶</button><button type="button" data-vb="restart" title="Börja om – rita området från början">⟲</button><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
     <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     <div class="v3-vq-lvl" title="Skriv höjden (m ö.h.) som ytan ska fyllas upp till, t.ex. överkant makadam. Volymen räknas från den höjden ner tills det möter punktmolnet (eller vald modell) i det markerade området."><span>Fyll till plushöjd</span><input type="text" inputmode="decimal" data-vlv placeholder="t.ex. 395,40" value="${lvlMode ? String(c.spec.a.z).replace(".", ",") : ""}"><em>m</em><button type="button" data-vb="lvl">Räkna</button></div>
+    ${lvlMode ? `<label class="v3-vq-sw" title="Maskiner, stenar och annat som skannats stående och når över plushöjden är inte mark. Då ignoreras punkterna över nivån och marken interpoleras ur omgivningen, så fyllningen räknas hela vägen upp även där."><span>Ignorera det som sticker upp över nivån</span><input type="checkbox" data-vspike ${c.spec.spike === false ? "" : "checked"}><b></b></label>` : ""}
     <label class="v3-vq-sw v3-vq-keep" title="Fundament, väggar och andra objekt (IFC-modeller och placerade objekt) som står på marken räknas som mark – fyllningen räknas bara runt och över dem, och en solid av fyllningen blir urkapad för dem. Objekt som hänger fritt räknas inte."><span>Objekt står kvar (räknas bort)${r && r.keep ? `<em> · ${r.keep.models} modell(er), ${r.keep.objs} objekt · ${r.keep.area || 0} m² kapat</em>` : ""}</span><input type="checkbox" data-vkeep ${c.spec.keep ? "checked" : ""}><b></b></label>
     ${c.spec.keep ? `<div class="v3-vq-keepm" title="Exakt: bara delen av fyllningen som objektet verkligen upptar tas bort (fickor, under och över objektet finns kvar). Hål ända upp: fyllningen kapas helt ner genom hela lagret runt objekten. Fyll över: fyllningen läggs ovanpå objekt som slutar under nivån."><button type="button" data-vkm="pocket" class="${(c.spec.keepMode || "pocket") === "pocket" ? "on" : ""}">Exakt</button><button type="button" data-vkm="up" class="${c.spec.keepMode === "up" ? "on" : ""}">Hål ända upp</button><button type="button" data-vkm="top" class="${c.spec.keepMode === "top" ? "on" : ""}">Fyll över</button></div>` : ""}
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
@@ -639,6 +654,7 @@ function l3volPanel() {
   qa("select[data-vs]").forEach(s => { s.onchange = () => { c.spec[s.dataset.vs].side = s.value; l3volSchedule(); }; });
   qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); c.spec[i.dataset.vz].z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("[data-vkm]").forEach(b => { b.onclick = () => { c.spec.keepMode = b.dataset.vkm; c.saved = false; l3volSchedule(0); l3volPanel(); }; });
+  { const si = q("input[data-vspike]"); if (si) si.onchange = () => { c.spec.spike = si.checked; c.saved = false; l3volSchedule(0); } }
   { const ki = q("input[data-vkeep]"); if (ki) ki.onchange = () => { c.spec.keep = ki.checked; c.saved = false; l3volSchedule(0); } }
   { const li = q("input[data-vlv]"), go = () => {   // Fyll till plushöjd: nivån som "Yta som mäts", punktmolnet (annars modellen) som "Mot"
       const v = Number(String(li.value).replace(/\s/g, "").replace(",", ".")); if (!Number.isFinite(v)) { l3Status("Skriv plushöjden som ett tal, t.ex. 395,40.", true); li.focus(); return; }

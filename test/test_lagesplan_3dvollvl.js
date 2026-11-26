@@ -121,5 +121,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cell === 1, null, { timeout: 25000 }); await page.waitForTimeout(300);
   const thin = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, tin: !!l3vol.cur.res.tin })); console.log('thin', JSON.stringify(thin));
   if (Math.abs(thin.fill - 200) > 200 * 0.03) fail('Smal påle (0,2 m) + TIN tar bara sin egen yta: ' + JSON.stringify(thin));
+  // Punktmolnsgrejor som sticker upp över nivån (en 2 × 2 m skannad pelare, z 6 m) ska inte kapa fyllningen
+  await page.evaluate(() => { const c = l3pc.clouds.find(x => x.id === 'pcA'), pos = Array.from(c.chunks[0].pos); for (let y = -1; y <= 1; y += 0.1) for (let x = -1; x <= 1; x += 0.1) pos.push(x - 3, y - 3, 4.5); c.chunks[0].pos = new Float32Array(pos); c.nTot = pos.length / 3;
+    const q = placements.find(p => p.type === 'lada'); if (q) { placements.splice(placements.indexOf(q), 1); const g = l3.placeMeshes.get(q.id); if (g) { l3.groups.places.remove(g); l3.placeMeshes.delete(q.id); } }
+    for (const p of placements.filter(p => p.type === 'lada')) { const g = l3.placeMeshes.get(p.id); if (g) { l3.groups.places.remove(g); l3.placeMeshes.delete(p.id); } }
+    l3vol.cache.clear(); const cu = l3vol.cur; cu.spec.keep = false; cu.spec.tin = false; cu.spec.cell = 0.5; cu.spec.spike = false; l3volSchedule(0); });
+  await page.waitForTimeout(400); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.cell === 0.5 && l3vol.cur.spec.spike === false, null, { timeout: 25000 }); await page.waitForTimeout(400);
+  const sp0 = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut }));
+  await page.evaluate(() => { l3vol.cur.spec.spike = true; l3volSchedule(0); }); await page.waitForTimeout(400); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.spec.spike === true && l3vol.cur.res.cut < 1, null, { timeout: 25000 }); await page.waitForTimeout(300);
+  const sp1 = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, cut: l3vol.cur.res.cut })); console.log('spik', JSON.stringify({ sp0, sp1 }));
+  if (!(sp0.cut > 1) || Math.abs(sp1.fill - 200) > 200 * 0.02 || sp1.cut > 1) fail('Punktmolnsgrejor över nivån kapar inte fyllningen: ' + JSON.stringify({ sp0, sp1 }));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dvollvl');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
