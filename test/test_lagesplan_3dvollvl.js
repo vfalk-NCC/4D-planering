@@ -193,5 +193,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res && l3vol.cur.res.keep && l3vol.cur.res.cell === 0.5, null, { timeout: 40000 }); await page.waitForTimeout(400);
   const hid = await page.evaluate(() => ({ fill: l3vol.cur.res.fill, objs: l3vol.cur.res.keep.objs })); console.log('dolt', JSON.stringify(hid));
   if (hid.objs !== 0 || Math.abs(hid.fill - rock.fill) > rock.fill * 0.03) fail('Dolt objekt kapar inget: ' + JSON.stringify(hid));
+  // Förloppsindikator: visas under räkning, stiger 0→100 och försvinner när klart
+  await page.evaluate(() => { window.__pg = []; const o = window.l3volProgUi; window.l3volProgUi = function (c) { if (c && c.busy && c.progress != null) { const el = document.querySelector('[data-vprog]'); window.__pg.push({ p: c.progress, shown: !!el && !el.hidden, txt: el ? el.textContent : '' }); } return o.apply(this, arguments); }; l3vol.cache.clear(); l3volSchedule(0); });
+  await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 40000 });
+  const pg = await page.evaluate(() => ({ n: window.__pg.length, max: Math.max(...window.__pg.map(x => x.p)), shown: window.__pg.some(x => x.shown), mono: window.__pg.every((x, i, a) => i === 0 || x.p >= a[i - 1].p - 0.001), done: l3vol.cur.progress, hidden: (document.querySelector('[data-vprog]') || { hidden: true }).hidden }));
+  console.log('progress', JSON.stringify(pg)); if (pg.n < 3 || pg.max < 85 || !pg.shown || pg.done != null || !pg.hidden) fail('Förloppsindikator: ' + JSON.stringify(pg));
   await browser.close(); server.close(); console.log('OK test_lagesplan_3dvollvl');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

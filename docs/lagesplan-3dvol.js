@@ -240,7 +240,7 @@ async function l3volGroundGrid(cur, src, bd, cell) {
   for (let t = 0; t < T.length; t += 3) {
     const a = [pts.X[T[t]], pts.Y[T[t]], pts.Z[T[t]]], b = [pts.X[T[t + 1]], pts.Y[T[t + 1]], pts.Z[T[t + 1]]], c = [pts.X[T[t + 2]], pts.Y[T[t + 2]], pts.Z[T[t + 2]]];
     if (Math.hypot(a[0] - b[0], a[1] - b[1]) > lim || Math.hypot(b[0] - c[0], b[1] - c[1]) > lim || Math.hypot(a[0] - c[0], a[1] - c[1]) > lim) continue;
-    l3dfTri(g, a, b, c); if (t % 6000 === 0) { await l3volTick(); }
+    l3dfTri(g, a, b, c); if (t % 6000 === 0) { l3volProg(cur, 38 + 12 * (t / T.length)); await l3volTick(); }
   }
   const lz = l3volFillLevel(cur, src), fp = cur.spec.fillPts || [], bx = l3volBoxes(cur); return lz != null && (cur.spec.spike !== false || fp.length || bx.length) ? l3volDespike(g, lz, cur.spec.spike !== false ? l3volSpikeMax(cur) : 0, fp, bx) : g;   // det som sticker upp över nivån ersätts med marken runt omkring (inte hål)
 }
@@ -266,7 +266,7 @@ async function l3volFootprints(cur, bd, cell, gGA, gGB, ob) {
       const za = l3volGridZ(gGA, x, y), zb = l3volGridZ(gGB, x, y); if (za == null || zb == null) continue; const lo = Math.min(za, zb), hi = Math.max(za, zb);
       for (const { top, bot } of ob.lists) { const t = at(top, x, y), b = at(bot, x, y); if (!l3volOk(t) || !l3volOk(b)) continue; if (b < hi + tol && t > lo + 0.02) { const k = j * nx + i; mask[k] = 1; any++; if (!(bots[k] <= b)) bots[k] = b; if (!(tops[k] >= t)) tops[k] = t; } }
     }
-    if (j % 200 === 0) await l3volTick();
+    if (j % 200 === 0) { l3volProg(cur, 52 + 8 * (j / ny)); await l3volTick(); }
   }
   if (!any) return { polys: [], idx: new Map(), area: 0, f, K: 2, mode: cur.spec.keepMode || "pocket" };
   // sammanhängande områden (4-grannar): varje objekt/fundament för sig, med sin underkant/överkant (vanligaste värdet, så att smala bultar inte styr)
@@ -351,24 +351,33 @@ function l3volToeDesign(gl, gg, P0, T, level) {
   ratios.sort((a, b) => a - b); const q = f => ratios.length ? ratios[Math.min(ratios.length - 1, Math.floor(f * ratios.length))] : null;
   return { grid: { ...gl, z }, stats: { n: q(0.5), lo: q(0.05), hi: q(0.95), cells: band, cell: gl.cell } };
 }
+/* Förloppsindikator 0–100 % medan volymen räknas (Victor 2026-11-26): steg och procent visas i panelen. */
+function l3volProgUi(cur) {
+  const el = document.querySelector("[data-vprog]"); if (!el) return; const on = cur && cur.busy && cur.progress != null;
+  el.hidden = !on; if (!on) return; const pct = Math.max(0, Math.min(100, Math.round(cur.progress)));
+  const bar = el.querySelector("i"), num = el.querySelector("b"), txt = el.querySelector("span"); if (bar) bar.style.width = pct + "%"; if (num) num.textContent = pct + " %"; if (txt) txt.textContent = cur.busy;
+}
+const l3volProg = (cur, p, txt) => { if (!cur) return; cur.progress = Math.max(0, Math.min(100, p)); if (txt) cur.busy = txt; l3volProgUi(cur); };
 async function l3volCompute(cur, alive) {
+  l3volProg(cur, 1, "Förbereder området…");
   const P0 = cur.pts, TOE = l3volToeCfg(cur), SL = TOE ? null : l3volSlopeCfg(cur); let P = P0;
   if (TOE) P = l3volHull(P0.concat(TOE.pts));   // området som räknas: konturen kring kronan och släntfoten
   if (SL) { const zl = (l3pc.clouds.filter(c => c.visible && c.info).map(c => c.info.min[2] + (c.dz || 0))); const zmin = zl.length ? Math.min(...zl) : SL.level - 30, D = Math.max(1, Math.min(SL.max, (SL.level - zmin) * SL.n)), ext = l3volBufferPoly(P0, D); if (ext) P = ext; }
   const bd = l3volBox(P), area = l3volArea(P), cell0 = l3volCellFor(bd, area, cur.spec.cell, l3volDensity(cur)), g0 = l3dfGrid(bd, cell0), cell = g0.cell;
-  let gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
-  let gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
+  l3volProg(cur, 3, "Läser ytan som mäts…"); let gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
+  l3volProg(cur, 10, "Läser ytan det mäts mot…"); let gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
+  l3volProg(cur, 18, "Jämför ytorna…");
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
   { const la = l3volFillLevel(cur, cur.spec.a), lb = l3volFillLevel(cur, cur.spec.b), fp = cur.spec.fillPts || [], bx = l3volBoxes(cur), auto = cur.spec.spike !== false, mx = auto ? l3volSpikeMax(cur) : 0; if (la != null && (auto || fp.length || bx.length)) gA = l3volDespike(gA, la, mx, fp, bx); if (lb != null && (auto || fp.length || bx.length)) gB = l3volDespike(gB, lb, mx, fp, bx); }
   let gA2 = gA, gB2 = gB, keepInfo = null, FP = null, cutA = 0;
   if (cur.spec.keep) {   // objekt som står kvar räknas som mark / kapas ur
     const lv = k => k.k === "level" && Number.isFinite(k.z) ? k.z : NaN, up = cur.spec.keepMode !== "top" && typeof polygonClipping !== "undefined"   /* "pocket" (standard) och "up" klipper exakt */, fine = Math.max(0.08, Math.min(cell / 3, 0.15));
-    if (cur.busy !== undefined) cur.busy = "Läser objekten som står kvar…";
-    const ob = await l3volObstacles(cur, bd, up ? fine * 3 : cell); if (!alive()) return null; keepInfo = ob.info; if (cur.busy !== undefined) cur.busy = "Läser marken…";
+    l3volProg(cur, 20, "Läser objekten som står kvar…");
+    const ob = await l3volObstacles(cur, bd, up ? fine * 3 : cell); if (!alive()) return null; keepInfo = ob.info; l3volProg(cur, 38, "Bygger marken ur punktmolnet…");
     let g1 = gA, g2 = gB;
     if (/^pc:/.test(cur.spec.a.k)) g1 = (await l3volGroundGrid(cur, cur.spec.a, bd, cell)) || gA; if (/^pc:/.test(cur.spec.b.k)) g2 = (await l3volGroundGrid(cur, cur.spec.b, bd, cell)) || gB;
     if (!alive()) return null;
-    if (cur.busy !== undefined) cur.busy = "Räknar fotavtryck och fickor…";
+    l3volProg(cur, 52, "Räknar fotavtryck och fickor…");
     if (up) { FP = await l3volFootprints(cur, bd, cell, g1, g2, ob); gA2 = g1; gB2 = g2; keepInfo.area = FP ? Math.round(FP.area) : 0; }
     else { if (/^pc:/.test(cur.spec.a.k)) gA2 = l3volWithObstacles(g1, ob, lv(cur.spec.b), false); if (/^pc:/.test(cur.spec.b.k)) gB2 = l3volWithObstacles(g2, ob, lv(cur.spec.a), false); keepInfo.area = Math.round(((gA2 !== g1 && gA2.hitArea) || 0) + ((gB2 !== g2 && gB2.hitArea) || 0)); }
     if (!alive()) return null;
@@ -447,6 +456,7 @@ async function l3volCompute(cur, alive) {
   let tinInfo = null;
   if (tinMode) {
     const src = tinA ? cur.spec.a : cur.spec.b, sp = Math.max(0.05, Math.sqrt(area / 80000), Number(cur.spec.cell) > 0 ? Number(cur.spec.cell) * 0.5 : 0), pts = l3volTinPoints(cur, src, bd, sp, (g0 => g0 && g0.spikeMask ? (x, y) => { const i = Math.floor((x - g0.x0) / g0.cell), j = Math.floor((y - g0.y0) / g0.cell); return i >= 0 && j >= 0 && i < g0.nx && j < g0.ny && g0.spikeMask[j * g0.nx + i] === 1; } : null)(tinA ? gA : gB));
+    l3volProg(cur, 56, "Triangulerar punkterna (TIN)…");
     if (!pts) return { err: "Kunde inte bygga triangelnätet – tänd och läs in punktmolnet inom området." };
     await l3volTick(); if (!alive()) return null;
     const X = Float64Array.from(pts.X, v => v - bd.x0), Y = Float64Array.from(pts.Y, v => v - bd.y0), T = l3volDelaunay(X, Y); await l3volTick(); if (!alive()) return null;
@@ -460,7 +470,7 @@ async function l3volCompute(cur, alive) {
       const nIn = (inPoly(xs[0], ys[0]) ? 1 : 0) + (inPoly(xs[1], ys[1]) ? 1 : 0) + (inPoly(xs[2], ys[2]) ? 1 : 0);
       let whole = nIn === 3; if (whole) { const A0 = v[0], B0 = v[1], C0 = v[2]; for (const q of P) { const d1 = (B0[0] - A0[0]) * (q[1] - A0[1]) - (B0[1] - A0[1]) * (q[0] - A0[0]), d2 = (C0[0] - B0[0]) * (q[1] - B0[1]) - (C0[1] - B0[1]) * (q[0] - B0[0]), d3 = (A0[0] - C0[0]) * (q[1] - C0[1]) - (A0[1] - C0[1]) * (q[0] - C0[0]); if (d1 > 0 && d2 > 0 && d3 > 0) { whole = false; break; } } }
       if (whole) emit(v); else clipEmit(v); used++;
-      if (++work2 % 300 === 0) { await l3volTick(); if (!alive()) return null; }
+      if (++work2 % 300 === 0) { l3volProg(cur, 62 + 30 * (t / T.length), "Räknar volymen triangel för triangel…"); await l3volTick(); if (!alive()) return null; }
     }
     tinInfo = { points: pts.X.length, tris: used, spacing: sp };
   }
@@ -474,8 +484,9 @@ async function l3volCompute(cur, alive) {
       if (!edgeCell[c] && cin === 4) { parts.forEach(emit); continue; }
       parts.forEach(clipEmit);
     }
-    if (++work % 40 === 0) { await l3volTick(); if (!alive()) return null; }
+    if (++work % 40 === 0) { l3volProg(cur, 62 + 30 * (j / ny), "Räknar volymen ruta för ruta…"); await l3volTick(); if (!alive()) return null; }
   }
+  l3volProg(cur, 93, "Bygger kropparna i 3D…");
   const org = P[0].slice(), solids = {};
   const mergeMesh = ms => { ms = ms.filter(Boolean); if (ms.length <= 1) return ms[0] || null; const cat = (a, F) => { const n = a.reduce((t, m) => t + m[F].length, 0), out = new a[0][F].constructor(n); let o = 0; a.forEach(m => { out.set(m[F], o); o += m[F].length; }); return out; };
     const idx = []; let off = 0; ms.forEach(m => { for (let i = 0; i < m.idx.length; i++) idx.push(m.idx[i] + off); off += m.pos.length / 3; });
@@ -649,12 +660,12 @@ function l3volDraw() {
 function l3volSchedule(ms) {
   clearTimeout(l3vol.timer);
   l3vol.timer = setTimeout(async () => {
-    const c = l3vol.cur; if (!c) return; const seq = ++l3vol.seq; c.busy = "Räknar…"; c.err = ""; l3volPanel();
+    const c = l3vol.cur; if (!c) return; const seq = ++l3vol.seq; c.busy = "Räknar…"; c.progress = 0; c.err = ""; l3volPanel(); l3volProgUi(c);
     try {
       const r = await l3volCompute(c, () => seq === l3vol.seq && l3vol.cur === c); if (seq !== l3vol.seq || l3vol.cur !== c) return;
-      c.busy = ""; if (!r) return;
+      c.busy = ""; c.progress = null; if (!r) return;
       if (r.err) { c.err = r.err; c.res = null; c.geom = null; } else { c.res = r.res; c.geom = r.geom; c.saved = false; }
-    } catch (err) { c.busy = ""; c.err = "Kunde inte räkna: " + (err && err.message ? err.message : err); console.warn("Volym", err); }
+    } catch (err) { c.busy = ""; c.progress = null; c.err = "Kunde inte räkna: " + (err && err.message ? err.message : err); console.warn("Volym", err); }
     l3volPanel(); l3volDraw();
   }, ms == null ? 180 : ms);
 }
@@ -763,6 +774,7 @@ function l3volPanel() {
     ${c.spec.keep ? `<div class="v3-vq-keepm" title="Exakt: bara delen av fyllningen som objektet verkligen upptar tas bort (fickor, under och över objektet finns kvar). Hål ända upp: fyllningen kapas helt ner genom hela lagret runt objekten. Fyll över: fyllningen läggs ovanpå objekt som slutar under nivån."><button type="button" data-vkm="pocket" class="${(c.spec.keepMode || "pocket") === "pocket" ? "on" : ""}">Exakt</button><button type="button" data-vkm="up" class="${c.spec.keepMode === "up" ? "on" : ""}">Hål ända upp</button><button type="button" data-vkm="top" class="${c.spec.keepMode === "top" ? "on" : ""}">Fyll över</button></div>` : ""}
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
     <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
+    <div class="v3-vq-prog" data-vprog ${c.busy && c.progress != null ? "" : "hidden"}><div><i style="width:${Math.round(c.progress || 0)}%"></i></div><b>${Math.round(c.progress || 0)} %</b><span>${esc(c.busy || "")}</span></div>
     <div data-vres>${res}</div>
     <details class="v3-vq-out v3-vq-setd" ${l3Prefs().vpSet ? "open" : ""}><summary>Inställningar</summary><div class="v3-vq-set">
       <div class="v3-vq-sl" title="Rutstorlek för ytan. Mindre ruta = fler trianglar och mer detalj. Räknas om direkt när du drar."><span>Noggrannhet</span><input type="range" min="0" max="${L3VOL_STEPS.length}" step="1" value="${Math.max(0, L3VOL_STEPS.indexOf(Number(c.spec.cell)) + 1)}" data-vc><em data-vcl>${cellTxt}</em></div>
